@@ -1,10 +1,11 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { zipSync } from "fflate";
 
 const root = path.resolve(import.meta.dirname, "..");
 const appDirectory = path.join(root, "release", "win-unpacked");
-const archivePath = path.join(root, "release", "Comik-0.1.0-win-x64.zip");
+const { version } = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+const archivePath = path.join(root, "release", `Comik-${version}-win-x64.zip`);
 const files = {};
 
 async function collect(directory, relativeDirectory = "") {
