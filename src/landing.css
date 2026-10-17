@@ -14,7 +14,7 @@ html:has(.landing),html:has(.web-setup){scroll-behavior:smooth;scroll-padding-to
 .landing-button{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 17px;font-size:14px;font-weight:800;white-space:nowrap;transition:transform .2s,border-color .2s,background .2s}
 .landing-button:hover{transform:translateY(-2px)}.landing-button.primary{background:var(--landing-coral);color:#23140f}.landing-button.secondary{border:1px solid var(--landing-line);color:var(--landing-ink)}
 .landing-art{position:relative;height:min(580px,68vw);min-height:420px;isolation:isolate}.landing-art::before{position:absolute;content:"";inset:9% 6% 4% 9%;background:linear-gradient(135deg,rgba(81,208,176,.13),rgba(255,121,94,.08));border:1px solid rgba(205,222,209,.1);transform:rotate(4deg);z-index:-1}
-.landing-art-canvas{position:absolute;inset:0;width:100%;height:100%;filter:saturate(.92)}.landing-art-note{position:absolute;right:0;bottom:8px;padding:8px 11px;background:var(--landing-bg);border:1px solid var(--landing-line);font:500 10px var(--mono);color:var(--landing-muted)}
+.landing-art-canvas{position:absolute;inset:0;width:100%;height:100%;filter:saturate(.92)}
 .landing-scrollline{position:absolute;bottom:0;left:32px;right:32px;height:1px;background:var(--landing-line)}.landing-scrollline span{display:block;width:24%;height:1px;background:var(--landing-coral)}
 .landing-reading{padding:104px 32px 116px;background:#171e19;border-block:1px solid var(--landing-line)}
 .landing-section-heading{max-width:1280px;margin:0 auto 45px}.landing-section-heading h2,.landing-privacy h2{max-width:720px;color:var(--landing-ink);font-size:clamp(36px,4.5vw,58px);line-height:1.04;letter-spacing:-.035em}

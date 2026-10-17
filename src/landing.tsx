@@ -32,7 +32,6 @@ function LandingPage() {
           </div>
           <div className="landing-art" aria-label="Original animated comic-cover panels">
             <PanelField mode="hero" className="landing-art-canvas" />
-            <div className="landing-art-note">A different cover wall every visit</div>
           </div>
           <div className="landing-scrollline" aria-hidden="true"><span /></div>
         </section>

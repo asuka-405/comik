@@ -19,3 +19,8 @@
   to = "/.netlify/functions/comik-api/:splat"
   status = 200
   force = true
+
+[[headers]]
+  for = "/assets/webtoon-covers/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"

@@ -12,6 +12,9 @@ const COVER_COLS = 10;
 const COVER_ROWS = 10;
 const COVER_W = 112;
 const COVER_H = 168;
+/** Small WebP copies of the bundled covers (see scripts/make-cover-thumbs.mjs), about 8 KB each. */
+const COVER_DIR = "/assets/webtoon-covers/thumbs";
+const COVER_PARALLEL = 8;
 const INK = new THREE.Color("#111713");
 
 interface Rect { x: number; y: number; w: number; h: number }
@@ -122,7 +125,7 @@ let coverManifest: Promise<BundledCover[]> | null = null;
 
 function getBundledCovers(): Promise<BundledCover[]> {
   if (!coverManifest) {
-    coverManifest = fetch("/assets/webtoon-covers/manifest.json")
+    coverManifest = fetch(`${COVER_DIR}/manifest.json`)
       .then((response) => {
         if (!response.ok) throw new Error("Could not load cover list");
         return response.json() as Promise<BundledCover[]>;
@@ -152,9 +155,19 @@ function loadBundledCovers(canvas: HTMLCanvasElement, texture: THREE.CanvasTextu
       const swap = Math.floor(random() * (index + 1));
       [shuffled[index], shuffled[swap]] = [shuffled[swap]!, shuffled[index]!];
     }
-    urls = shuffled.slice(0, COVER_COLS * COVER_ROWS).map((file) => `/assets/webtoon-covers/${encodeURIComponent(file)}`);
+    urls = shuffled.slice(0, COVER_COLS * COVER_ROWS).map((file) => `${COVER_DIR}/${encodeURIComponent(file)}`);
     pump();
   }).catch(() => {});
+
+  // Uploading the whole 1120x1680 canvas to the GPU per image is costly, so coalesce uploads.
+  let uploadTimer = 0;
+  const scheduleUpload = () => {
+    if (uploadTimer) return;
+    uploadTimer = window.setTimeout(() => {
+      uploadTimer = 0;
+      texture.needsUpdate = true;
+    }, 120);
+  };
 
   const finish = (image: HTMLImageElement, index: number) => {
     active--;
@@ -173,13 +186,13 @@ function loadBundledCovers(canvas: HTMLCanvasElement, texture: THREE.CanvasTextu
       context.fillStyle = PALETTE[index % PALETTE.length]!;
       context.fillRect(x, y, COVER_W, COVER_H);
       context.restore();
-      texture.needsUpdate = true;
+      scheduleUpload();
     }
     pump();
   };
 
   const pump = () => {
-    while (!stopped && active < 4 && cursor < urls.length) {
+    while (!stopped && active < COVER_PARALLEL && cursor < urls.length) {
       const index = cursor++;
       const image = new Image();
       images.push(image);
@@ -192,6 +205,7 @@ function loadBundledCovers(canvas: HTMLCanvasElement, texture: THREE.CanvasTextu
   pump();
   return () => {
     stopped = true;
+    window.clearTimeout(uploadTimer);
     for (const image of images) {
       image.onload = null;
       image.onerror = null;
