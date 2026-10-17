@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowsDownUp, BookmarkSimple, CaretLeft, CaretRight, Check, DownloadSimple, Play, Plus, Trash, ArrowsClockwise, Tag } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { getSource } from "@/core/sources/registry";
+import { useSettings } from "@/core/settings";
 import { findDuplicates, markPreviousRead, setBookmark, setInLibrary, setMangaCategories, setRead, patchManga } from "@/core/repo";
 import { refreshManga } from "@/core/updater";
 import { resumeTarget, readingOrder, dedupeByNumber } from "@/core/progress";
@@ -19,6 +20,7 @@ const CHAPTERS_PER_PAGE = 50;
 export function Series() {
   const id = decodeURIComponent(useParams().id ?? "");
   const nav = useNavigate();
+  const safeMode = useSettings((s) => s.safeMode);
   const manga = useLiveQuery(() => db.manga.get(id), [id]);
   const chapters = useLiveQuery(() => db.chapters.where("mangaId").equals(id).toArray(), [id], [] as ChapterRow[]);
   const chapterCount = useLiveQuery(() => db.chapters.where("mangaId").equals(id).count(), [id]);
@@ -52,9 +54,10 @@ export function Series() {
   };
 
   useEffect(() => {
+    if (safeMode && source?.isNsfw) return;
     if (manga && Date.now() - manga.lastFetchedAt > 10 * 60_000 && manga.sourceId !== "local") void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manga?.id]);
+  }, [manga?.id, safeMode, source?.isNsfw]);
 
   // tint the page with the cover's colour
   useEffect(() => {
@@ -76,6 +79,7 @@ export function Series() {
 
   if (manga === undefined) return <div className="page"><div className="skel" style={{ height: 320 }} /></div>;
   if (!manga) return <div className="page"><Empty title="Series not found" body="Open it from Discover again." action={<button className="btn primary" onClick={() => nav("/browse")}>Discover</button>} /></div>;
+  if (safeMode && source?.isNsfw) return <div className="page"><Empty title="Hidden by Safe mode" body="This series is from a source marked as 18+. Turn off Safe mode in Settings to view it." action={<button className="btn primary" onClick={() => nav("/settings")}>Safe mode settings</button>} /></div>;
 
   const target = resumeTarget(chapters ?? []);
   const unread = dedupeByNumber(chapters ?? []).filter((c) => !c.read).length;

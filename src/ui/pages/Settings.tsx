@@ -8,7 +8,7 @@ import { addCustomSource, allSources, isCustom, onSourcesChange, removeCustomSou
 import { importLocal } from "@/core/sources/local";
 import { createBackup, downloadBackup, restoreBackup } from "@/core/backup";
 import { storageUsage } from "@/core/downloads";
-import { defaultFirebaseAvailable, getFirebaseMode, linkGoogle, parseFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
+import { getFirebaseMode, linkGoogle, parseFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
 import { resetPushCursor, startSync, stopSync, syncNow } from "@/core/sync/engine";
 import { Row, Toggle, bytes, timeAgo, toast } from "../common";
 import type { CustomSourceRow } from "@/core/db";
@@ -31,6 +31,7 @@ export function SettingsPage() {
               <div className="seg">{(["system", "dark", "light"] as Theme[]).map((t) => <button key={t} className={s.theme === t ? "on" : ""} onClick={() => s.set({ theme: t })} style={{ textTransform: "capitalize" }}>{t}</button>)}</div>
             </Row>
             <Row title="3D panel backdrop" hint="Turn off to save battery. Reduced-motion users get a still frame."><Toggle label="3D backdrop" on={s.fx} onChange={(v) => s.set({ fx: v })} /></Row>
+            <Row title="Safe mode" hint="Hide comics from sources marked as 18+. Enabled by default."><Toggle label="Safe mode" on={s.safeMode} onChange={(v) => s.set({ safeMode: v })} /></Row>
             <Row title="Unread badges on covers"><Toggle label="Unread badges" on={s.libraryUnreadBadge} onChange={(v) => s.set({ libraryUnreadBadge: v })} /></Row>
           </Section>
           <Section title="Library updates" hue={2}>
@@ -56,7 +57,6 @@ export function SettingsPage() {
             <Row title="Keep screen awake"><Toggle label="Keep screen awake" on={s.keepScreenOn} onChange={(v) => s.set({ keepScreenOn: v })} /></Row>
             <Row title="Auto-advance at chapter end"><Toggle label="Auto-next" on={s.autoNextChapter} onChange={(v) => s.set({ autoNextChapter: v })} /></Row>
             <Row title="Skip chapters already read when going next"><Toggle label="Skip read" on={s.skipReadChapters} onChange={(v) => s.set({ skipReadChapters: v })} /></Row>
-            <Row title="Smaller images (MangaDex data saver)"><Toggle label="Data saver" on={s.dataSaver} onChange={(v) => s.set({ dataSaver: v })} /></Row>
             <Row title="Screen brightness" hint={`${Math.round(s.brightness * 100)}%`}><input type="range" min={0.3} max={1.2} step={0.05} value={s.brightness} onChange={(e) => s.set({ brightness: Number(e.target.value) })} /></Row>
             <Row title="Warm tint" hint={`${Math.round(s.sepia * 100)}%`}><input type="range" min={0} max={0.8} step={0.05} value={s.sepia} onChange={(e) => s.set({ sepia: Number(e.target.value) })} /></Row>
             <Row title="Grayscale"><Toggle label="Grayscale" on={s.grayscale} onChange={(v) => s.set({ grayscale: v })} /></Row>
@@ -68,6 +68,7 @@ export function SettingsPage() {
             <Row title="Delete download after reading"><Toggle label="Delete after read" on={s.deleteAfterRead} onChange={(v) => s.set({ deleteAfterRead: v })} /></Row>
           </Section>
           <Section title="Community and privacy" hue={6}>
+            <Row title="Comik public community" hint="Show the shared public discussion room. This does not affect personal library sync."><Toggle label="Comik public community" on={s.publicCommunityEnabled} onChange={(v) => s.set({ publicCommunityEnabled: v })} /></Row>
             <Row title="Anonymous usage analytics" hint="Opt-in. Sends generic screen and feature events only, never comic titles, searches, or post text.">
               <Toggle label="Usage analytics" on={s.analyticsConsent} onChange={(enabled) => {
                 s.set({ analyticsConsent: enabled });
@@ -100,6 +101,7 @@ export function SettingsPage() {
 function SyncSection() {
   const sync = useSync();
   const [cfgText, setCfgText] = useState("");
+  const [googleWebClientId, setGoogleWebClientId] = useState(() => readFirebaseConfig()?.googleWebClientId ?? "");
   const [configured, setConfigured] = useState(() => !!readFirebaseConfig());
   const [mode, setMode] = useState(getFirebaseMode);
   const [enabled, setEnabled] = useState(() => localStorage.getItem("comik.sync.enabled") === "1");
@@ -108,7 +110,7 @@ function SyncSection() {
   const saveConfig = () => {
     try {
       if (enabled) stopSync();
-      saveFirebaseConfig(parseFirebaseConfig(cfgText));
+      saveFirebaseConfig({ ...parseFirebaseConfig(cfgText), googleWebClientId: googleWebClientId.trim() });
       resetFirebase();
       resetPushCursor();
       setMode("custom");
@@ -134,33 +136,53 @@ function SyncSection() {
   const switchMode = (next: "default" | "custom") => {
     if (next === mode) return;
     stopSync();
+    if (next === "default") {
+      localStorage.removeItem("comik.sync.enabled");
+      setEnabled(false);
+    }
     setFirebaseMode(next);
     resetFirebase();
     resetPushCursor();
     setMode(next);
-    setConfigured(!!readFirebaseConfig());
+    const config = readFirebaseConfig();
+    setConfigured(!!config);
+    setGoogleWebClientId(config?.googleWebClientId ?? "");
     useSync.getState().patch({ status: "off", user: null, error: undefined });
     void refreshAnalyticsConsent(useSettings.getState().analyticsConsent);
-    if (enabled && readFirebaseConfig()) void startSync();
+    if (next === "custom" && enabled && readFirebaseConfig()) void startSync();
   };
 
   return (
-    <Section id="sync" title="Sync (optional)" hue={3}>
-      <p className="muted" style={{ marginBottom: 12 }}>Use the app’s shared Firebase service or connect your own Firebase project. Sync is private to your account; community data is shared only within the selected project.</p>
+    <Section id="sync" title="Personal library sync" hue={3}>
+      <p className="muted" style={{ marginBottom: 12 }}>The Comik Firebase project is reserved for the public community. Reading data syncs only to a Firebase project you own. Without one, this device stays local.</p>
       <div className="seg" style={{ marginBottom: 12 }}>
-        <button className={mode === "default" ? "on" : ""} onClick={() => switchMode("default")}>App server</button>
-        <button className={mode === "custom" ? "on" : ""} onClick={() => switchMode("custom")}>Own Firebase</button>
+        <button className={mode === "default" ? "on" : ""} onClick={() => switchMode("default")}>Local only</button>
+        <button className={mode === "custom" ? "on" : ""} onClick={() => switchMode("custom")}>My Firebase</button>
       </div>
-      {mode === "custom" && !configured ? (
+      {mode === "default" ? (
+        <div className="panel" data-hue="3"><h2>Use Comik on this device</h2><p className="muted" style={{ marginBottom: 12 }}>Your library and reading progress remain on this device. The public Community remains available separately.</p><button className="btn" onClick={() => switchMode("custom")}>Set up personal sync</button></div>
+      ) : !configured ? (
         <>
           <div className="field"><label>Paste your Firebase web config</label><textarea className="input mono" rows={6} value={cfgText} onChange={(e) => setCfgText(e.target.value)} placeholder={'{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }'} /></div>
           <button className="btn primary" disabled={!cfgText.trim()} onClick={saveConfig}>Save config</button>
-          <p className="hint muted" style={{ marginTop: 10 }}>Create a Firebase project, add a Web app, enable Google sign-in and Anonymous auth, create Firestore, and apply the rules below.</p>
+          <div className="hint muted" style={{ marginTop: 12, lineHeight: 1.7 }}><strong>Setup steps</strong><ol><li>Create a Firebase project you control and add a Web app.</li><li>In Authentication, enable Google and Anonymous sign-in.</li><li>Add the current site domain under Authentication settings, Authorized domains.</li><li>Create a Firestore database and publish the rules shown here.</li><li>Paste the Web app config. For Android, also add the Web OAuth client ID below.</li></ol></div>
         </>
-      ) : mode === "default" && !defaultFirebaseAvailable() ? (
-        <div className="err" style={{ marginBottom: 12 }}>The app server is not configured in this build. Choose Own Firebase or use a hosted build with its Firebase project configured.</div>
       ) : (
         <>
+          {mode === "custom" && <div className="field" style={{ marginTop: 12 }}>
+            <label htmlFor="google-web-client-id">Google OAuth Web client ID</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input id="google-web-client-id" className="input mono" style={{ flex: "1 1 320px", minWidth: 0 }} value={googleWebClientId} onChange={(event) => setGoogleWebClientId(event.target.value.trim())} placeholder="...apps.googleusercontent.com" autoComplete="off" />
+              <button className="btn sm" disabled={!googleWebClientId.trim()} onClick={() => {
+                const config = readFirebaseConfig();
+                if (!config) return;
+                saveFirebaseConfig({ ...config, googleWebClientId: googleWebClientId.trim() });
+                resetFirebase();
+                toast("Google client ID saved");
+              }}>Save client ID</button>
+            </div>
+            <p className="hint muted">Required for Android’s native Google account chooser. Use the Web OAuth client from this Firebase project.</p>
+          </div>}
           <Row title="Sync this device" hint={enabled ? (sync.user ? `${sync.user.isAnonymous ? "Anonymous account" : sync.user.email ?? "Signed in"}${sync.lastSyncedAt ? `, synced ${timeAgo(sync.lastSyncedAt)}` : ""}` : sync.status === "connecting" ? "Connecting" : "Starting") : "Off, data stays local"}>
             <Toggle label="Sync" on={enabled} onChange={(v) => (v ? void turnOn() : turnOff())} />
           </Row>
@@ -179,7 +201,7 @@ function SyncSection() {
               saveFirebaseConfig(null);
               resetFirebase();
               setMode("default");
-              setConfigured(defaultFirebaseAvailable());
+              setConfigured(false);
             }}>Forget own config</button>}
           </div>
           {showRules && <pre className="input mono" style={{ whiteSpace: "pre-wrap", marginTop: 10, fontSize: 12 }}>{RULES}</pre>}

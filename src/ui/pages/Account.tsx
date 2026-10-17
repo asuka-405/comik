@@ -56,7 +56,7 @@ export function AccountPage() {
       </section>
 
       {!config ? (
-        <section className="account-actions"><h2>Connect Firebase</h2><p className="muted">Choose the app server or enter your own Firebase configuration in Settings to sign in and sync.</p><a className="btn primary" href="#/settings">Open settings</a></section>
+        <section className="account-actions"><h2>Connect Firebase</h2><p className="muted">Choose the app server or enter your own Firebase configuration in Settings to sign in and sync.</p><Link className="btn primary" to="/settings">Open settings</Link></section>
       ) : (
         <section className="account-actions">
           <div><span className="kicker">Firebase project</span><h2>{config.projectId}</h2><p className="muted">{mode === "default" ? "App server" : "Your Firebase project"} · {sync.lastSyncedAt ? `Last synced ${new Date(sync.lastSyncedAt).toLocaleString()}` : "Not synced yet"}</p></div>

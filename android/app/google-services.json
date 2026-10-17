@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "202200394347",
+    "project_id": "comik-7157c",
+    "storage_bucket": "comik-7157c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:202200394347:android:b5351f060d5d3f57fe9f2e",
+        "android_client_info": {
+          "package_name": "in.archdev.comik"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "202200394347-qn5fvg1q68c2s5ngpdaauf2l8geotm3f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "in.archdev.comik",
+            "certificate_hash": "359913da330747a066aba7d4b7e21967b5aabde0"
+          }
+        },
+        {
+          "client_id": "202200394347-1h9j9ulu3ifcuncf8g3jm3hlivgo8mok.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA7KxrRG4uNQFeW_Wy0vfQRrvatR63Rz5c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "202200394347-1h9j9ulu3ifcuncf8g3jm3hlivgo8mok.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

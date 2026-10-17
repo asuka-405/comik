@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, ChatCircleDots, Heart, MagnifyingGlass, PencilSimpleLine, ShareNetwork } from "@phosphor-icons/react";
@@ -7,33 +7,134 @@ import { db } from "@/core/db";
 import { hash53 } from "@/core/hash";
 import { trackAnalytics } from "@/core/analytics";
 import { getSource } from "@/core/sources/registry";
-import { defaultFirebaseAvailable, linkGoogle, readFirebaseConfig, useSync } from "@/core/sync/firebase";
-import { startSync } from "@/core/sync/engine";
-import { addComment, comicReference, publishPost, rateComic, setPostLike, subscribeComments, subscribePollVotes, subscribePostLikes, subscribePosts, subscribeRatings, uploadCommunityImage, votePoll, type CommunityComment, type CommunityKind, type CommunityPost, type PostLikeState, type RatingRecord } from "@/core/community";
+import { connectPublicCommunity, connectRoomFirebase, linkGooglePublicCommunity, linkGoogleRoom, readFirebaseConfig, readPublicCommunityConfig, useCommunitySession, useRoomSessions } from "@/core/sync/firebase";
+import { addComment, comicReference, createPrivateCommunityRoom, joinPrivateCommunityRoom, publishPost, rateComic, roomCommunityTarget, setPostLike, subscribeComments, subscribePollVotes, subscribePostLikes, subscribePosts, subscribeRatings, uploadCommunityImage, votePoll, type CommunityComment, type CommunityKind, type CommunityPost, type CommunityTarget, type PostLikeState, type RatingRecord } from "@/core/community";
+import { createCommunityInvite, newCommunityRoom, parseCommunityInvite, readCommunityRooms, saveCommunityRoom, type CommunityRoom } from "@/core/communityRooms";
+import { appLink } from "@/core/platform";
 import { timeAgo, toast } from "../common";
 
 const KINDS: [CommunityKind, string][] = [["discussion", "Discussion"], ["recommendation", "Recommendation"], ["poll", "Poll"]];
 
 export function CommunityPage() {
-  const sync = useSync();
-  const config = readFirebaseConfig();
-  const [searchParams] = useSearchParams();
+  const publicSession = useCommunitySession();
+  const safeMode = useSettings((state) => state.safeMode);
+  const publicEnabled = useSettings((state) => state.publicCommunityEnabled);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [rooms, setRooms] = useState(readCommunityRooms);
+  const [selectedId, setSelectedId] = useState(() => localStorage.getItem("comik.community.active") ?? "public");
+  const [showRoomManager, setShowRoomManager] = useState(false);
+  const [roomName, setRoomName] = useState("");
+  const [roomBackend, setRoomBackend] = useState<"public" | "personal">("personal");
+  const [joinInput, setJoinInput] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [kindFilter, setKindFilter] = useState<"all" | CommunityKind>("all");
   const [search, setSearch] = useState("");
+  const activeRoom = rooms.find((room) => room.id === selectedId);
+  const target = useMemo<CommunityTarget>(() => activeRoom ? roomCommunityTarget(activeRoom) : {
+    id: "public",
+    config: readPublicCommunityConfig()!,
+  }, [activeRoom]);
+  const roomSession = useRoomSessions((state) => activeRoom ? state.sessions[activeRoom.id] : undefined);
+  const sync = activeRoom ? (roomSession ?? { status: "off" as const, user: null }) : publicSession;
 
   useEffect(() => {
-    if (!config || sync.status === "off") return;
+    const roomId = searchParams.get("room");
+    if (!roomId || (roomId !== "public" && !rooms.some((room) => room.id === roomId))) return;
+    setSelectedId(roomId);
+    localStorage.setItem("comik.community.active", roomId);
+  }, [rooms, searchParams]);
+
+  useEffect(() => {
+    const encoded = searchParams.get("join");
+    if (!encoded) return;
+    try {
+      const room = parseCommunityInvite(encoded);
+      const stored = saveCommunityRoom({ ...room, joined: false });
+      setRooms(stored);
+      setSelectedId(room.id);
+      localStorage.setItem("comik.community.active", room.id);
+      const next = new URLSearchParams(searchParams);
+      next.delete("join");
+      setSearchParams(next, { replace: true });
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  }, [searchParams, setSearchParams]);
+
+  const selectCommunity = (id: string) => {
+    setSelectedId(id);
+    localStorage.setItem("comik.community.active", id);
+    setPosts([]);
+    setError("");
+    setInviteLink("");
+  };
+
+  const createRoom = async () => {
+    const config = roomBackend === "public" ? readPublicCommunityConfig() : readFirebaseConfig();
+    if (!config) {
+      setError("Set up your Firebase project in Settings before creating a room on it.");
+      return;
+    }
+    const name = roomName.trim();
+    if (!name) return setError("Enter a name for the community.");
+    const room = newCommunityRoom(name, config);
+    const roomTarget = roomCommunityTarget(room);
+    try {
+      await linkGoogleRoom(room.id, config);
+      await createPrivateCommunityRoom(room, roomTarget);
+      const joinedRoom = { ...room, joined: true };
+      setRooms(saveCommunityRoom(joinedRoom));
+      setRoomName("");
+      selectCommunity(room.id);
+      setInviteLink(createCommunityInvite(joinedRoom));
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  };
+
+  const joinRoom = async (room: CommunityRoom) => {
+    const roomTarget = roomCommunityTarget(room);
+    try {
+      await connectRoomFirebase(room.id, room.config);
+      await linkGoogleRoom(room.id, room.config);
+      await joinPrivateCommunityRoom(room, roomTarget);
+      const joinedRoom = { ...room, joined: true };
+      setRooms(saveCommunityRoom(joinedRoom));
+      setError("");
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  };
+
+  const importInvite = () => {
+    try {
+      const encoded = joinInput.trim().includes("join=")
+        ? new URL(joinInput.trim()).searchParams.get("join")
+        : joinInput.trim();
+      if (!encoded) throw new Error("Paste a community invite link or code.");
+      const room = parseCommunityInvite(encoded);
+      setRooms(saveCommunityRoom({ ...room, joined: false }));
+      setJoinInput("");
+      selectCommunity(room.id);
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  };
+
+  useEffect(() => {
+    if (activeRoom && !activeRoom.joined) return;
+    if (!activeRoom && !publicEnabled) return;
     let dead = false;
     let unsubscribe: (() => void) | undefined;
     setLoading(true);
-    void subscribePosts((items) => { setPosts(items); setLoading(false); }, (cause) => { setError(cause.message); setLoading(false); })
+    void subscribePosts((items) => { setPosts(items); setLoading(false); }, (cause) => { setError(cause.message); setLoading(false); }, target)
       .then((off) => { if (dead) off(); else unsubscribe = off; })
       .catch((cause: Error) => { if (!dead) { setError(cause.message); setLoading(false); } });
     return () => { dead = true; unsubscribe?.(); };
-  }, [config?.projectId, sync.status]);
+  }, [activeRoom?.id, activeRoom?.joined, publicEnabled, target]);
 
   useEffect(() => {
     const postId = searchParams.get("post");
@@ -44,6 +145,7 @@ export function CommunityPage() {
   }, [posts, searchParams]);
 
   const visiblePosts = posts.filter((post) => {
+    if (safeMode && post.comic && getSource(post.comic.sourceId)?.isNsfw) return false;
     if (kindFilter !== "all" && post.kind !== kindFilter) return false;
     if (!search.trim()) return true;
     const text = `${post.title} ${post.body} ${post.comic?.title ?? ""} ${post.authorName}`.toLowerCase();
@@ -51,8 +153,13 @@ export function CommunityPage() {
   });
 
   const startCommunity = () => {
-    localStorage.setItem("comik.sync.enabled", "1");
-    void startSync();
+    const connect = activeRoom ? connectRoomFirebase(activeRoom.id, activeRoom.config) : connectPublicCommunity();
+    void connect.catch((cause: Error) => setError(cause.message));
+  };
+
+  const signInToCommunity = () => {
+    const signIn = activeRoom ? linkGoogleRoom(activeRoom.id, activeRoom.config) : linkGooglePublicCommunity();
+    void signIn.then(() => toast("Google account connected")).catch((cause: Error) => toast(cause.message, true));
   };
 
   return (
@@ -62,14 +169,37 @@ export function CommunityPage() {
       <div className="community-titlebar">
         <div><div className="kicker">Comik · readers' corner</div><h1>Community</h1><p>Talk chapters, trade recommendations, and find your next read.</p></div>
         <div className="community-title-actions">
-          <Link className="btn primary" to="/community/new"><PencilSimpleLine size={18} />Write a post</Link>
-          {sync.user?.isAnonymous && <button className="btn" onClick={() => void linkGoogle().then(() => toast("Google account connected")).catch((cause: Error) => toast(cause.message, true))}>Sign in</button>}
+          <select className="input" aria-label="Choose community" value={selectedId} onChange={(event) => selectCommunity(event.target.value)}>
+            {publicEnabled && <option value="public">Comik public</option>}
+            {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+          </select>
+          <button className="btn" onClick={() => setShowRoomManager((value) => !value)}>{showRoomManager ? "Close communities" : "Manage communities"}</button>
+          {sync.status === "off" && <button className="btn" onClick={startCommunity}>Connect</button>}
+          {sync.user?.isAnonymous && <button className="btn" onClick={signInToCommunity}>Sign in</button>}
+          {sync.user && !sync.user.isAnonymous && <Link className="btn primary" to={`/community/new?room=${encodeURIComponent(selectedId)}`}><PencilSimpleLine size={18} />Write a post</Link>}
         </div>
       </div>
-      {!config ? (
-        <section className="panel"><h2>Firebase is not configured</h2><p className="muted">Choose the app server or connect your Firebase project in Settings to use the community.</p><a className="btn" href="#/settings">Open Firebase settings</a></section>
-      ) : sync.status === "off" ? (
-        <section className="panel"><h2>Connect to the selected server</h2><p className="muted" style={{ marginBottom: 12 }}>Community posts and ratings are shared within this Firebase project. Sign in with Google to post, comment, vote, or rate.</p><button className="btn primary" onClick={startCommunity}>Connect</button></section>
+      {showRoomManager && <section className="panel community-room-manager">
+        <h2>Private communities</h2>
+        <p className="muted">Create invite-only rooms on Comik Firebase or a Firebase project you own. Each room has its own posts and membership.</p>
+        <div className="community-room-create">
+          <input className="input" value={roomName} onChange={(event) => setRoomName(event.target.value)} placeholder="Community name" aria-label="Community name" />
+          <select className="input" value={roomBackend} onChange={(event) => setRoomBackend(event.target.value as "public" | "personal")} aria-label="Firebase for community">
+            <option value="personal">My Firebase</option><option value="public">Comik Firebase</option>
+          </select>
+          <button className="btn primary" disabled={!roomName.trim()} onClick={() => void createRoom()}>Create invite-only room</button>
+        </div>
+        <div className="community-room-join">
+          <input className="input" value={joinInput} onChange={(event) => setJoinInput(event.target.value)} placeholder="Paste invite link" aria-label="Community invite link" />
+          <button className="btn" disabled={!joinInput.trim()} onClick={importInvite}>Add invite</button>
+        </div>
+        {inviteLink && <div className="community-room-invite"><span className="muted">Invite link</span><input className="input mono" value={inviteLink} readOnly aria-label="Invite link" /><button className="btn sm" onClick={() => void navigator.clipboard.writeText(inviteLink).then(() => toast("Invite link copied"))}>Copy</button></div>}
+        {rooms.length > 0 && <div className="community-room-list">{rooms.map((room) => <button key={room.id} className="community-room-item" onClick={() => selectCommunity(room.id)}><strong>{room.name}</strong><span>{room.config.projectId} · {room.joined ? "joined" : "invite added"}</span></button>)}</div>}
+      </section>}
+      {!activeRoom && !publicEnabled ? (
+        <section className="panel"><h2>Public community is off</h2><p className="muted">Turn it back on in Settings, or select a private community.</p><Link className="btn" to="/settings">Community settings</Link></section>
+      ) : activeRoom && !activeRoom.joined ? (
+        <section className="panel"><h2>Invite-only community</h2><p className="muted" style={{ marginBottom: 12 }}>Join {activeRoom.name} with your Google account. Room posts stay in {activeRoom.config.projectId}.</p><button className="btn primary" onClick={() => void joinRoom(activeRoom)}>Join community</button></section>
       ) : (
         <>
           {error && <div className="err" role="alert">{error}</div>}
@@ -83,17 +213,16 @@ export function CommunityPage() {
             {loading && <div className="chapter-loading"><span className="reader-spinner" /><span>Loading discussions</span></div>}
             {!loading && !posts.length && !error && <section className="community-empty"><span className="community-empty-mark">✳</span><h2>Start the conversation</h2><p>Your reader community is just getting started. Share a favorite, ask a question, or make a poll.</p></section>}
             {!loading && posts.length > 0 && !visiblePosts.length && <section className="community-empty"><h2>No posts match</h2><p>Try another search or post type.</p></section>}
-            {visiblePosts.map((post) => <PostView key={post.id} post={post} />)}
+            {visiblePosts.map((post) => <PostView key={post.id} post={post} target={target} />)}
           </div>
         </>
       )}
-      {config && sync.status === "error" && <div className="err" role="alert">Firebase connection failed: {sync.error}</div>}
-      {config && sync.status === "ready" && sync.user?.isAnonymous && <p className="hint muted">You are browsing anonymously. Google sign-in is required to contribute.</p>}
-      {config && !defaultFirebaseAvailable() && <p className="hint muted">Using the selected Firebase project. Community data is private to this project.</p>}
+      {sync.status === "error" && <div className="err" role="alert">Community connection failed: {sync.error}</div>}
+      {sync.user?.isAnonymous && <p className="hint muted">You are browsing anonymously. Google sign-in is required to contribute.</p>}
         </main>
         <aside className="community-aside">
           <section className="community-aside-intro"><span className="kicker">The reading room</span><h2>Good stories get better shared.</h2><p>Keep it kind. Mark spoilers. Link the source when you recommend a series.</p></section>
-          <section className="community-aside-section"><h3>In this room</h3><div><i className="aside-dot coral" />Discussions<span>{posts.filter((post) => post.kind === "discussion").length}</span></div><div><i className="aside-dot teal" />Recommendations<span>{posts.filter((post) => post.kind === "recommendation").length}</span></div><div><i className="aside-dot gold" />Polls<span>{posts.filter((post) => post.kind === "poll").length}</span></div></section>
+          <section className="community-aside-section"><h3>In this room</h3><div><i className="aside-dot coral" />Discussions<span>{visiblePosts.filter((post) => post.kind === "discussion").length}</span></div><div><i className="aside-dot teal" />Recommendations<span>{visiblePosts.filter((post) => post.kind === "recommendation").length}</span></div><div><i className="aside-dot gold" />Polls<span>{visiblePosts.filter((post) => post.kind === "poll").length}</span></div></section>
           <div className="community-aside-foot">Posts and ratings are shared within the selected Firebase project.</div>
         </aside>
       </div>
@@ -102,35 +231,60 @@ export function CommunityPage() {
 }
 
 export function CommunityNewPostPage() {
-  const sync = useSync();
-  const config = readFirebaseConfig();
+  const [searchParams] = useSearchParams();
+  const [rooms, setRooms] = useState(readCommunityRooms);
+  const roomId = searchParams.get("room");
+  const activeRoom = rooms.find((room) => room.id === roomId);
+  const publicSession = useCommunitySession();
+  const roomSession = useRoomSessions((state) => activeRoom ? state.sessions[activeRoom.id] : undefined);
+  const sync = activeRoom ? (roomSession ?? { status: "off" as const, user: null }) : publicSession;
+  const config = readPublicCommunityConfig();
   const navigate = useNavigate();
+  const target: CommunityTarget = activeRoom ? roomCommunityTarget(activeRoom) : { id: "public", config: config! };
   const connect = () => {
-    localStorage.setItem("comik.sync.enabled", "1");
-    void startSync();
+    const operation = activeRoom ? connectRoomFirebase(activeRoom.id, activeRoom.config) : connectPublicCommunity();
+    void operation.catch((cause: Error) => toast(cause.message, true));
+  };
+  const signIn = () => {
+    const operation = activeRoom ? linkGoogleRoom(activeRoom.id, activeRoom.config) : linkGooglePublicCommunity();
+    void operation.then(() => toast("Google account connected")).catch((cause: Error) => toast(cause.message, true));
+  };
+  const joinRoom = async () => {
+    if (!activeRoom) return;
+    try {
+      await connectRoomFirebase(activeRoom.id, activeRoom.config);
+      await linkGoogleRoom(activeRoom.id, activeRoom.config);
+      await joinPrivateCommunityRoom(activeRoom, roomCommunityTarget(activeRoom));
+      setRooms(saveCommunityRoom({ ...activeRoom, joined: true }));
+    } catch (cause) {
+      toast((cause as Error).message, true);
+    }
   };
 
   return (
     <div className="page community-new-page">
       <Link className="community-back" to="/community"><ArrowLeft size={17} />Back to community</Link>
       <header className="community-new-heading"><div className="kicker">The reading room</div><h1>Start a conversation</h1><p>Share a thought, put a question to readers, or give someone their next favorite series.</p></header>
-      {!config ? (
+      {roomId && !activeRoom ? (
+        <section className="community-gate"><h2>Community not found</h2><p>This room is not saved on this device. Open its invite link first.</p></section>
+      ) : activeRoom && !activeRoom.joined ? (
+        <section className="community-gate"><h2>Join {activeRoom.name}</h2><p>Sign in with Google to join this invite-only room.</p><button className="btn primary" onClick={() => void joinRoom()}>Join community</button></section>
+      ) : !config && !activeRoom ? (
         <section className="community-gate"><h2>Set up Firebase first</h2><p>Connect the app server or your own Firebase project to publish community posts.</p><Link className="btn primary" to="/settings">Open Firebase settings</Link></section>
       ) : sync.status === "off" ? (
         <section className="community-gate"><h2>Connect to the reading room</h2><p>Posts and replies are shared with people using this Firebase project.</p><button className="btn primary" onClick={connect}>Connect</button></section>
       ) : (
         <>
           {sync.status === "error" && <div className="err" role="alert">{sync.error}</div>}
-          <CommunityComposer onPublished={() => navigate("/community", { replace: true })} />
-          {(!sync.user || sync.user.isAnonymous) && <Link className="community-login-prompt" to="/login">Sign in with Google to publish</Link>}
+          <CommunityComposer target={target} user={sync.user} onPublished={() => navigate(activeRoom ? `/community?room=${encodeURIComponent(activeRoom.id)}` : "/community", { replace: true })} />
+          {(!sync.user || sync.user.isAnonymous) && <button className="btn primary community-login-prompt" onClick={signIn}>Sign in with Google to publish</button>}
         </>
       )}
     </div>
   );
 }
 
-function CommunityComposer({ onPublished }: { onPublished: (post: CommunityPost) => void }) {
-  const user = useSync((state) => state.user);
+function CommunityComposer({ target, user, onPublished }: { target: CommunityTarget; user: { uid: string; isAnonymous: boolean; name?: string | null; email?: string | null } | null; onPublished: (post: CommunityPost) => void }) {
   const settings = useSettings();
   const library = useLiveQuery(() => db.manga.filter((item) => item.inLibrary).toArray(), [], []);
   const [kind, setKind] = useState<CommunityKind>("discussion");
@@ -169,7 +323,7 @@ function CommunityComposer({ onPublished }: { onPublished: (post: CommunityPost)
         ...(kind === "poll" ? { pollOptions } : {}),
         ...(imageUrl ? { imageUrl } : {}),
       };
-      const id = await publishPost(data);
+      const id = await publishPost(data, target);
       onPublished({ ...data, id, authorId: user!.uid, authorName: user!.name || "Reader", createdAt: Date.now() });
       void trackAnalytics("community_post", { kind });
       setTitle(""); setBody(""); setMangaId(""); setOptions(""); setImage(null);
@@ -205,8 +359,8 @@ function CommunityComposer({ onPublished }: { onPublished: (post: CommunityPost)
   );
 }
 
-function PostView({ post }: { post: CommunityPost }) {
-  const user = useSync((state) => state.user);
+function PostView({ post, target }: { post: CommunityPost; target: CommunityTarget }) {
+  const user = useCommunitySession((state) => state.user);
   const [votes, setVotes] = useState<Record<string, number>>({});
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [comments, setComments] = useState<CommunityComment[]>([]);
@@ -221,37 +375,40 @@ function PostView({ post }: { post: CommunityPost }) {
     if (!post.comic) return;
     let dead = false;
     let unsubscribe: (() => void) | undefined;
-    void subscribeRatings(comicKey, setRatings, () => {}).then((off) => { if (dead) off(); else unsubscribe = off; });
+    void subscribeRatings(comicKey, setRatings, () => {}, target).then((off) => { if (dead) off(); else unsubscribe = off; });
     return () => { dead = true; unsubscribe?.(); };
-  }, [comicKey, post.comic]);
+  }, [comicKey, post.comic, target]);
 
   useEffect(() => {
     if (post.kind !== "poll") return;
     let dead = false;
     let unsubscribe: (() => void) | undefined;
-    void subscribePollVotes(post.id, setVotes, () => {}).then((off) => { if (dead) off(); else unsubscribe = off; });
+    void subscribePollVotes(post.id, setVotes, () => {}, target).then((off) => { if (dead) off(); else unsubscribe = off; });
     return () => { dead = true; unsubscribe?.(); };
-  }, [post.id, post.kind]);
+  }, [post.id, post.kind, target]);
 
   useEffect(() => {
     if (!showComments) return;
     let dead = false;
     let unsubscribe: (() => void) | undefined;
-    void subscribeComments(post.id, setComments, () => {}).then((off) => { if (dead) off(); else unsubscribe = off; });
+    void subscribeComments(post.id, setComments, () => {}, target).then((off) => { if (dead) off(); else unsubscribe = off; });
     return () => { dead = true; unsubscribe?.(); };
-  }, [post.id, showComments]);
+  }, [post.id, showComments, target]);
 
   const ratingAverage = ratings.length ? ratings.reduce((sum, rating) => sum + rating.score, 0) / ratings.length : 0;
   const userVote = user ? votes[user.uid] : undefined;
   useEffect(() => {
     let dead = false;
     let unsubscribe: (() => void) | undefined;
-    void subscribePostLikes(post.id, user?.uid ?? "", setLikes, () => {}).then((off) => { if (dead) off(); else unsubscribe = off; });
+    void subscribePostLikes(post.id, user?.uid ?? "", setLikes, () => {}, target).then((off) => { if (dead) off(); else unsubscribe = off; });
     return () => { dead = true; unsubscribe?.(); };
-  }, [post.id, user?.uid]);
+  }, [post.id, user?.uid, target]);
 
   const share = async () => {
-    const url = `${location.origin}${location.pathname}#/community?post=${encodeURIComponent(post.id)}`;
+    const params = new URLSearchParams();
+    if (target.roomId) params.set("room", target.roomId);
+    params.set("post", post.id);
+    const url = appLink(`/community?${params}`);
     try {
       if (navigator.share) await navigator.share({ title: post.title, url });
       else { await navigator.clipboard.writeText(url); toast("Post link copied"); }
@@ -263,7 +420,7 @@ function PostView({ post }: { post: CommunityPost }) {
     event.preventDefault();
     if (!comment.trim()) return;
     setBusy(true);
-    try { await addComment(post.id, comment); setComment(""); void trackAnalytics("community_comment"); } catch (cause) { toast((cause as Error).message, true); }
+    try { await addComment(post.id, comment, target); setComment(""); void trackAnalytics("community_comment"); } catch (cause) { toast((cause as Error).message, true); }
     setBusy(false);
   };
 
@@ -276,13 +433,13 @@ function PostView({ post }: { post: CommunityPost }) {
       {post.imageUrl && <img className="community-image" src={post.imageUrl} alt="Image attached to this post" loading="lazy" />}
       {post.kind === "poll" && <div className="community-poll">{pollOptions.map((option, index) => {
         const count = Object.values(votes).filter((value) => value === index).length;
-        return <button key={`${index}-${option}`} className={`poll-option${userVote === index ? " on" : ""}`} disabled={!user || user.isAnonymous || userVote !== undefined} onClick={() => void votePoll(post.id, index).then(() => trackAnalytics("community_vote")).catch((cause: Error) => toast(cause.message, true))}>
+        return <button key={`${index}-${option}`} className={`poll-option${userVote === index ? " on" : ""}`} disabled={!user || user.isAnonymous || userVote !== undefined} onClick={() => void votePoll(post.id, index, target).then(() => trackAnalytics("community_vote")).catch((cause: Error) => toast(cause.message, true))}>
           <span>{option}</span><span className="mono">{count}</span>
         </button>;
       })}<span className="muted">{Object.keys(votes).length} votes</span></div>}
-      {post.comic && <div className="community-rating"><span>Rating {ratingAverage ? `${ratingAverage.toFixed(1)} / 5 · ${ratings.length}` : "No ratings yet"}</span><div className="rating-buttons" aria-label="Rate this comic">{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" aria-label={`Rate ${score} out of 5`} disabled={!user || user.isAnonymous} className={(ratings.find((rating) => rating.uid === user?.uid)?.score ?? 0) >= score ? "on" : ""} onClick={() => void rateComic(post.comic!, score).then(() => trackAnalytics("community_rating", { score })).catch((cause: Error) => toast(cause.message, true))}>★</button>)}</div></div>}
+      {post.comic && <div className="community-rating"><span>Rating {ratingAverage ? `${ratingAverage.toFixed(1)} / 5 · ${ratings.length}` : "No ratings yet"}</span><div className="rating-buttons" aria-label="Rate this comic">{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" aria-label={`Rate ${score} out of 5`} disabled={!user || user.isAnonymous} className={(ratings.find((rating) => rating.uid === user?.uid)?.score ?? 0) >= score ? "on" : ""} onClick={() => void rateComic(post.comic!, score, target).then(() => trackAnalytics("community_rating", { score })).catch((cause: Error) => toast(cause.message, true))}>★</button>)}</div></div>}
       <div className="community-post-actions">
-        <button className={`community-action like${likes.liked ? " liked" : ""}`} disabled={!user || user.isAnonymous} aria-pressed={likes.liked} onClick={() => void setPostLike(post.id, likes.liked).then(() => trackAnalytics("community_like")).catch((cause: Error) => toast(cause.message, true))}><Heart size={19} weight={likes.liked ? "fill" : "regular"} /><span>{likes.count ? likes.count : "Like"}</span></button>
+        <button className={`community-action like${likes.liked ? " liked" : ""}`} disabled={!user || user.isAnonymous} aria-pressed={likes.liked} onClick={() => void setPostLike(post.id, likes.liked, target).then(() => trackAnalytics("community_like")).catch((cause: Error) => toast(cause.message, true))}><Heart size={19} weight={likes.liked ? "fill" : "regular"} /><span>{likes.count ? likes.count : "Like"}</span></button>
         <button className={`community-action${showComments ? " selected" : ""}`} onClick={() => setShowComments((value) => !value)}><ChatCircleDots size={19} /><span>{showComments ? "Hide replies" : "Reply"}</span></button>
         <button className="community-action" onClick={() => void share()}><ShareNetwork size={18} /><span>Share</span></button>
       </div>

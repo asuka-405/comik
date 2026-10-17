@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, BookmarkSimple, CaretLeft, CaretRight, SlidersHorizontal } from "@phosphor-icons/react";
 import { db } from "@/core/db";
+import { getSource } from "@/core/sources/registry";
 import { useSettings } from "@/core/settings";
 import { loadPages, releasePages, type ReaderPage } from "@/core/pages";
 import { patchManga, saveProgress, setBookmark } from "@/core/repo";
@@ -21,12 +22,14 @@ interface Slide { page: number; piece: number; data: Piece }
 export function Reader() {
   const chapterId = decodeURIComponent(useParams().chapterId ?? "");
   const nav = useNavigate();
+  const safeMode = useSettings((s) => s.safeMode);
   const chapter = useLiveQuery(() => db.chapters.get(chapterId), [chapterId]);
   const manga = useLiveQuery(() => (chapter ? db.manga.get(chapter.mangaId) : undefined), [chapter?.mangaId]);
   const siblings = useLiveQuery(() => (chapter ? db.chapters.where("mangaId").equals(chapter.mangaId).toArray() : []), [chapter?.mangaId], [] as ChapterRow[]);
 
   if (chapter === undefined || (chapter && manga === undefined)) return <div className="reader"><div className="interstitial"><div className="skel" style={{ width: 200, height: 14 }} /></div></div>;
   if (!chapter || !manga) return <div className="reader"><div className="interstitial"><h2>Chapter not found</h2><button className="btn" onClick={() => nav("/")}>Back</button></div></div>;
+  if (safeMode && getSource(manga.sourceId)?.isNsfw) return <div className="reader"><div className="interstitial"><h2>Hidden by Safe mode</h2><p>This series is from a source marked as 18+.</p><button className="btn" onClick={() => nav("/settings")}>Safe mode settings</button></div></div>;
   return <ReaderBody key={chapter.id} chapter={chapter} manga={manga} siblings={siblings ?? []} />;
 }
 

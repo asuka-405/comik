@@ -24,13 +24,15 @@ import { AccountPage } from "./pages/Account";
 import { LoginPage } from "./pages/Login";
 import { SourceStudioPage } from "./components/SourceStudio";
 import { Reader } from "./reader/Reader";
+import { WebSetup } from "./pages/WebSetup";
+import { isNativeShell } from "@/core/platform";
 
 function useTheme() {
   const theme = useSettings((s) => s.theme);
   useEffect(() => {
-    const mq = matchMedia("(prefers-color-scheme: light)");
+    const mq = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
-      const resolved = theme === "system" ? (mq.matches ? "light" : "dark") : theme;
+      const resolved = theme === "system" ? (mq.matches ? "dark" : "light") : theme;
       document.documentElement.dataset.theme = resolved;
       document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "light" ? "#e6ecdf" : "#111713");
     };
@@ -47,6 +49,9 @@ export function App() {
   const nav = useNavigate();
   const reading = loc.pathname.startsWith("/read/");
   const analyticsConsent = useSettings((s) => s.analyticsConsent);
+
+  const needsPersonalFirebase = !isNativeShell && !readFirebaseConfig();
+  const onboardingAllowed = ["/settings", "/community", "/community/new"].includes(loc.pathname);
 
   useEffect(() => {
     void loadCustomSources();
@@ -75,6 +80,8 @@ export function App() {
     return db.chapters.where("fetchedAt").above(Math.max(since, 1)).filter((c) => !c.read).count();
   }, [loc.pathname], 0);
 
+  if (needsPersonalFirebase && !onboardingAllowed) return <WebSetup />;
+
   if (reading) {
     return (
       <>
@@ -96,10 +103,18 @@ export function App() {
           <NavLink to="/community" className="nav-btn" aria-label="Community"><ChatCircleText size={24} /><span className="tip">Community</span></NavLink>
           <NavLink to="/account" className="nav-btn" aria-label="Account"><UserCircle size={24} /><span className="tip">Account and sync</span></NavLink>
           <div className="grow" />
-          <button className="nav-btn" onClick={() => setPalette(true)} aria-label="Search"><MagnifyingGlass size={24} /><span className="tip">Search (Ctrl K)</span></button>
           <NavLink to="/settings" className="nav-btn" aria-label="Settings"><GearSix size={24} /><span className="tip">Settings</span></NavLink>
         </nav>
         <main>
+          <form className="shell-searchbar" role="search" onSubmit={(event) => {
+            event.preventDefault();
+            const query = (event.currentTarget.elements.namedItem("global-search") as HTMLInputElement).value.trim();
+            if (query) nav(`/browse?q=${encodeURIComponent(query)}`);
+          }}>
+            <MagnifyingGlass size={18} aria-hidden="true" />
+            <input name="global-search" type="search" placeholder="Search your shelf and every source" aria-label="Search your shelf and every source" />
+            <button type="button" className="shell-search-shortcut" onClick={() => setPalette(true)}>Ctrl K</button>
+          </form>
           <Routes>
             <Route path="/" element={<Shelf onSearch={() => setPalette(true)} />} />
             <Route path="/browse" element={<Browse />} />

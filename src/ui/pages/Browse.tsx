@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { MagnifyingGlass, Plus } from "@phosphor-icons/react";
@@ -27,6 +27,7 @@ export function Browse() {
   const nav = useNavigate();
   const fx = useSettings((s) => s.fx);
   const disabledSourceIds = useSettings((s) => s.disabledSourceIds);
+  const safeMode = useSettings((s) => s.safeMode);
   const q = params.get("q") ?? "";
   const [text, setText] = useState(q);
   const dq = useDebounced(text, 450);
@@ -36,7 +37,7 @@ export function Browse() {
     setParams(dq ? { q: dq } : {}, { replace: true });
   }, [dq, setParams]);
 
-  const enabledSources = useMemo(() => sources.filter((s) => !disabledSourceIds.includes(s.id)), [sources, disabledSourceIds]);
+  const enabledSources = useMemo(() => sources.filter((s) => !disabledSourceIds.includes(s.id) && !(safeMode && s.isNsfw)), [sources, disabledSourceIds, safeMode]);
   const langs = useMemo(() => [...new Set(enabledSources.map((s) => s.lang))], [enabledSources]);
   const [sq, setSq] = useState("");
   const shown = enabledSources
@@ -65,7 +66,7 @@ export function Browse() {
 
       {q ? (
         searchable.length ? <div className="stack" style={{ marginTop: 14 }}>
-          {searchable.map((s) => <GlobalRow key={s.id + q} source={s} q={q} />)}
+          {searchable.map((s) => <GlobalRow key={s.id} source={s} q={q} />)}
         </div> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
       ) : (
         <>
@@ -97,9 +98,10 @@ export function Browse() {
 /** Global search must not hit 100 sites at once. */
 let active = 0;
 const waiting: (() => void)[] = [];
-async function slot<T>(fn: () => Promise<T>): Promise<T> {
+async function slot<T>(fn: () => Promise<T | null>, onStart: () => void): Promise<T | null> {
   if (active >= 4) await new Promise<void>((r) => waiting.push(r));
   active++;
+  onStart();
   try {
     return await fn();
   } finally {
@@ -109,32 +111,60 @@ async function slot<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 function GlobalRow({ source, q }: { source: Source; q: string }) {
+  const section = useRef<HTMLElement>(null);
+  const [visible, setVisible] = useState(false);
   const [items, setItems] = useState<SManga[] | null>(null);
   const [err, setErr] = useState("");
+  const [status, setStatus] = useState<"waiting" | "queued" | "loading" | "done">("waiting");
   const lib = useLiveQuery(() => db.manga.filter((m) => m.inLibrary).primaryKeys(), [], [] as string[]);
   const [rows, setRows] = useState<Awaited<ReturnType<typeof upsertManga>>[]>([]);
 
   useEffect(() => {
+    const element = section.current;
+    if (!element || !("IntersectionObserver" in window)) {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "500px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
     let dead = false;
     setItems(null);
     setErr("");
-    slot(() => source.search(1, q, source.getFilterList()))
+    setRows([]);
+    setStatus("queued");
+    slot(() => dead ? Promise.resolve(null) : source.search(1, q, source.getFilterList()), () => {
+      if (!dead) setStatus("loading");
+    })
       .then(async (r) => {
-        const saved = await Promise.all(r.mangas.slice(0, 12).map((m) => upsertManga(source.id, m)));
-        if (!dead) { setItems(r.mangas); setRows(saved); }
+        if (!r || dead) return;
+        const mangas = r.mangas.slice(0, 12);
+        const saved = await Promise.all(mangas.map((m) => upsertManga(source.id, m)));
+        if (!dead) { setItems(mangas); setRows(saved); setStatus("done"); }
       })
-      .catch((e: Error) => !dead && setErr(e.message));
+      .catch((e: Error) => {
+        if (!dead) { setErr(e.message); setStatus("done"); }
+      });
     return () => { dead = true; };
-  }, [source, q]);
+  }, [source, q, visible]);
 
   return (
-    <section data-hue={hueOf(source.id)}>
+    <section ref={section} data-hue={hueOf(source.id)}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
         <h3 style={{ color: "var(--ink)", fontWeight: 800 }}>{source.name}</h3>
         <Link className="muted" style={{ fontSize: 13 }} to={`/browse/${source.id}?q=${encodeURIComponent(q)}`}>See all</Link>
       </div>
       {err && <div className="err">{err}</div>}
-      {!items && !err && <div className="chips">{Array.from({ length: 6 }, (_, i) => <div key={i} className="skel" style={{ width: 120, height: 180, flex: "none" }} />)}</div>}
+      {(status === "queued" || status === "loading") && <div className="muted" role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 28 }}><span className="reader-spinner" style={{ width: 16, height: 16 }} />{status === "queued" ? "Waiting to search" : "Searching this source"}</div>}
       {items && !items.length && <div className="muted">No results.</div>}
       {items && items.length > 0 && (
         <div className="chips" style={{ gap: 16, paddingBottom: 14 }}>

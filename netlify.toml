@@ -10,6 +10,11 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/web/*"
+  to = "/web/index.html"
+  status = 200
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/comik-api/:splat"
   status = 200

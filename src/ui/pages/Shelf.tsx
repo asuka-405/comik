@@ -3,8 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowsClockwise, FunnelSimple, MagnifyingGlass, PencilSimple, Plus, Rows, SquaresFour, Trash } from "@phosphor-icons/react";
 import { db } from "@/core/db";
-import { useSettings, type LibrarySort } from "@/core/settings";
+import { useSettings, type LibraryGridColumns, type LibrarySort } from "@/core/settings";
 import { createCategory, deleteCategory, renameCategory } from "@/core/repo";
+import { getSource } from "@/core/sources/registry";
 import { resumeTarget, statsOf, type LibraryStats } from "@/core/progress";
 import { updateLibrary, useUpdater } from "@/core/updater";
 import type { ChapterRow, MangaRow } from "@/core/types";
@@ -33,9 +34,11 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
     return { entries: manga.map<Entry>((m) => ({ m, chapters: by.get(m.id) ?? [], s: statsOf(by.get(m.id) ?? []) })), cats };
   }, []);
 
+  const safeEntries = useMemo(() => (data?.entries ?? []).filter((entry) => !st.safeMode || !getSource(entry.m.sourceId)?.isNsfw), [data, st.safeMode]);
+
   const view = useMemo(() => {
     if (!data) return [];
-    let list = data.entries.filter((e) => (cat === "all" ? true : e.m.categoryIds.includes(cat)));
+    let list = safeEntries.filter((e) => (cat === "all" ? true : e.m.categoryIds.includes(cat)));
     if (filter) list = list.filter((e) => e.m.title.toLowerCase().includes(filter.toLowerCase()));
     if (st.libraryOnlyUnread) list = list.filter((e) => e.s.unread > 0);
     const dir = st.librarySortAsc ? 1 : -1;
@@ -45,15 +48,18 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
     };
     const k = key[st.librarySort];
     return [...list].sort((a, b) => (k(a) > k(b) ? dir : k(a) < k(b) ? -dir : 0));
-  }, [data, cat, filter, st.libraryOnlyUnread, st.librarySort, st.librarySortAsc]);
+  }, [data, safeEntries, cat, filter, st.libraryOnlyUnread, st.librarySort, st.librarySortAsc]);
 
   const resume = useMemo(
-    () => (data?.entries ?? []).filter((e) => e.s.lastReadAt > 0).sort((a, b) => b.s.lastReadAt - a.s.lastReadAt).map((e) => ({ e, r: resumeTarget(e.chapters) })).filter((x) => x.r).slice(0, 10),
-    [data],
+    () => safeEntries.filter((e) => e.s.lastReadAt > 0).sort((a, b) => b.s.lastReadAt - a.s.lastReadAt).map((e) => ({ e, r: resumeTarget(e.chapters) })).filter((x) => x.r).slice(0, 10),
+    [safeEntries],
   );
 
-  const total = data?.entries.length ?? 0;
-  const unreadTotal = data?.entries.reduce((n, e) => n + e.s.unread, 0) ?? 0;
+  const total = safeEntries.length;
+  const unreadTotal = safeEntries.reduce((n, e) => n + e.s.unread, 0);
+  const gridStyle = st.libraryGridColumns === "auto"
+    ? undefined
+    : { gridTemplateColumns: `repeat(${st.libraryGridColumns}, minmax(0, 1fr))` };
 
   const addCategory = async () => {
     const name = prompt("Tab name");
@@ -104,8 +110,8 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
         </>
       )}
 
-      <div className="topbar" style={{ marginTop: 14 }}>
-        <div className="chips" style={{ flex: 1, minWidth: 0 }} role="tablist" aria-label="Shelf tabs">
+      <div className="shelf-toolbar">
+        <div className="chips shelf-tabs" role="tablist" aria-label="Shelf tabs">
           <button className={`chip${cat === "all" ? " on" : ""}`} onClick={() => setCat("all")}>All <span className="mono muted">{total}</span></button>
           {data?.cats.map((c) => (
             <button key={c.id} role="tab" aria-selected={cat === c.id} className={`chip${cat === c.id ? " on" : ""}`} data-hue={hueOf(c.id)} onClick={() => setCat(c.id)}>{c.name}</button>
@@ -116,13 +122,18 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
           <button className="icon-btn" onClick={() => void editCategory()} aria-label="Rename current shelf tab" title="Rename tab"><PencilSimple size={17} /></button>
           <button className="icon-btn" onClick={() => void removeCategory()} aria-label="Delete current shelf tab" title="Delete tab"><Trash size={17} /></button>
         </>}
-        <div style={{ position: "relative" }}>
+        <div className="shelf-controls">
+        <div className="shelf-filter-wrap">
           <MagnifyingGlass size={16} style={{ position: "absolute", left: 11, top: 12, color: "var(--muted)" }} />
-          <input className="input" style={{ width: 190, paddingLeft: 34 }} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter shelf" aria-label="Filter shelf" />
+          <input className="input shelf-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter shelf" aria-label="Filter shelf" />
         </div>
-        <select className="input" style={{ width: "auto" }} value={st.librarySort} onChange={(e) => st.set({ librarySort: e.target.value as LibrarySort })} aria-label="Sort">
+        <select className="input shelf-sort" value={st.librarySort} onChange={(e) => st.set({ librarySort: e.target.value as LibrarySort })} aria-label="Sort">
           {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
+        {st.libraryDensity !== "list" && <select className="input shelf-grid-columns" value={st.libraryGridColumns} onChange={(e) => st.set({ libraryGridColumns: e.target.value === "auto" ? "auto" : Number(e.target.value) as LibraryGridColumns })} aria-label="Grid columns">
+          <option value="auto">Auto columns</option>
+          {[2, 3, 4, 5, 6].map((columns) => <option key={columns} value={columns}>{columns} columns</option>)}
+        </select>}
         <button className={`icon-btn${st.libraryOnlyUnread ? " on" : ""}`} onClick={() => st.set({ libraryOnlyUnread: !st.libraryOnlyUnread })} aria-label="Only unread" title="Only unread"><FunnelSimple size={18} /></button>
         <button className="icon-btn" onClick={() => st.set({ libraryDensity: st.libraryDensity === "cozy" ? "compact" : st.libraryDensity === "compact" ? "list" : "cozy" })} aria-label="Change density" title={`Density: ${st.libraryDensity}`}>
           {st.libraryDensity === "list" ? <Rows size={18} /> : <SquaresFour size={18} />}
@@ -130,10 +141,11 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
         <button className="btn" disabled={up.running || !total} onClick={async () => { await updateLibrary(); const r = useUpdater.getState(); toast(r.failed.length ? `${r.failed.length} failed, ${r.newChapters} new chapters` : `${r.newChapters} new chapters`, r.failed.length > 0); }}>
           <ArrowsClockwise size={16} className={up.running ? "spin" : ""} />{up.running ? `${up.done}/${up.total}` : "Update"}
         </button>
+        </div>
       </div>
       {up.running && <div className="progress-line" style={{ marginBottom: 14 }}><i style={{ width: `${(up.done / Math.max(up.total, 1)) * 100}%` }} /></div>}
 
-      {!data && <div className="grid">{Array.from({ length: 10 }, (_, i) => <div key={i} className="skel" style={{ aspectRatio: "2/3" }} />)}</div>}
+      {!data && <div className="grid" style={gridStyle}>{Array.from({ length: 10 }, (_, i) => <div key={i} className="skel" style={{ aspectRatio: "2/3" }} />)}</div>}
       {data && !view.length && (
         total === 0 ? (
           <Empty title="Nothing here yet" body="Browse a source and press Add to shelf on anything you want to follow. You can also import CBZ files from Settings." action={<div style={{ display: "flex", gap: 10 }}><button className="btn primary" onClick={() => nav("/browse")}>Discover</button><button className="btn" onClick={onSearch}>Search</button></div>} />
@@ -155,7 +167,7 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
           ))}
         </div>
       ) : (
-        <div className={`grid${st.libraryDensity === "compact" ? " compact" : ""}`}>
+        <div className={`grid${st.libraryDensity === "compact" ? " compact" : ""}`} style={gridStyle}>
           {view.map(({ m, s }) => (
             <Cover key={m.id} m={m} unread={st.libraryUnreadBadge ? s.unread : 0} progress={s.progress} sub={s.lastReadAt ? timeAgo(s.lastReadAt) : undefined} />
           ))}

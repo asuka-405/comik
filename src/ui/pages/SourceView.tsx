@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { useSettings } from "@/core/settings";
-import { ensureSourceReady, getSource } from "@/core/sources/registry";
+import { getSource } from "@/core/sources/registry";
 import { upsertManga } from "@/core/repo";
 import { cloneFilters, hasActiveFilters } from "@/core/filters";
 import type { Filter, MangaRow } from "@/core/types";
@@ -15,8 +15,11 @@ type Mode = "popular" | "latest" | "search";
 
 export function SourceView() {
   const { sourceId = "" } = useParams();
+  const safeMode = useSettings((s) => s.safeMode);
   const enabled = useSettings((s) => !s.disabledSourceIds.includes(sourceId));
-  const source = enabled ? getSource(sourceId) : undefined;
+  const registeredSource = getSource(sourceId);
+  const hiddenBySafeMode = safeMode && !!registeredSource?.isNsfw;
+  const source = enabled && !hiddenBySafeMode ? registeredSource : undefined;
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const [mode, setMode] = useState<Mode>(sp.get("q") ? "search" : "popular");
@@ -35,12 +38,10 @@ export function SourceView() {
 
   useEffect(() => {
     if (!source) return;
-    void ensureSourceReady(source).then(() => setFilters(source.getFilterList()));
     setFilters(source.getFilterList());
   }, [source]);
 
-  // Only user-changed filters should trigger a reload. Swapping in the default list (when MangaDex tags
-  // finish loading) must not reset the catalogue the user is already looking at.
+  // Only user-changed filters should trigger a reload.
   const defaultsKey = useMemo(() => (source ? JSON.stringify(source.getFilterList()) : ""), [source, filters.length]);
   const dirty = !!source && JSON.stringify(filters) !== defaultsKey;
   const filterKey = dirty ? JSON.stringify(filters) : "";
@@ -89,6 +90,7 @@ export function SourceView() {
   }, [hasNext, loading, error, page, rows.length, load]);
 
   if (!enabled) return <div className="page"><Empty title="Source disabled" body="Enable this source in source settings to browse it again." action={<button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button>} /></div>;
+  if (hiddenBySafeMode) return <div className="page"><Empty title="Hidden by Safe mode" body="This source is marked as 18+. Turn off Safe mode in Settings to view it." action={<button className="btn primary" onClick={() => nav("/settings")}>Safe mode settings</button>} /></div>;
   if (!source) return <div className="page"><Empty title="Source not found" body="It may have been removed." action={<button className="btn primary" onClick={() => nav("/browse")}>Back to Discover</button>} /></div>;
 
   return (

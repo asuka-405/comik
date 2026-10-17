@@ -1,0 +1,44 @@
+{
+  "name": "comik-desktop",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "main": "main.cjs",
+  "build": {
+    "appId": "com.comik.reader",
+    "productName": "Comik",
+    "electronVersion": "35.0.0",
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "main.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "dist"
+      }
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "Utility"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

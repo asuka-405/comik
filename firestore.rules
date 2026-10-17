@@ -5,6 +5,14 @@ service cloud.firestore {
     function communityUser() {
       return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
+    function roomMember(roomId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid));
+    }
+    function roomOwner(roomId) {
+      return roomMember(roomId)
+        && get(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)).data.role == 'owner';
+    }
     function validImage(data) {
       return !('imageUrl' in data)
         || (data.imageUrl is string
@@ -99,6 +107,97 @@ service cloud.firestore {
         && request.resource.data.score >= 1 && request.resource.data.score <= 5
         && request.resource.data.updatedAt is int;
       allow delete: if communityUser() && resource.data.uid == request.auth.uid;
+    }
+
+    match /rooms/{roomId} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if communityUser()
+        && request.resource.data.keys().hasOnly(['id', 'name', 'ownerId', 'visibility', 'createdAt'])
+        && request.resource.data.id == roomId
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.visibility == 'invite'
+        && request.resource.data.createdAt is int;
+      allow update, delete: if roomOwner(roomId);
+
+      match /members/{uid} {
+        allow read: if roomMember(roomId) || (signedIn() && uid == request.auth.uid);
+        allow create: if communityUser()
+          && uid == request.auth.uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.joinedAt is int
+          && ((request.resource.data.role == 'owner'
+              && request.resource.data.keys().hasOnly(['uid', 'role', 'joinedAt'])
+              && get(/databases/$(database)/documents/rooms/$(roomId)).data.ownerId == request.auth.uid)
+            || (request.resource.data.role == 'member'
+              && request.resource.data.keys().hasOnly(['uid', 'role', 'inviteCode', 'joinedAt'])
+              && request.resource.data.inviteCode == roomId
+              && get(/databases/$(database)/documents/rooms/$(roomId)).data.visibility == 'invite'));
+        allow update, delete: if roomOwner(roomId);
+      }
+
+      match /posts/{postId} {
+        allow read: if roomMember(roomId);
+        allow create: if communityUser() && roomMember(roomId) && validPost(request.resource.data);
+        allow update: if communityUser() && roomMember(roomId)
+          && resource.data.authorId == request.auth.uid && validPost(request.resource.data);
+        allow delete: if communityUser() && roomMember(roomId) && resource.data.authorId == request.auth.uid;
+
+        match /comments/{commentId} {
+          allow read: if roomMember(roomId);
+          allow create: if communityUser() && roomMember(roomId)
+            && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt'])
+            && request.resource.data.authorId == request.auth.uid
+            && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
+            && request.resource.data.createdAt is int
+            && request.resource.data.body is string && request.resource.data.body.size() <= 2000;
+          allow update: if communityUser() && roomMember(roomId)
+            && resource.data.authorId == request.auth.uid
+            && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt'])
+            && request.resource.data.authorId == request.auth.uid
+            && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
+            && request.resource.data.createdAt is int
+            && request.resource.data.body is string && request.resource.data.body.size() <= 2000;
+          allow delete: if communityUser() && roomMember(roomId) && resource.data.authorId == request.auth.uid;
+        }
+
+        match /votes/{voteId} {
+          allow read: if roomMember(roomId);
+          allow create, update: if communityUser() && roomMember(roomId)
+            && request.resource.data.keys().hasOnly(['uid', 'optionIndex', 'updatedAt'])
+            && voteId == request.auth.uid && request.resource.data.uid == request.auth.uid
+            && request.resource.data.optionIndex is int
+            && request.resource.data.optionIndex >= 0 && request.resource.data.optionIndex < 8
+            && request.resource.data.optionIndex < get(/databases/$(database)/documents/rooms/$(roomId)/posts/$(postId)).data.pollOptions.size()
+            && request.resource.data.updatedAt is int;
+          allow delete: if communityUser() && roomMember(roomId) && voteId == request.auth.uid;
+        }
+
+        match /likes/{uid} {
+          allow read: if roomMember(roomId);
+          allow create, update: if communityUser() && roomMember(roomId)
+            && uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.createdAt is int;
+          allow delete: if communityUser() && roomMember(roomId) && uid == request.auth.uid;
+        }
+      }
+
+      match /ratings/{ratingId} {
+        allow read: if roomMember(roomId);
+        allow create, update: if communityUser() && roomMember(roomId)
+          && request.resource.data.keys().hasOnly(['comicKey', 'comicTitle', 'sourceId', 'uid', 'score', 'updatedAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.comicKey is string
+          && ratingId == request.resource.data.comicKey + '_' + request.auth.uid
+          && request.resource.data.comicTitle is string && request.resource.data.comicTitle.size() <= 160
+          && request.resource.data.sourceId is string && request.resource.data.sourceId.size() <= 120
+          && request.resource.data.score is int && request.resource.data.score >= 1 && request.resource.data.score <= 5
+          && request.resource.data.updatedAt is int;
+        allow delete: if communityUser() && roomMember(roomId) && resource.data.uid == request.auth.uid;
+      }
     }
   }
 }

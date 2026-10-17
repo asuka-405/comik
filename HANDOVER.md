@@ -1,6 +1,6 @@
 # Handover
 
-Updated: 2026-10-23 (catalogue, floating back, MangaDex fixes)
+Updated: 2026-10-24 (global search, source ordering, MangaDex removal)
 
 ## Current Work
 
@@ -31,18 +31,9 @@ The series page renders chapters in pages of 50. This is render pagination only:
 - `git diff --check` passed.
 - `npm run typecheck`, app launch, and browser verification were not run: `node` and `npm` are unavailable in the current terminal environment.
 
-## MangaDex (investigated 2026-10-23)
-
-List, search, details, chapter feed, at-home and page images all return valid data through the local proxy (checked with curl against `/api/fetch` and `/api/img`), so the proxy path is fine. Problems found and fixed in the app:
-- The catalogue reloaded from page 1 when MangaDex tags finished loading (filter list identity changed), so the grid flickered and reset. `SourceView` now reloads only when the user changes filters.
-- Titles whose English chapters are only links to the publisher (e.g. Solo Leveling) showed an empty list. `getChapterList` now throws an explanatory error naming the host.
-- Several scanlation groups upload the same chapter, which inflated unread counts and "next chapter". `dedupeByNumber` in `core/progress.ts` is used by the series page (a chip reveals duplicates), stats, resume and the reader.
-
-If a specific MangaDex failure persists, get the exact in-app error and check `HOST_ALLOWLIST` includes `api.mangadex.org`, `uploads.mangadex.org`, `mangadex.network`.
-
 ## Source catalogue (new)
 
-100 English sources by default: MangaDex, Webtoon, Webtoon Canvas, plus 97 sites from the Mihon/keiyoushi extension index in `src/core/sources/catalog.json`.
+99 English sources by default: Webtoon, Webtoon Canvas, plus 97 sites from the Mihon/keiyoushi extension index in `src/core/sources/catalog.json`.
 - The index only has names and URLs, not scraping code. `scripts/build-catalog.ts` probes each non-adult English (and "all") site, maps it to an engine (Madara, MangaThemesia, or the structure-based `heuristic` engine in `heuristics.ts` / `heuristic.ts`) and keeps it only if the listing parses (heuristic sites also need chapters and 2+ reader images).
 - Regenerate: `npx tsx scripts/build-catalog.ts --refresh`. Retry passes: `KEEP=1 GET_MS=25000 MIN_SERIES=4 MIN_PAGES=2 npx tsx scripts/build-catalog.ts`. `LANGS=en,all` picks languages.
 - Excluded: adult-flagged extensions, Cloudflare-challenged sites (about 39), unreachable ones (about 58), bespoke sites with no shared structure. Some included sources still show mature covers even though the extension is not flagged adult.
@@ -52,7 +43,8 @@ If a specific MangaDex failure persists, get the exact in-app error and check `H
 ## UI
 
 - Back buttons float (`FloatBack` in `ui/common.tsx`, `.float-back`) on Series and source catalogue pages instead of using a header row. Source Studio keeps its own floating bar.
-- Discover has a source filter and a denser grid; global search is throttled to 4 sources at a time.
+- Discover lists sources alphabetically. Global search starts source requests near the viewport, limits concurrency to four, and displays a per-source loading indicator with at most 12 results.
+- Generic source requests still use the proxy: browser CORS restrictions and referer-locked sites prevent reliable device-only scraping for most catalog sources. Global search avoids loading every source at once to reduce proxy traffic.
 
 ## Known issue: reader scroll stalls automated Chrome
 
@@ -65,3 +57,43 @@ In the webtoon reader, after the first screen the browser-automation tab stopped
 3. Test a permitted sample page with linked stylesheets and images; confirm selector hover and click mapping.
 4. Spot-check more catalogue sources (reading, not just listing) and consider a runtime health flag for sources that stop working.
 5. If improving chapter performance further, add indexed/count-first database paging while preserving the series page's read-state, sort, filters, and bulk actions.
+
+## Continuation: Safe Mode, Community, and Web
+
+### Implemented
+
+- Safe mode is persisted in `src/core/settings.ts`, enabled by default, and filters adult-marked sources from Discover/global search, the shelf, timeline, series, reader, and community comic posts.
+- Community operations now carry the selected `CommunityTarget` through post creation, comments, likes, polls, ratings, and subscriptions. Private-room compose and share links preserve the selected room and post.
+- Community links use BrowserRouter paths on web and HashRouter paths on Android. The Account settings link now uses React Router.
+- `src/ui/App.tsx` runs hooks consistently before the Firebase onboarding return.
+- `src/ui/pages/WebSetup.tsx` imports `src/landing.css`; document-level landing styles are scoped so they do not override reader theme colors.
+- Vite now falls back to `web/index.html` for `/web` deep links in development. Netlify already has the production `/web/*` rewrite.
+
+### Verification
+
+- `npm run build` passed. Vite still reports the existing large-chunk and Firebase dynamic-import warnings.
+- `npm test` passed: 9 tests.
+- `git diff --check` and editor diagnostics passed for the touched files.
+- Live browser checks confirmed `/web/community` deep links, settings/onboarding navigation, default-on Safe mode, and loaded setup-page styles. No screenshots were taken.
+- Firebase sign-in and live posting were not verified against an authenticated project.
+
+### Local Environment / Next Checks
+
+- At last check, the user's Vite page was on `localhost:5173`; port `8787` was already occupied by another proxy process. Avoid stopping those existing processes. A temporary Vite server started on `5174` for verification was stopped.
+- Continue with end-to-end public and private community sign-in/posting tests when Firebase credentials and project rules are available. Preserve the existing uncommitted worktree changes.
+
+## Continuation: native shells
+
+- Native builds (`COMIK_NATIVE_BUILD=1`, used by Android and desktop) now route with `HashRouter` and skip the service worker. Both shells serve static files with no SPA fallback, so deep links under BrowserRouter used to 404 on desktop. `src/core/platform.ts` exports `isNativeShell` and `appLink()`, which replace the old `appassets.androidplatform.net` hostname checks for invite and share links.
+- Desktop (`desktop/main.cjs`): single-instance lock, falls back to a random port if 41739 is taken (the fixed port keeps the IndexedDB origin stable), loads `/web/index.html`. Verified by launching the unpacked Linux build: shelf renders, `/api/fetch` works, a second launch exits.
+- Android (`MainActivity.java`): redirects are followed manually because `HttpURLConnection` refuses http-to-https hops, the `Accept` header is forwarded, and a launcher icon was added. WebView does not expose request bodies to `shouldInterceptRequest`, so POSTs (Madara `ajax/chapters/`) still go out empty. No device or emulator was available, so only `assembleDebug` was verified.
+- Build locally with the toolchain in `~/.local/opt/comik` (`jdk17`, `gradle-8.9`), `ANDROID_HOME=~/Android/Sdk` and `android/local.properties` (git-ignored). Artifacts: `release/Comik-0.1.0.AppImage`, `release/Comik-0.1.0-win-x64.zip`, `android/app/build/outputs/apk/debug/app-debug.apk`. The Windows build was not run on Windows.
+- Desktop builds still use Electron's default icon.
+
+## Continuation: releases page
+
+- `/releases/` is a new Vite entry (`releases/index.html`, `src/releases.tsx`, `src/releases.css`). It lists features, install steps, direct downloads with size and SHA-256, the latest release notes, and every older release.
+- Data comes from the public GitHub API (`src/core/releases.ts`, cached for 10 minutes in sessionStorage). Publishing a GitHub release updates the page with no redeploy. If the API fails, download buttons fall back to `releases/latest/download/<stable name>`. Release notes render through `src/core/markdown.ts`, which parses to data and never injects HTML.
+- Stable asset names: `Comik-android.apk`, `Comik-linux-x64.AppImage`, `Comik-windows-x64.zip`, plus `SHA256SUMS.txt`. The landing page links use the same names.
+- Release flow: add a `## <version>` section to `CHANGELOG.md` (it becomes the notes), build the three apps, then `node scripts/release.mjs` (dry run, stages `release/upload/`) or `--publish` (runs `gh release create`). Pushing a `v*` tag runs `.github/workflows/build-native.yml`, which builds everything and publishes the same way.
+- No GitHub release exists yet, so the live page shows the "first release is on its way" state until one is published. Nothing has been published or pushed.

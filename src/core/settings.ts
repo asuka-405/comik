@@ -6,11 +6,16 @@ export type Theme = "system" | "dark" | "light";
 export type FitMode = "width" | "height" | "screen" | "original";
 export type LibrarySort = "title" | "unread" | "lastRead" | "added" | "lastUpdate";
 export type LibraryDensity = "cozy" | "compact" | "list";
+export type LibraryGridColumns = "auto" | 2 | 3 | 4 | 5 | 6;
 
 export interface Settings {
   theme: Theme;
   /** three.js backdrop + hero scenes. */
   fx: boolean;
+  /** Hide content from sources marked as adult. */
+  safeMode: boolean;
+  /** Show the shared Comik public community. */
+  publicCommunityEnabled: boolean;
   /** Where the proxy lives. Empty = same origin (/api). */
   proxyUrl: string;
   /** Source IDs disabled on this device. */
@@ -23,6 +28,7 @@ export interface Settings {
   librarySort: LibrarySort;
   librarySortAsc: boolean;
   libraryDensity: LibraryDensity;
+  libraryGridColumns: LibraryGridColumns;
   libraryUnreadBadge: boolean;
   libraryOnlyUnread: boolean;
   autoUpdateHours: number; // 0 = off
@@ -47,7 +53,6 @@ export interface Settings {
   grayscale: boolean;
   invert: boolean;
   sepia: number; // 0..1
-  dataSaver: boolean;
   autoNextChapter: boolean;
   skipReadChapters: boolean;
 
@@ -64,6 +69,8 @@ export const useSettings = create<Settings>()(
     (set) => ({
       theme: "system",
       fx: true,
+      safeMode: true,
+      publicCommunityEnabled: true,
       proxyUrl: "",
       disabledSourceIds: [],
       analyticsConsent: false,
@@ -72,6 +79,7 @@ export const useSettings = create<Settings>()(
       librarySort: "lastRead",
       librarySortAsc: false,
       libraryDensity: "cozy",
+      libraryGridColumns: "auto",
       libraryUnreadBadge: true,
       libraryOnlyUnread: false,
       autoUpdateHours: 12,
@@ -95,7 +103,6 @@ export const useSettings = create<Settings>()(
       grayscale: false,
       invert: false,
       sepia: 0,
-      dataSaver: false,
       autoNextChapter: true,
       skipReadChapters: false,
 

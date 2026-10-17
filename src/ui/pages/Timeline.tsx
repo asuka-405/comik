@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { db } from "@/core/db";
+import { useSettings } from "@/core/settings";
+import { getSource } from "@/core/sources/registry";
 import { formatChapterNumber } from "@/core/chapterRecognition";
 import { Empty, coverSrc, dayLabel, hueOf, timeAgo } from "../common";
 import type { ChapterRow, MangaRow } from "@/core/types";
@@ -22,6 +24,7 @@ function group(items: Item[], at: (i: Item) => number) {
 
 export function Timeline() {
   const [tab, setTab] = useState<"updates" | "history">("updates");
+  const safeMode = useSettings((s) => s.safeMode);
 
   useEffect(() => {
     localStorage.setItem("comik.timeline.seen", String(Date.now()));
@@ -40,7 +43,8 @@ export function Timeline() {
   }, [], []);
 
   const items = tab === "updates" ? updates : history;
-  const groups = group(items ?? [], (i) => (tab === "updates" ? i.c.fetchedAt : i.c.readAt));
+  const visibleItems = (items ?? []).filter(({ m }) => !safeMode || !getSource(m.sourceId)?.isNsfw);
+  const groups = group(visibleItems, (i) => (tab === "updates" ? i.c.fetchedAt : i.c.readAt));
 
   return (
     <div className="page">
@@ -49,7 +53,7 @@ export function Timeline() {
         <button className={`tab${tab === "updates" ? " on" : ""}`} role="tab" onClick={() => setTab("updates")}>Updates</button>
         <button className={`tab${tab === "history" ? " on" : ""}`} role="tab" onClick={() => setTab("history")}>History</button>
       </div>
-      {!items?.length && (
+      {!visibleItems.length && (
         <Empty
           title={tab === "updates" ? "No new chapters yet" : "No reading history"}
           body={tab === "updates" ? "When the shelf finds new chapters during an update, they land here." : "Chapters you open show up here, newest first."}

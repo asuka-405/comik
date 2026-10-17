@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/core/db";
+import { useSettings } from "@/core/settings";
+import { getSource } from "@/core/sources/registry";
 import { coverSrc } from "./common";
 
 interface Item { key: string; label: string; group: string; img?: string; run: () => void }
@@ -9,6 +11,7 @@ interface Item { key: string; label: string; group: string; img?: string; run: (
 /** Ctrl+K: jump to a series on the shelf, a page, or search every source at once. */
 export function Palette({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
+  const safeMode = useSettings((s) => s.safeMode);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -25,12 +28,13 @@ export function Palette({ onClose }: { onClose: () => void }) {
       { key: "p-set", label: "Settings", group: "Go to", run: go("/settings") },
     ].filter((p) => !s || p.label.toLowerCase().includes(s));
     const series: Item[] = (library ?? [])
+      .filter((m) => !safeMode || !getSource(m.sourceId)?.isNsfw)
       .filter((m) => !s || m.title.toLowerCase().includes(s))
       .slice(0, 8)
       .map((m) => ({ key: m.id, label: m.title, group: "On your shelf", img: coverSrc(m.sourceId, m.cover), run: go(`/series/${encodeURIComponent(m.id)}`) }));
     const web: Item[] = s ? [{ key: "web", label: `Search every source for "${q.trim()}"`, group: "Search", run: go(`/browse?q=${encodeURIComponent(q.trim())}`) }] : [];
     return [...web, ...series, ...pages];
-  }, [q, library, nav, onClose]);
+  }, [q, library, safeMode, nav, onClose]);
 
   useEffect(() => setSel(0), [q]);
 

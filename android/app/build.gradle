@@ -1,0 +1,54 @@
+plugins {
+    id "com.android.application"
+    id "com.google.gms.google-services"
+}
+
+def repositoryRoot = rootProject.projectDir.parentFile
+
+android {
+    namespace "com.comik.reader"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "in.archdev.comik"
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0-alpha"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            assets.srcDir layout.buildDirectory.dir("generated/webAssets")
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.webkit:webkit:1.12.1"
+    implementation "androidx.core:core:1.15.0"
+    implementation "androidx.credentials:credentials:1.5.0"
+    implementation "androidx.credentials:credentials-play-services-auth:1.5.0"
+    implementation "com.google.android.libraries.identity.googleid:googleid:1.1.1"
+}
+
+tasks.register("buildWebApp", Exec) {
+    workingDir repositoryRoot
+    def npmExecutable = System.getProperty("os.name").toLowerCase().contains("win") ? "npm.cmd" : "npm"
+    commandLine npmExecutable, "run", "build:native"
+}
+
+tasks.register("copyWebAssets", Sync) {
+    dependsOn "buildWebApp"
+    from new File(repositoryRoot, "dist")
+    into layout.buildDirectory.dir("generated/webAssets")
+}
+
+tasks.named("preBuild").configure {
+    dependsOn "copyWebAssets"
+}

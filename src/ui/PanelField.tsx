@@ -7,8 +7,12 @@ import * as THREE from "three";
  * Palette comes from the Sutrid tokens. Pointer tilts the field and moves two coloured lights.
  */
 
-const PALETTE = ["#9d6cff", "#fa625f", "#e8b84a", "#45d3c3", "#6fb0ff", "#62d69d", "#f68fc3"];
-const INK = new THREE.Color("#241f3a");
+const PALETTE = ["#ff795e", "#51d0b0", "#f0c65b", "#6ab8ef", "#a4d76a", "#f092ad"];
+const COVER_COLS = 10;
+const COVER_ROWS = 10;
+const COVER_W = 112;
+const COVER_H = 168;
+const INK = new THREE.Color("#111713");
 
 interface Rect { x: number; y: number; w: number; h: number }
 
@@ -38,6 +42,161 @@ function mulberry(seed: number) {
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function createCoverAtlas(seed: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = COVER_COLS * COVER_W;
+  canvas.height = COVER_ROWS * COVER_H;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not create cover artwork");
+
+  const random = mulberry(seed);
+  const firstWords = ["After", "Small", "Paper", "Hidden", "Bright", "Quiet", "Last", "Wild", "Open", "Blue"];
+  const secondWords = ["Orbit", "Garden", "Signal", "Season", "Lantern", "Current", "Archive", "Summer", "Comet", "Window"];
+
+  for (let index = 0; index < COVER_COLS * COVER_ROWS; index++) {
+    const x = (index % COVER_COLS) * COVER_W;
+    const y = Math.floor(index / COVER_COLS) * COVER_H;
+    const accent = PALETTE[Math.floor(random() * PALETTE.length)]!;
+    const dark = random() > 0.55;
+    const base = dark ? "#17201b" : "#d9e1d7";
+    const ink = dark ? "#f4f6ef" : "#17201b";
+    const gradient = context.createLinearGradient(x, y, x + COVER_W, y + COVER_H);
+    gradient.addColorStop(0, base);
+    gradient.addColorStop(1, dark ? "#29342c" : "#bac9bd");
+    context.fillStyle = gradient;
+    context.fillRect(x, y, COVER_W, COVER_H);
+
+    context.save();
+    context.beginPath();
+    context.rect(x, y, COVER_W, COVER_H);
+    context.clip();
+    for (let shape = 0; shape < 8; shape++) {
+      const sx = x + random() * COVER_W;
+      const sy = y + random() * COVER_H;
+      const size = 12 + random() * 68;
+      context.globalAlpha = 0.16 + random() * 0.42;
+      context.fillStyle = shape % 2 ? accent : ink;
+      if (shape % 3 === 0) {
+        context.beginPath();
+        context.arc(sx, sy, size / 2, 0, Math.PI * 2);
+        context.fill();
+      } else if (shape % 3 === 1) {
+        context.save();
+        context.translate(sx, sy);
+        context.rotate((random() - 0.5) * 1.2);
+        context.fillRect(-size / 2, -size / 8, size, size / 4);
+        context.restore();
+      } else {
+        context.beginPath();
+        context.moveTo(sx, sy);
+        context.lineTo(sx + size * 0.55, sy - size);
+        context.lineTo(sx + size, sy + size * 0.2);
+        context.closePath();
+        context.fill();
+      }
+    }
+    context.globalAlpha = 0.95;
+    context.fillStyle = ink;
+    context.fillRect(x + 8, y + COVER_H - 59, COVER_W - 16, 49);
+    context.fillStyle = accent;
+    context.font = "700 6px sans-serif";
+    context.fillText("COMIK ORIGINAL", x + 13, y + COVER_H - 45);
+    context.fillStyle = dark ? "#f4f6ef" : "#17201b";
+    context.font = "900 13px sans-serif";
+    context.fillText(firstWords[index % firstWords.length]!, x + 13, y + COVER_H - 27);
+    context.fillText(secondWords[Math.floor(index / firstWords.length)]!, x + 13, y + COVER_H - 14);
+    context.restore();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = Math.min(4, 8);
+  return { texture, canvas };
+}
+
+interface BundledCover { file: string }
+let coverManifest: Promise<BundledCover[]> | null = null;
+
+function getBundledCovers(): Promise<BundledCover[]> {
+  if (!coverManifest) {
+    coverManifest = fetch("/assets/webtoon-covers/manifest.json")
+      .then((response) => {
+        if (!response.ok) throw new Error("Could not load cover list");
+        return response.json() as Promise<BundledCover[]>;
+      })
+      .catch((error) => {
+        coverManifest = null;
+        throw error;
+      });
+  }
+  return coverManifest;
+}
+
+function loadBundledCovers(canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, seed: number) {
+  let stopped = false;
+  let cursor = 0;
+  let active = 0;
+  const images: HTMLImageElement[] = [];
+  const context = canvas.getContext("2d");
+  if (!context) return () => {};
+  const random = mulberry(seed ^ 0x5f3759df);
+  let urls: string[] = [];
+
+  void getBundledCovers().then((covers) => {
+    if (stopped) return;
+    const shuffled = covers.map((cover) => cover.file);
+    for (let index = shuffled.length - 1; index > 0; index--) {
+      const swap = Math.floor(random() * (index + 1));
+      [shuffled[index], shuffled[swap]] = [shuffled[swap]!, shuffled[index]!];
+    }
+    urls = shuffled.slice(0, COVER_COLS * COVER_ROWS).map((file) => `/assets/webtoon-covers/${encodeURIComponent(file)}`);
+    pump();
+  }).catch(() => {});
+
+  const finish = (image: HTMLImageElement, index: number) => {
+    active--;
+    if (!stopped && image.naturalWidth > 0) {
+      const x = (index % COVER_COLS) * COVER_W;
+      const y = Math.floor(index / COVER_COLS) * COVER_H;
+      const scale = Math.max(COVER_W / image.naturalWidth, COVER_H / image.naturalHeight);
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      context.save();
+      context.beginPath();
+      context.rect(x, y, COVER_W, COVER_H);
+      context.clip();
+      context.drawImage(image, x + (COVER_W - width) / 2, y + (COVER_H - height) / 2, width, height);
+      context.globalAlpha = 0.18;
+      context.fillStyle = PALETTE[index % PALETTE.length]!;
+      context.fillRect(x, y, COVER_W, COVER_H);
+      context.restore();
+      texture.needsUpdate = true;
+    }
+    pump();
+  };
+
+  const pump = () => {
+    while (!stopped && active < 4 && cursor < urls.length) {
+      const index = cursor++;
+      const image = new Image();
+      images.push(image);
+      image.onload = () => finish(image, index);
+      image.onerror = () => finish(image, index);
+      active++;
+      image.src = urls[index]!;
+    }
+  };
+  pump();
+  return () => {
+    stopped = true;
+    for (const image of images) {
+      image.onload = null;
+      image.onerror = null;
+      image.src = "";
+    }
   };
 }
 
@@ -71,7 +230,8 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
     const lightB = new THREE.PointLight(0xfa625f, 50, 30);
     scene.add(lightA, lightB);
 
-    const rnd = mulberry(7);
+    const seed = Math.floor(Math.random() * 0xffffffff);
+    const rnd = mulberry(seed);
     const PAGE_W = 5.6, PAGE_H = 7.8, PAGES = 4, COLS = 3;
     const rects: (Rect & { page: number; col: number })[] = [];
     for (let p = 0; p < PAGES; p++) {
@@ -83,15 +243,33 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
     }
 
     const geo = new THREE.BoxGeometry(1, 1, 1);
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.2 });
-    const mesh = new THREE.InstancedMesh(geo, mat, rects.length);
+    const { texture: coverTexture, canvas: coverCanvas } = createCoverAtlas(seed);
+    const stopCoverLoading = loadBundledCovers(coverCanvas, coverTexture, seed);
+    const sideMaterial = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.65, metalness: 0.05 });
+    const coverMaterial = new THREE.MeshStandardMaterial({ map: coverTexture, color: "#ffffff", roughness: 0.72, metalness: 0.02 });
+    coverMaterial.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        "#include <common>\nattribute float coverIndex;",
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <uv_vertex>",
+        "#include <uv_vertex>\n#ifdef USE_MAP\nfloat coverCol = mod(coverIndex, 10.0);\nfloat coverRow = 9.0 - floor(coverIndex / 10.0);\nvMapUv = (vMapUv + vec2(coverCol, coverRow)) / 10.0;\n#endif",
+      );
+    };
+    coverMaterial.customProgramCacheKey = () => "comik-cover-atlas-v1";
+    const materials = [sideMaterial, sideMaterial, sideMaterial, sideMaterial, coverMaterial, sideMaterial];
+    const mesh = new THREE.InstancedMesh(geo, materials, rects.length);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const coverIndexes = new Float32Array(rects.length);
     const base = rects.map((_r, i) => {
       const accent = new THREE.Color(PALETTE[Math.floor(rnd() * PALETTE.length)]!);
-      const c = INK.clone().lerp(accent, rnd() < 0.3 ? 0.55 : 0.12 + rnd() * 0.14);
+      const c = INK.clone().lerp(accent, 0.42 + rnd() * 0.34);
       mesh.setColorAt(i, c);
+      coverIndexes[i] = Math.floor(rnd() * COVER_COLS * COVER_ROWS);
       return { z: (rnd() - 0.5) * 0.9, tilt: (rnd() - 0.5) * 0.12, depth: 0.12 + rnd() * 0.18 };
     });
+    geo.setAttribute("coverIndex", new THREE.InstancedBufferAttribute(coverIndexes, 1));
     const group = new THREE.Group();
     group.add(mesh);
     group.rotation.set(-0.5, 0.18, 0.2);
@@ -172,8 +350,11 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
       removeEventListener("pointermove", onMove);
       ro.disconnect();
       io.disconnect();
+      stopCoverLoading();
+      coverTexture.dispose();
+      sideMaterial.dispose();
+      coverMaterial.dispose();
       geo.dispose();
-      mat.dispose();
       mesh.dispose();
       renderer.dispose();
     };

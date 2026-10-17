@@ -1,19 +1,19 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { HashRouter } from "react-router-dom";
+import { BrowserRouter, HashRouter } from "react-router-dom";
 import "./styles.css";
 import { App } from "./ui/App";
+import { isNativeShell } from "./core/platform";
 
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
+if (import.meta.env.PROD && !isNativeShell && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register("/sw.js").catch((error: unknown) => console.error("Service worker registration failed", error));
   });
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <HashRouter>
-      <App />
-    </HashRouter>
-  </StrictMode>,
-);
+// Packaged shells serve static files with no SPA fallback, so they route with the hash.
+const application = isNativeShell
+  ? <HashRouter><App /></HashRouter>
+  : <BrowserRouter basename="/web"><App /></BrowserRouter>;
+
+createRoot(document.getElementById("root")!).render(<StrictMode>{application}</StrictMode>);

@@ -1,16 +1,25 @@
 {
   "name": "comik",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.0-alpha",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,proxy -c auto \"vite\" \"tsx watch server/index.ts\"",
     "dev:web": "vite",
     "dev:proxy": "tsx watch server/index.ts",
     "build": "tsc --noEmit && vite build",
+    "build:native": "node scripts/build-native.mjs",
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "android:debug": "gradle -p android assembleDebug",
+    "desktop:linux": "npm run build:native && electron-builder --projectDir desktop --linux AppImage",
+    "desktop:windows:portable": "npm run build:native && electron-builder --projectDir desktop --win dir --config.asar=false --config.win.signAndEditExecutable=false && node scripts/package-windows-portable.mjs",
+    "desktop:windows": "npm run build:native && electron-builder --projectDir desktop --win nsis"
+  },
+  "allowScripts": {
+    "electron": true,
+    "app-builder-bin": true
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
@@ -37,6 +46,8 @@
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.6",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.12",
     "linkedom": "^0.18.14",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",

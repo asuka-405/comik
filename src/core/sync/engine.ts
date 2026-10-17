@@ -21,7 +21,7 @@ const LS_PUSHED = "comik.sync.pushedAt";
 const SYNCED_SETTINGS: (keyof ReturnType<typeof useSettings.getState>)[] = [
   "theme", "librarySort", "librarySortAsc", "libraryDensity", "libraryUnreadBadge", "readerMode", "fit", "webtoonGap", "webtoonSidePadding",
   "doublePages", "smartSpreads", "cropBorders", "splitTall", "preload", "tapZones", "invertTaps", "showPageNumber", "brightness", "grayscale",
-  "invert", "sepia", "dataSaver", "autoNextChapter", "skipReadChapters", "updateSkipCompleted", "autoUpdateHours",
+  "invert", "sepia", "autoNextChapter", "skipReadChapters", "updateSkipCompleted", "autoUpdateHours",
 ];
 
 type SeriesDoc = Omit<MangaRow, "id"> & { id: string; chapters: Record<string, ChapterState> };

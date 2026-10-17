@@ -1,5 +1,4 @@
 import { db, type CustomSourceRow } from "../db";
-import { createMangaDex, loadMangaDexTags } from "./mangadex";
 import { createWebtoons } from "./webtoons";
 import { createMadara } from "./madara";
 import { createThemesia } from "./themesia";
@@ -10,9 +9,6 @@ import catalog from "./catalog.json";
 import type { CatalogEntry } from "./catalogTypes";
 import type { Source } from "../types";
 
-const MD_LANGS: [string, string][] = [
-  ["en", "English"], ["es", "Spanish"], ["fr", "French"], ["pt-br", "Portuguese (BR)"], ["id", "Indonesian"], ["ru", "Russian"], ["de", "German"], ["it", "Italian"], ["ja", "Japanese"], ["tr", "Turkish"],
-];
 const WT_LANGS: [string, string][] = [["en", "English"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["id", "Indonesian"], ["th", "Thai"]];
 
 /** Sites from the Mihon / Tachiyomi extension index, mapped onto our engines and verified by scripts/build-catalog.ts. */
@@ -23,7 +19,6 @@ function fromCatalog(e: CatalogEntry): Source {
 }
 
 const builtin: Source[] = [
-  ...MD_LANGS.map(([l, n]) => createMangaDex(l, n)),
   ...WT_LANGS.map(([l, n]) => createWebtoons(l, n)),
   createWebtoons("en", "English", true),
   ...(catalog as CatalogEntry[]).map(fromCatalog),
@@ -63,11 +58,7 @@ export const onSourcesChange = (fn: () => void) => {
   return () => { subs.delete(fn); };
 };
 
-export const allSources = (): Source[] => [...builtin, ...custom.values()];
+export const allSources = (): Source[] => [...builtin, ...custom.values()].sort((a, b) => a.name.localeCompare(b.name));
 export const isCatalogSource = (id: string) => id.startsWith("mihon-");
 export const getSource = (id: string): Source | undefined => allSources().find((s) => s.id === id);
 export const isCustom = (id: string) => custom.has(id);
-
-export async function ensureSourceReady(source: Source) {
-  if (source.id.startsWith("mangadex")) await loadMangaDexTags().catch(() => {});
-}
