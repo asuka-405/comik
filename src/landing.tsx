@@ -14,7 +14,7 @@ function LandingPage() {
           <a href="#reading">Reading</a>
           <a href="#privacy">Your data</a>
           <a href="#downloads">Downloads</a>
-          <a href="/releases/">Releases</a>
+          <a className="landing-nav-keep" href="/releases/">Releases</a>
           <a className="landing-nav-cta" href="/web/">Open reader <ArrowRight size={16} /></a>
         </nav>
       </header>
@@ -26,8 +26,8 @@ function LandingPage() {
             <h1>Your comics.<br />Your shelf.<br /><em>Your rules.</em></h1>
             <p>Bring your favorite sources together. Read on the web or install Comik on your device.</p>
             <div className="landing-actions">
-              <a className="landing-button primary" href="/web/">Open the web reader <ArrowRight size={18} /></a>
-              <a className="landing-button secondary" href="#downloads">Get Comik</a>
+              <a className="landing-button primary" href="#downloads">Get Comik <ArrowRight size={18} /></a>
+              <a className="landing-button secondary" href="/web/">Open the web reader</a>
             </div>
           </div>
           <div className="landing-art" aria-label="Original animated comic-cover panels">
