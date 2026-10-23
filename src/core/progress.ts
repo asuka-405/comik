@@ -1,5 +1,22 @@
 import type { ChapterRow } from "./types";
 
+/**
+ * Several groups often upload the same chapter. Keep one per chapter number so unread counts and
+ * "next chapter" are not inflated: prefer the one already read, then bookmarked, then newest upload.
+ * Chapters without a known number are never merged.
+ */
+export function dedupeByNumber(chapters: ChapterRow[]): ChapterRow[] {
+  const best = new Map<number, ChapterRow>();
+  const rank = (c: ChapterRow) => (c.read ? 4e15 : 0) + (c.lastPage > 0 ? 2e15 : 0) + (c.bookmark ? 1e15 : 0) + c.dateUpload;
+  const out: ChapterRow[] = [];
+  for (const c of chapters) {
+    if (c.number < 0) { out.push(c); continue; }
+    const cur = best.get(c.number);
+    if (!cur || rank(c) > rank(cur)) best.set(c.number, c);
+  }
+  return [...out, ...best.values()];
+}
+
 /** Oldest first. Falls back to reverse source order when numbers tie or are unknown. */
 export function readingOrder(chapters: ChapterRow[]): ChapterRow[] {
   return [...chapters].sort((a, b) => (a.number !== b.number ? a.number - b.number : b.sourceOrder - a.sourceOrder));
@@ -11,7 +28,7 @@ export function readingOrder(chapters: ChapterRow[]): ChapterRow[] {
  */
 export function resumeTarget(chapters: ChapterRow[]): { chapter: ChapterRow; started: boolean } | undefined {
   if (!chapters.length) return undefined;
-  const ordered = readingOrder(chapters);
+  const ordered = readingOrder(dedupeByNumber(chapters));
   const partial = ordered.filter((c) => !c.read && c.lastPage > 0).sort((a, b) => b.readAt - a.readAt)[0];
   if (partial) return { chapter: partial, started: true };
   let furthest = -1;
@@ -28,7 +45,8 @@ export interface LibraryStats {
   progress: number;
 }
 
-export function statsOf(chapters: ChapterRow[]): LibraryStats {
+export function statsOf(all: ChapterRow[]): LibraryStats {
+  const chapters = dedupeByNumber(all);
   let unread = 0;
   let lastReadAt = 0;
   for (const c of chapters) {

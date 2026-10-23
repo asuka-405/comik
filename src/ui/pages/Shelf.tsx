@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowsClockwise, FunnelSimple, MagnifyingGlass, Plus, Rows, SquaresFour } from "@phosphor-icons/react";
+import { ArrowsClockwise, FunnelSimple, MagnifyingGlass, PencilSimple, Plus, Rows, SquaresFour, Trash } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { useSettings, type LibrarySort } from "@/core/settings";
-import { createCategory } from "@/core/repo";
+import { createCategory, deleteCategory, renameCategory } from "@/core/repo";
 import { resumeTarget, statsOf, type LibraryStats } from "@/core/progress";
 import { updateLibrary, useUpdater } from "@/core/updater";
 import type { ChapterRow, MangaRow } from "@/core/types";
@@ -56,8 +56,20 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
   const unreadTotal = data?.entries.reduce((n, e) => n + e.s.unread, 0) ?? 0;
 
   const addCategory = async () => {
-    const name = prompt("Category name");
+    const name = prompt("Tab name");
     if (name?.trim()) setCat((await createCategory(name)).id);
+  };
+
+  const activeCategory = data?.cats.find((c) => c.id === cat);
+  const editCategory = async () => {
+    if (!activeCategory) return;
+    const name = prompt("Rename tab", activeCategory.name);
+    if (name?.trim()) await renameCategory(activeCategory.id, name);
+  };
+  const removeCategory = async () => {
+    if (!activeCategory || !confirm(`Delete the "${activeCategory.name}" tab? Series will remain on your shelf.`)) return;
+    await deleteCategory(activeCategory.id);
+    setCat("all");
   };
 
   return (
@@ -93,13 +105,17 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
       )}
 
       <div className="topbar" style={{ marginTop: 14 }}>
-        <div className="chips" style={{ flex: 1, minWidth: 0 }} role="tablist" aria-label="Categories">
+        <div className="chips" style={{ flex: 1, minWidth: 0 }} role="tablist" aria-label="Shelf tabs">
           <button className={`chip${cat === "all" ? " on" : ""}`} onClick={() => setCat("all")}>All <span className="mono muted">{total}</span></button>
           {data?.cats.map((c) => (
-            <button key={c.id} className={`chip${cat === c.id ? " on" : ""}`} data-hue={hueOf(c.id)} onClick={() => setCat(c.id)}>{c.name}</button>
+            <button key={c.id} role="tab" aria-selected={cat === c.id} className={`chip${cat === c.id ? " on" : ""}`} data-hue={hueOf(c.id)} onClick={() => setCat(c.id)}>{c.name}</button>
           ))}
-          <button className="chip" onClick={addCategory} aria-label="New category"><Plus size={14} /></button>
+          <button className="chip" onClick={addCategory} aria-label="New shelf tab" title="New shelf tab"><Plus size={14} /></button>
         </div>
+        {activeCategory && <>
+          <button className="icon-btn" onClick={() => void editCategory()} aria-label="Rename current shelf tab" title="Rename tab"><PencilSimple size={17} /></button>
+          <button className="icon-btn" onClick={() => void removeCategory()} aria-label="Delete current shelf tab" title="Delete tab"><Trash size={17} /></button>
+        </>}
         <div style={{ position: "relative" }}>
           <MagnifyingGlass size={16} style={{ position: "absolute", left: 11, top: 12, color: "var(--muted)" }} />
           <input className="input" style={{ width: 190, paddingLeft: 34 }} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter shelf" aria-label="Filter shelf" />

@@ -1,4 +1,5 @@
 import { absUrl, fetchDoc, fetchText, imgSrc, parseDate, parseHtml, pathOf, request, text } from "../http";
+import { MADARA_CARD, MADARA_TITLE } from "./engines";
 import { F, findFilter, selectedValue } from "../filters";
 import type { Filter, MangaStatus, MangasPage, SChapter, SManga, SPage, Source } from "../types";
 
@@ -13,6 +14,8 @@ export interface MadaraConfig {
   name: string;
   baseUrl: string;
   lang: string;
+  /** URL segment of the series archive (default "manga"). */
+  mangaSubString?: string;
   /** Selector overrides for forks that tweak markup. */
   selectors?: Partial<Record<"card" | "title" | "chapterRow" | "pageImg", string>>;
   nsfw?: boolean;
@@ -27,9 +30,10 @@ const STATUS_MAP: [RegExp, MangaStatus][] = [
 
 export function createMadara(cfg: MadaraConfig): Source {
   const base = cfg.baseUrl.replace(/\/+$/, "");
+  const sub = cfg.mangaSubString ?? "manga";
   const sel = {
-    card: cfg.selectors?.card ?? "div.page-item-detail, div.c-tabs-item__content",
-    title: cfg.selectors?.title ?? "h3 a, h5 a, .post-title a",
+    card: cfg.selectors?.card ?? MADARA_CARD,
+    title: cfg.selectors?.title ?? MADARA_TITLE,
     chapterRow: cfg.selectors?.chapterRow ?? "li.wp-manga-chapter",
     pageImg: cfg.selectors?.pageImg ?? "div.page-break img, .reading-content img",
   };
@@ -45,33 +49,11 @@ export function createMadara(cfg: MadaraConfig): Source {
     return { mangas, hasNext };
   };
 
-  async function listing(page: number, orderby: string, query = "", extra: Record<string, string[]> = {}): Promise<MangasPage> {
-    const body = new URLSearchParams({
-      action: "madara_load_more",
-      page: String(page - 1),
-      template: "madara-core/content/content-archive",
-      "vars[paged]": String(page),
-      "vars[orderby]": orderby === "relevance" ? "" : "meta_value_num",
-      "vars[template]": "archive",
-      "vars[sidebar]": "right",
-      "vars[post_type]": "wp-manga",
-      "vars[post_status]": "publish",
-      "vars[meta_key]": orderby === "views" ? "_wp_manga_views" : orderby === "latest" ? "_latest_update" : "",
-      "vars[order]": "desc",
-      "vars[posts_per_page]": "20",
-    });
-    if (query) body.set("vars[s]", query);
-    for (const [k, vals] of Object.entries(extra)) vals.forEach((v) => body.append(`vars[${k}][]`, v));
-    const res = await request(`${base}/wp-admin/admin-ajax.php`, {
-      method: "POST",
-      body,
-      headers: { "content-type": "application/x-www-form-urlencoded", "x-requested-with": "XMLHttpRequest" },
-      referer: base + "/",
-      minGapMs: 500,
-    });
-    const html = await res.text();
-    const parsed = parseCards(parseHtml(`<body>${html}</body>`, base));
-    return { mangas: parsed.mangas, hasNext: parsed.mangas.length >= 10 };
+  /** Archive page, the same URL the catalogue build verifies. Newer Madara sites have disabled the ajax endpoint. */
+  async function listing(page: number, orderby: string): Promise<MangasPage> {
+    const order = orderby === "latest" ? "latest" : "views";
+    const url = `${base}/${sub}/${page > 1 ? `page/${page}/` : ""}?m_orderby=${order}`;
+    return parseCards(await fetchDoc(url, { referer: base + "/", minGapMs: 500 }));
   }
 
   return {

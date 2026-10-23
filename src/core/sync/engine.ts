@@ -186,7 +186,10 @@ export async function startSync(): Promise<void> {
       }
     });
     const unsubAuth = await watchAuth((u) => {
-      if (!u || u.uid !== user.uid) void startSync();
+      if (!u || u.uid !== user.uid) {
+        resetPushCursor();
+        void startSync();
+      }
     });
     stopFns = [unsubSeries, unsubMeta, unsubLocal, unsubSettings, unsubAuth];
     schedulePush(user.uid, 800);

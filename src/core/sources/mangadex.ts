@@ -190,6 +190,15 @@ export function createMangaDex(lang: string, label: string): Source {
         }
         if (res.offset + res.limit >= res.total) break;
       }
+      if (!out.length) {
+        // Distinguish "nothing uploaded" from "only linked out to the publisher" (e.g. licensed titles)
+        const ext = await fetchJson<MdList<{ attributes: { externalUrl?: string } }>>(
+          `${API}/manga/${manga.url}/feed?${q([["limit", 1], ["translatedLanguage[]", lang], ["includeExternalUrl", 1], ...ALL_RATINGS.map((r): [string, string] => ["contentRating[]", r])])}`,
+          { minGapMs: 220 },
+        ).catch(() => null);
+        const link = ext?.data[0]?.attributes.externalUrl;
+        if (link) throw new Error(`The ${label} chapters of this title are hosted on ${new URL(link).host}, so they cannot be read inside Comik.`);
+      }
       return out;
     },
 

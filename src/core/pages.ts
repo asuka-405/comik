@@ -14,6 +14,8 @@ export interface ReaderPage {
 }
 
 const objectUrls = new Map<string, string[]>();
+const pendingPages = new Map<string, Promise<ReaderPage[]>>();
+const refreshingPages = new Set<string>();
 
 export function releasePages(chapterId: string) {
   objectUrls.get(chapterId)?.forEach(URL.revokeObjectURL);
@@ -21,7 +23,15 @@ export function releasePages(chapterId: string) {
 }
 
 /** Resolve a chapter into displayable pages: offline blobs first, otherwise source -> proxy URLs. */
-export async function loadPages(manga: MangaRow, chapter: ChapterRow): Promise<ReaderPage[]> {
+export function loadPages(manga: MangaRow, chapter: ChapterRow): Promise<ReaderPage[]> {
+  const pending = pendingPages.get(chapter.id);
+  if (pending) return pending;
+  const request = loadPagesOnce(manga, chapter).finally(() => pendingPages.delete(chapter.id));
+  pendingPages.set(chapter.id, request);
+  return request;
+}
+
+async function loadPagesOnce(manga: MangaRow, chapter: ChapterRow): Promise<ReaderPage[]> {
   const dl = await db.downloads.get(chapter.id);
   if (dl?.state === "done") {
     const blobs = await db.pageBlobs.where("chapterId").equals(chapter.id).sortBy("index");
@@ -34,17 +44,24 @@ export async function loadPages(manga: MangaRow, chapter: ChapterRow): Promise<R
 
   const source = getSource(manga.sourceId);
   if (!source) throw new Error("This source is no longer installed");
+  const referer = source.imageReferer ?? source.baseUrl;
 
-  let urls: string[] | undefined;
   const cached = await db.pageCache.get(chapter.id);
-  if (cached && cached.urls.length && Date.now() - cached.fetchedAt < PAGE_TTL) urls = cached.urls;
-  if (!urls) {
-    const pages = await source.getPageList({ url: chapter.url, name: chapter.name, dateUpload: chapter.dateUpload }, { url: manga.url, title: manga.title });
-    urls = pages.sort((a, b) => a.index - b.index).map((p) => p.url);
-    if (manga.sourceId !== "local") await db.pageCache.put({ chapterId: chapter.id, urls, fetchedAt: Date.now() });
+  if (cached?.urls.length) {
+    if (Date.now() - cached.fetchedAt >= PAGE_TTL && !refreshingPages.has(chapter.id) && manga.sourceId !== "local") {
+      refreshingPages.add(chapter.id);
+      void source.getPageList({ url: chapter.url, name: chapter.name, dateUpload: chapter.dateUpload }, { url: manga.url, title: manga.title })
+        .then((pages) => db.pageCache.put({ chapterId: chapter.id, urls: pages.sort((a, b) => a.index - b.index).map((page) => page.url), fetchedAt: Date.now() }))
+        .catch(() => {})
+        .finally(() => refreshingPages.delete(chapter.id));
+    }
+    return cached.urls.map((url, index) => ({ index, src: imageUrl(url, referer, source.directImages), offline: false }));
   }
+
+  const pages = await source.getPageList({ url: chapter.url, name: chapter.name, dateUpload: chapter.dateUpload }, { url: manga.url, title: manga.title });
+  const urls = pages.sort((a, b) => a.index - b.index).map((page) => page.url);
+  if (manga.sourceId !== "local") await db.pageCache.put({ chapterId: chapter.id, urls, fetchedAt: Date.now() });
   if (!urls.length) throw new Error("This chapter has no pages. It may be locked, removed or need a login.");
 
-  const referer = source.imageReferer ?? source.baseUrl;
   return urls.map((u, index) => ({ index, src: imageUrl(u, referer, source.directImages), offline: false }));
 }

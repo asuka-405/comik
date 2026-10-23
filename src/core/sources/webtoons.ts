@@ -17,7 +17,7 @@ function cardsFrom(doc: Document, base: string): SManga[] {
   const seen = new Set<string>();
   const out: SManga[] = [];
   for (const a of doc.querySelectorAll<HTMLAnchorElement>('a[href*="title_no="]')) {
-    const title = text(a.querySelector(".title"));
+    const title = text(a.querySelector(".title, .subj"));
     if (!title) continue;
     const href = absUrl(a.getAttribute("href"), base);
     const no = new URL(href).searchParams.get("title_no");
@@ -39,24 +39,32 @@ function paginate(all: SManga[], page: number): MangasPage {
   return { mangas: all.slice(start, start + PAGE), hasNext: start + PAGE < all.length };
 }
 
-export function createWebtoons(lang: string, label: string): Source {
+export function createWebtoons(lang: string, label: string, canvas = false): Source {
   const root = `${ORIGIN}/${lang}`;
   const get = (url: string) => fetchDoc(url, { headers: COOKIE, minGapMs: 350 });
 
+  // Canvas is paginated by the site, 30 series per page
+  const canvasPage = async (page: number, order: string): Promise<MangasPage> => {
+    const mangas = cardsFrom(await get(`${root}/canvas/list?genreTab=ALL&sortOrder=${order}&page=${page}`), root);
+    return { mangas, hasNext: mangas.length >= PAGE };
+  };
+
   return {
-    id: `webtoons-${lang}`,
-    name: "Webtoon",
+    id: canvas ? `webtoons-canvas-${lang}` : `webtoons-${lang}`,
+    name: canvas ? "Webtoon Canvas" : "Webtoon",
     lang,
     baseUrl: ORIGIN,
-    blurb: `Official vertical-scroll comics, ${label}`,
+    blurb: canvas ? `Creator-published vertical comics, ${label}` : `Official vertical-scroll comics, ${label}`,
     tint: "#27d367",
     supportsLatest: true,
     imageReferer: `${ORIGIN}/`,
 
     async getPopular(page) {
+      if (canvas) return canvasPage(page, "MANA");
       return paginate(cardsFrom(await get(`${root}/ranking/popular`), root), page);
     },
     async getLatest(page) {
+      if (canvas) return canvasPage(page, "UPDATE");
       const day = DAYS[new Date().getDay()]!;
       return paginate(cardsFrom(await get(`${root}/originals/${day}`), root), page);
     },
@@ -96,7 +104,7 @@ export function createWebtoons(lang: string, label: string): Source {
         title: text(doc.querySelector("h1.subj")) || manga.title,
         cover: doc.querySelector('meta[property="og:image"]')?.getAttribute("content") ?? manga.cover,
         author: authors.join(", ") || manga.author,
-        description: text(doc.querySelector("p.summary")),
+        description: text(doc.querySelector("p.summary")) || doc.querySelector('meta[property="og:description"]')?.getAttribute("content") || undefined,
         genres: [text(doc.querySelector(".info h2.genre"))].filter(Boolean),
         status,
       };

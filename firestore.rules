@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function communityUser() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    function validImage(data) {
+      return !('imageUrl' in data)
+        || (data.imageUrl is string
+          && (data.imageUrl.matches('^https://')
+            || (data.imageUrl.matches('^data:image/') && data.imageUrl.size() <= 70000)));
+    }
+    function validPost(data) {
+      return data.keys().hasOnly(['kind', 'title', 'body', 'authorId', 'authorName', 'createdAt', 'comic', 'pollOptions', 'imageUrl'])
+        && data.authorId == request.auth.uid
+        && data.authorName is string && data.authorName.size() <= 60
+        && data.createdAt is int
+        && data.kind in ['discussion', 'recommendation', 'poll']
+        && data.title is string && data.title.size() <= 160
+        && data.body is string && data.body.size() <= 5000
+        && (data.kind != 'poll' || ('pollOptions' in data && data.pollOptions is list && data.pollOptions.size() >= 2 && data.pollOptions.size() <= 8))
+        && (!('comic' in data)
+          || (data.comic is map
+            && data.comic.keys().hasOnly(['mangaId', 'title', 'sourceId', 'sourceName', 'sourceUrl'])
+            && data.comic.mangaId is string && data.comic.mangaId.size() <= 300
+            && data.comic.title is string && data.comic.title.size() <= 160
+            && data.comic.sourceId is string && data.comic.sourceId.size() <= 120
+            && data.comic.sourceName is string && data.comic.sourceName.size() <= 100
+            && data.comic.sourceUrl is string && data.comic.sourceUrl.size() <= 2048
+            && (data.comic.sourceUrl == '' || data.comic.sourceUrl.matches('^https?://'))))
+        && validImage(data);
+    }
+
+    match /users/{uid}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /communityPosts/{postId} {
+      allow read: if true;
+      allow create: if communityUser() && validPost(request.resource.data);
+      allow update: if communityUser()
+        && resource.data.authorId == request.auth.uid
+        && validPost(request.resource.data);
+      allow delete: if communityUser() && resource.data.authorId == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if communityUser()
+          && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt'])
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
+          && request.resource.data.createdAt is int
+          && request.resource.data.body is string && request.resource.data.body.size() <= 2000;
+        allow update: if communityUser()
+          && resource.data.authorId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt'])
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
+          && request.resource.data.createdAt is int
+          && request.resource.data.body is string && request.resource.data.body.size() <= 2000;
+        allow delete: if communityUser() && resource.data.authorId == request.auth.uid;
+      }
+
+      match /votes/{voteId} {
+        allow read: if true;
+        allow create, update: if communityUser()
+          && request.resource.data.keys().hasOnly(['uid', 'optionIndex', 'updatedAt'])
+          && voteId == request.auth.uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.optionIndex is int
+          && request.resource.data.optionIndex >= 0 && request.resource.data.optionIndex < 8
+          && request.resource.data.optionIndex < get(/databases/$(database)/documents/communityPosts/$(postId)).data.pollOptions.size()
+          && request.resource.data.updatedAt is int;
+        allow delete: if communityUser() && voteId == request.auth.uid;
+      }
+    }
+
+    match /communityRatings/{ratingId} {
+      allow read: if true;
+      allow create, update: if communityUser()
+        && request.resource.data.keys().hasOnly(['comicKey', 'comicTitle', 'sourceId', 'uid', 'score', 'updatedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.comicKey is string
+        && ratingId == request.resource.data.comicKey + '_' + request.auth.uid
+        && request.resource.data.comicTitle is string && request.resource.data.comicTitle.size() <= 160
+        && request.resource.data.sourceId is string && request.resource.data.sourceId.size() <= 120
+        && request.resource.data.score is int
+        && request.resource.data.score >= 1 && request.resource.data.score <= 5
+        && request.resource.data.updatedAt is int;
+      allow delete: if communityUser() && resource.data.uid == request.auth.uid;
+    }
+  }
+}

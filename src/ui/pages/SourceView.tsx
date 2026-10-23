@@ -1,20 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
+import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
 import { db } from "@/core/db";
+import { useSettings } from "@/core/settings";
 import { ensureSourceReady, getSource } from "@/core/sources/registry";
 import { upsertManga } from "@/core/repo";
 import { cloneFilters, hasActiveFilters } from "@/core/filters";
 import type { Filter, MangaRow } from "@/core/types";
-import { Cover, CoverSkeletons, Empty, useDebounced } from "../common";
+import { Cover, CoverSkeletons, Empty, FloatBack, useDebounced } from "../common";
 import { FilterSheet } from "../components_filters";
 
 type Mode = "popular" | "latest" | "search";
 
 export function SourceView() {
   const { sourceId = "" } = useParams();
-  const source = getSource(sourceId);
+  const enabled = useSettings((s) => !s.disabledSourceIds.includes(sourceId));
+  const source = enabled ? getSource(sourceId) : undefined;
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const [mode, setMode] = useState<Mode>(sp.get("q") ? "search" : "popular");
@@ -37,7 +39,13 @@ export function SourceView() {
     setFilters(source.getFilterList());
   }, [source]);
 
-  const dirty = !!source && JSON.stringify(filters) !== JSON.stringify(source.getFilterList());
+  // Only user-changed filters should trigger a reload. Swapping in the default list (when MangaDex tags
+  // finish loading) must not reset the catalogue the user is already looking at.
+  const defaultsKey = useMemo(() => (source ? JSON.stringify(source.getFilterList()) : ""), [source, filters.length]);
+  const dirty = !!source && JSON.stringify(filters) !== defaultsKey;
+  const filterKey = dirty ? JSON.stringify(filters) : "";
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
   const searching = mode === "search" || (dirty && hasActiveFilters(filters));
   const effective: Mode = searching && mode !== "latest" ? "search" : mode;
 
@@ -48,7 +56,7 @@ export function SourceView() {
       setLoading(true);
       setError("");
       try {
-        const res = effective === "popular" ? await source.getPopular(p) : effective === "latest" ? await source.getLatest(p) : await source.search(p, dq, filters);
+        const res = effective === "popular" ? await source.getPopular(p) : effective === "latest" ? await source.getLatest(p) : await source.search(p, dq, filterKey ? filtersRef.current : source.getFilterList());
         const saved = await Promise.all(res.mangas.map((m) => upsertManga(source.id, m)));
         if (token !== run.current) return;
         setRows((prev) => {
@@ -63,7 +71,7 @@ export function SourceView() {
         if (token === run.current) setLoading(false);
       }
     },
-    [source, effective, dq, filters],
+    [source, effective, dq, filterKey],
   );
 
   useEffect(() => {
@@ -80,12 +88,13 @@ export function SourceView() {
     return () => io.disconnect();
   }, [hasNext, loading, error, page, rows.length, load]);
 
+  if (!enabled) return <div className="page"><Empty title="Source disabled" body="Enable this source in source settings to browse it again." action={<button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button>} /></div>;
   if (!source) return <div className="page"><Empty title="Source not found" body="It may have been removed." action={<button className="btn primary" onClick={() => nav("/browse")}>Back to Discover</button>} /></div>;
 
   return (
-    <div className="page">
+    <div className="page has-back">
+      <FloatBack to="/browse" />
       <div className="topbar">
-        <button className="icon-btn" onClick={() => nav("/browse")} aria-label="Back"><ArrowLeft size={18} /></button>
         <div><div className="kicker">{source.lang.toUpperCase()}</div><h1>{source.name}</h1></div>
         <div className="spacer" />
         <div style={{ position: "relative", flex: "1 1 260px", maxWidth: 380 }}>

@@ -1,40 +1,23 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/core/db";
-import { useSettings, type Theme } from "@/core/settings";
+import { useSettings, type FitMode, type LibraryDensity, type LibrarySort, type Theme } from "@/core/settings";
 import { proxyBase } from "@/core/http";
 import { addCustomSource, allSources, isCustom, onSourcesChange, removeCustomSource } from "@/core/sources/registry";
 import { importLocal } from "@/core/sources/local";
 import { createBackup, downloadBackup, restoreBackup } from "@/core/backup";
 import { storageUsage } from "@/core/downloads";
-import { linkGoogle, parseFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, signOutSync, useSync } from "@/core/sync/firebase";
+import { defaultFirebaseAvailable, getFirebaseMode, linkGoogle, parseFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
 import { resetPushCursor, startSync, stopSync, syncNow } from "@/core/sync/engine";
 import { Row, Toggle, bytes, timeAgo, toast } from "../common";
 import type { CustomSourceRow } from "@/core/db";
+import { refreshAnalyticsConsent } from "@/core/analytics";
+import RULES from "../../../firestore.rules?raw";
 
 function Section({ id, title, children, hue = 0 }: { id?: string; title: string; children: ReactNode; hue?: number }) {
   return <section id={id} className="panel" data-hue={hue}><h2>{title}</h2>{children}</section>;
 }
-
-const RULES = `rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-  }
-}`;
-
-const SELECTOR_EXAMPLE = `{
-  "popularUrl": "https://example.com/series?page={page}",
-  "searchUrl": "https://example.com/search?q={query}&page={page}",
-  "card": ".series-card",
-  "cardTitle": ".title",
-  "detailDescription": ".summary",
-  "chapterRow": ".chapter-list li",
-  "chapterDate": ".date",
-  "pageImage": ".reader img"
-}`;
 
 export function SettingsPage() {
   const s = useSettings();
@@ -54,19 +37,57 @@ export function SettingsPage() {
             <Row title="Check for new chapters" hint="Runs when you open the app"><select className="input" style={{ width: "auto" }} value={s.autoUpdateHours} onChange={(e) => s.set({ autoUpdateHours: Number(e.target.value) })}><option value={0}>Never</option><option value={6}>Every 6 hours</option><option value={12}>Every 12 hours</option><option value={24}>Daily</option><option value={168}>Weekly</option></select></Row>
             <Row title="Skip completed series"><Toggle label="Skip completed" on={s.updateSkipCompleted} onChange={(v) => s.set({ updateSkipCompleted: v })} /></Row>
             <Row title="Skip series you have started" hint="Only check ones you have not read yet"><Toggle label="Skip started" on={s.updateSkipStarted} onChange={(v) => s.set({ updateSkipStarted: v })} /></Row>
+            <Row title="Default sort"><select className="input" style={{ width: "auto" }} value={s.librarySort} onChange={(e) => s.set({ librarySort: e.target.value as LibrarySort })}><option value="lastRead">Last read</option><option value="lastUpdate">Latest update</option><option value="unread">Unread</option><option value="title">Title</option><option value="added">Date added</option></select></Row>
+            <Row title="Sort ascending"><Toggle label="Ascending order" on={s.librarySortAsc} onChange={(v) => s.set({ librarySortAsc: v })} /></Row>
+            <Row title="Shelf layout"><select className="input" style={{ width: "auto" }} value={s.libraryDensity} onChange={(e) => s.set({ libraryDensity: e.target.value as LibraryDensity })}><option value="cozy">Comfortable grid</option><option value="compact">Compact grid</option><option value="list">List</option></select></Row>
+            <Row title="Only show unread"><Toggle label="Unread only" on={s.libraryOnlyUnread} onChange={(v) => s.set({ libraryOnlyUnread: v })} /></Row>
           </Section>
           <Section title="Reading defaults" hue={4}>
             <Row title="Mode"><select className="input" style={{ width: "auto" }} value={s.readerMode} onChange={(e) => s.set({ readerMode: e.target.value as typeof s.readerMode })}><option value="auto">Auto</option><option value="paged-rtl">Right to left</option><option value="paged-ltr">Left to right</option><option value="paged-vertical">Vertical</option><option value="webtoon">Webtoon</option></select></Row>
+            <Row title="Page fit"><select className="input" style={{ width: "auto" }} value={s.fit} onChange={(e) => s.set({ fit: e.target.value as FitMode })}><option value="width">Fit width</option><option value="height">Fit height</option><option value="screen">Fit screen</option><option value="original">Original size</option></select></Row>
+            <Row title="Two-page spread"><Toggle label="Two pages" on={s.doublePages} onChange={(v) => s.set({ doublePages: v })} /></Row>
+            <Row title="Keep wide pages single"><Toggle label="Smart spreads" on={s.smartSpreads} onChange={(v) => s.set({ smartSpreads: v })} /></Row>
             <Row title="Crop borders"><Toggle label="Crop borders" on={s.cropBorders} onChange={(v) => s.set({ cropBorders: v })} /></Row>
             <Row title="Split tall images"><Toggle label="Split tall" on={s.splitTall} onChange={(v) => s.set({ splitTall: v })} /></Row>
+            <Row title="Preload pages" hint={`${s.preload} pages ahead`}><input type="range" min={1} max={10} value={s.preload} onChange={(e) => s.set({ preload: Number(e.target.value) })} /></Row>
+            <Row title="Tap zones"><select className="input" style={{ width: "auto" }} value={s.tapZones} onChange={(e) => s.set({ tapZones: e.target.value as typeof s.tapZones })}><option value="standard">Left and right</option><option value="l-shaped">L-shaped</option><option value="edge">Screen edges</option><option value="off">Off</option></select></Row>
+            <Row title="Invert tap direction"><Toggle label="Invert taps" on={s.invertTaps} onChange={(v) => s.set({ invertTaps: v })} /></Row>
+            <Row title="Show page number when controls hide"><Toggle label="Page number" on={s.showPageNumber} onChange={(v) => s.set({ showPageNumber: v })} /></Row>
+            <Row title="Keep screen awake"><Toggle label="Keep screen awake" on={s.keepScreenOn} onChange={(v) => s.set({ keepScreenOn: v })} /></Row>
+            <Row title="Auto-advance at chapter end"><Toggle label="Auto-next" on={s.autoNextChapter} onChange={(v) => s.set({ autoNextChapter: v })} /></Row>
             <Row title="Skip chapters already read when going next"><Toggle label="Skip read" on={s.skipReadChapters} onChange={(v) => s.set({ skipReadChapters: v })} /></Row>
             <Row title="Smaller images (MangaDex data saver)"><Toggle label="Data saver" on={s.dataSaver} onChange={(v) => s.set({ dataSaver: v })} /></Row>
+            <Row title="Screen brightness" hint={`${Math.round(s.brightness * 100)}%`}><input type="range" min={0.3} max={1.2} step={0.05} value={s.brightness} onChange={(e) => s.set({ brightness: Number(e.target.value) })} /></Row>
+            <Row title="Warm tint" hint={`${Math.round(s.sepia * 100)}%`}><input type="range" min={0} max={0.8} step={0.05} value={s.sepia} onChange={(e) => s.set({ sepia: Number(e.target.value) })} /></Row>
+            <Row title="Grayscale"><Toggle label="Grayscale" on={s.grayscale} onChange={(v) => s.set({ grayscale: v })} /></Row>
+            <Row title="Invert image colors"><Toggle label="Invert colors" on={s.invert} onChange={(v) => s.set({ invert: v })} /></Row>
+          </Section>
+          <Section title="Downloads" hue={6}>
+            <Row title="Concurrent downloads" hint={`${s.downloadConcurrency} at a time`}><input type="range" min={1} max={8} value={s.downloadConcurrency} onChange={(e) => s.set({ downloadConcurrency: Number(e.target.value) })} /></Row>
+            <Row title="Download ahead" hint={`${s.autoDownloadAhead} chapters`}><input type="range" min={0} max={10} value={s.autoDownloadAhead} onChange={(e) => s.set({ autoDownloadAhead: Number(e.target.value) })} /></Row>
             <Row title="Delete download after reading"><Toggle label="Delete after read" on={s.deleteAfterRead} onChange={(v) => s.set({ deleteAfterRead: v })} /></Row>
+          </Section>
+          <Section title="Community and privacy" hue={6}>
+            <Row title="Anonymous usage analytics" hint="Opt-in. Sends generic screen and feature events only, never comic titles, searches, or post text.">
+              <Toggle label="Usage analytics" on={s.analyticsConsent} onChange={(enabled) => {
+                s.set({ analyticsConsent: enabled });
+                void refreshAnalyticsConsent(enabled);
+              }} />
+            </Row>
+            <div className="field" style={{ marginTop: 12 }}>
+              <label htmlFor="imgur-client-id">Imgur Client ID (optional)</label>
+              <input id="imgur-client-id" className="input" value={s.imgurClientId} onChange={(event) => s.set({ imgurClientId: event.target.value.trim() })} placeholder="Enable larger image uploads" autoComplete="off" />
+              <span className="hint muted">Without Imgur, attachments are limited to 50 KB.</span>
+            </div>
           </Section>
           <Data />
         </div>
         <div className="stack">
           <SyncSection />
+          <Section title="Source settings" hue={5}>
+            <p className="muted" style={{ marginBottom: 12 }}>Choose which built-in and custom sources appear in Discover and global search.</p>
+            <Link className="btn" to="/settings/sources">Manage enabled sources</Link>
+          </Section>
           <SourcesSection />
           <LocalImport />
         </div>
@@ -80,16 +101,21 @@ function SyncSection() {
   const sync = useSync();
   const [cfgText, setCfgText] = useState("");
   const [configured, setConfigured] = useState(() => !!readFirebaseConfig());
+  const [mode, setMode] = useState(getFirebaseMode);
   const [enabled, setEnabled] = useState(() => localStorage.getItem("comik.sync.enabled") === "1");
   const [showRules, setShowRules] = useState(false);
 
   const saveConfig = () => {
     try {
+      if (enabled) stopSync();
       saveFirebaseConfig(parseFirebaseConfig(cfgText));
       resetFirebase();
+      resetPushCursor();
+      setMode("custom");
       setConfigured(true);
       setCfgText("");
       toast("Firebase config saved");
+      if (enabled) void startSync();
     } catch (e) {
       toast((e as Error).message, true);
     }
@@ -105,16 +131,34 @@ function SyncSection() {
     stopSync();
     useSync.getState().patch({ status: "off" });
   };
+  const switchMode = (next: "default" | "custom") => {
+    if (next === mode) return;
+    stopSync();
+    setFirebaseMode(next);
+    resetFirebase();
+    resetPushCursor();
+    setMode(next);
+    setConfigured(!!readFirebaseConfig());
+    useSync.getState().patch({ status: "off", user: null, error: undefined });
+    void refreshAnalyticsConsent(useSettings.getState().analyticsConsent);
+    if (enabled && readFirebaseConfig()) void startSync();
+  };
 
   return (
     <Section id="sync" title="Sync (optional)" hue={3}>
-      <p className="muted" style={{ marginBottom: 12 }}>Without sync, everything lives in this browser. With sync, your shelf, progress and categories follow an anonymous account across sessions. Link Google to also reach them from other devices.</p>
-      {!configured ? (
+      <p className="muted" style={{ marginBottom: 12 }}>Use the app’s shared Firebase service or connect your own Firebase project. Sync is private to your account; community data is shared only within the selected project.</p>
+      <div className="seg" style={{ marginBottom: 12 }}>
+        <button className={mode === "default" ? "on" : ""} onClick={() => switchMode("default")}>App server</button>
+        <button className={mode === "custom" ? "on" : ""} onClick={() => switchMode("custom")}>Own Firebase</button>
+      </div>
+      {mode === "custom" && !configured ? (
         <>
           <div className="field"><label>Paste your Firebase web config</label><textarea className="input mono" rows={6} value={cfgText} onChange={(e) => setCfgText(e.target.value)} placeholder={'{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }'} /></div>
           <button className="btn primary" disabled={!cfgText.trim()} onClick={saveConfig}>Save config</button>
-          <p className="hint muted" style={{ marginTop: 10 }}>In the Firebase console: create a project, add a Web app, enable Authentication with the Anonymous provider and create a Firestore database.</p>
+          <p className="hint muted" style={{ marginTop: 10 }}>Create a Firebase project, add a Web app, enable Google sign-in and Anonymous auth, create Firestore, and apply the rules below.</p>
         </>
+      ) : mode === "default" && !defaultFirebaseAvailable() ? (
+        <div className="err" style={{ marginBottom: 12 }}>The app server is not configured in this build. Choose Own Firebase or use a hosted build with its Firebase project configured.</div>
       ) : (
         <>
           <Row title="Sync this device" hint={enabled ? (sync.user ? `${sync.user.isAnonymous ? "Anonymous account" : sync.user.email ?? "Signed in"}${sync.lastSyncedAt ? `, synced ${timeAgo(sync.lastSyncedAt)}` : ""}` : sync.status === "connecting" ? "Connecting" : "Starting") : "Off, data stays local"}>
@@ -130,7 +174,13 @@ function SyncSection() {
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
             <button className="btn sm ghost" onClick={() => setShowRules(!showRules)}>Firestore rules</button>
-            <button className="btn sm ghost danger" onClick={() => { turnOff(); saveFirebaseConfig(null); resetFirebase(); setConfigured(false); }}>Remove config</button>
+            {mode === "custom" && <button className="btn sm ghost danger" onClick={() => {
+              turnOff();
+              saveFirebaseConfig(null);
+              resetFirebase();
+              setMode("default");
+              setConfigured(defaultFirebaseAvailable());
+            }}>Forget own config</button>}
           </div>
           {showRules && <pre className="input mono" style={{ whiteSpace: "pre-wrap", marginTop: 10, fontSize: 12 }}>{RULES}</pre>}
         </>
@@ -150,7 +200,6 @@ function SourcesSection() {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [lang, setLang] = useState("en");
-  const [cfg, setCfg] = useState("");
 
   const test = async () => {
     setHealth("Checking");
@@ -165,11 +214,8 @@ function SourcesSection() {
   const add = async () => {
     try {
       new URL(url);
-      let config: Record<string, string> = {};
-      if (kind === "selector") config = JSON.parse(cfg) as Record<string, string>;
-      if (kind === "selector" && (!config.popularUrl || !config.card || !config.chapterRow || !config.pageImage)) throw new Error("Selector sources need popularUrl, card, chapterRow and pageImage");
-      await addCustomSource({ kind, name: name.trim() || new URL(url).host, baseUrl: url, lang, config });
-      setName(""); setUrl(""); setCfg("");
+      await addCustomSource({ kind, name: name.trim() || new URL(url).host, baseUrl: url, lang, config: {} });
+      setName(""); setUrl("");
       toast("Source added");
     } catch (e) {
       toast((e as Error).message || "Check the URL", true);
@@ -188,15 +234,19 @@ function SourcesSection() {
       ))}
       {!allSources().some((s) => isCustom(s.id)) && <p className="muted" style={{ fontSize: 13 }}>None yet.</p>}
       <div className="label" style={{ margin: "18px 0 8px" }}>Add a source</div>
-      <div className="seg" style={{ marginBottom: 12 }}>{(["madara", "themesia", "selector"] as const).map((k) => <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{k === "themesia" ? "MangaThemesia" : k === "madara" ? "Madara" : "Selectors"}</button>)}</div>
-      <div className="field"><label>Site address</label><input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" /></div>
-      <div style={{ display: "flex", gap: 10 }}>
-        <div className="field" style={{ flex: 1 }}><label>Name</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <div className="field" style={{ width: 90 }}><label>Language</label><input className="input" value={lang} onChange={(e) => setLang(e.target.value)} /></div>
-      </div>
-      {kind === "selector" && <div className="field"><label>CSS selectors and URL templates (JSON)</label><textarea className="input mono" rows={9} value={cfg} onChange={(e) => setCfg(e.target.value)} placeholder={SELECTOR_EXAMPLE} /></div>}
-      <button className="btn primary" disabled={!url} onClick={add}>Add source</button>
-      <p className="hint muted" style={{ marginTop: 10 }}>Sites behind Cloudflare challenges or logins cannot be read by a plain proxy. Only add sites you are allowed to read.</p>
+      <div className="seg" style={{ marginBottom: 12 }}>{(["madara", "themesia", "selector"] as const).map((k) => <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{k === "themesia" ? "MangaThemesia" : k === "madara" ? "Madara" : "Source Studio"}</button>)}</div>
+      {kind === "selector" ? <div className="source-studio-launch">
+        <p className="muted">Map catalog cards, chapter rows, and reader images visually in a dedicated workspace.</p>
+        <Link className="btn primary" to="/source-studio"><span>Open Source Studio</span></Link>
+      </div> : <>
+        <div className="field"><label>Site address</label><input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" /></div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <div className="field" style={{ flex: 1 }}><label>Name</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div className="field" style={{ width: 90 }}><label>Language</label><input className="input" value={lang} onChange={(e) => setLang(e.target.value)} /></div>
+        </div>
+        <button className="btn primary" disabled={!url} onClick={add}>Add source</button>
+      </>}
+      <p className="hint muted" style={{ marginTop: 10 }}>Only connect sites you own or are allowed to access. Sites that require scripts, logins, or access challenges are not supported by this source setup.</p>
     </Section>
   );
 }

@@ -22,8 +22,13 @@ Browsers cannot read most comic sites (no CORS, referer-locked images). `server/
 
 ## Sync (optional)
 
-Settings > Sync: paste a Firebase web config, enable Anonymous auth and Firestore, apply the rules shown in the app.
-Last-write-wins per series. Link Google to reach the same data from other devices. Without it everything stays in localStorage/IndexedDB.
+Settings > Sync lets a reader use the app server's Firebase project or bring their own. The hosted project is configured at build time with `VITE_FIREBASE_CONFIG` (a JSON Firebase web config); set it on the deployment server to enable the shared community backend. Without it, readers can select Own Firebase and enter their own project config.
+
+Enable Google sign-in and Anonymous auth in Firebase Authentication, create Firestore, then apply the rules shown in Settings. Sync stays private under `users/{uid}`. Community posts, comments, ratings, and polls are shared only inside the selected Firebase project; community contributions require a non-anonymous sign-in. Each Firebase project uses its own named client app and user session.
+
+This repository targets Firebase project ID `comik-7157c` via `.firebaserc`. Deploy the checked-in rules with `firebase deploy --only firestore:rules`. Google sign-in provider setup and OAuth consent/client IDs still need to be enabled in Firebase Console for the hosted project.
+
+Firebase Analytics requires `measurementId` in the selected config and remains disabled unless the reader opts in under Settings. Events contain generic screen names only. Community image uploads use an optional Imgur Client ID; without one, attached images are limited to 50 KB and stored as a data URL in the post document.
 
 ## Known limits
 

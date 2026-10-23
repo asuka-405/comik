@@ -5,6 +5,9 @@ import { createMadara } from "./madara";
 import { createThemesia } from "./themesia";
 import { createSelectorSource } from "./selector";
 import { localSource } from "./local";
+import { createHeuristic } from "./heuristic";
+import catalog from "./catalog.json";
+import type { CatalogEntry } from "./catalogTypes";
 import type { Source } from "../types";
 
 const MD_LANGS: [string, string][] = [
@@ -12,9 +15,18 @@ const MD_LANGS: [string, string][] = [
 ];
 const WT_LANGS: [string, string][] = [["en", "English"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["id", "Indonesian"], ["th", "Thai"]];
 
+/** Sites from the Mihon / Tachiyomi extension index, mapped onto our engines and verified by scripts/build-catalog.ts. */
+function fromCatalog(e: CatalogEntry): Source {
+  if (e.engine === "madara") return createMadara({ id: e.id, name: e.name, baseUrl: e.baseUrl, lang: "en", mangaSubString: e.path });
+  if (e.engine === "themesia") return createThemesia({ id: e.id, name: e.name, baseUrl: e.baseUrl, lang: "en", listPath: e.path });
+  return createHeuristic(e);
+}
+
 const builtin: Source[] = [
   ...MD_LANGS.map(([l, n]) => createMangaDex(l, n)),
   ...WT_LANGS.map(([l, n]) => createWebtoons(l, n)),
+  createWebtoons("en", "English", true),
+  ...(catalog as CatalogEntry[]).map(fromCatalog),
   localSource,
 ];
 
@@ -52,6 +64,7 @@ export const onSourcesChange = (fn: () => void) => {
 };
 
 export const allSources = (): Source[] => [...builtin, ...custom.values()];
+export const isCatalogSource = (id: string) => id.startsWith("mihon-");
 export const getSource = (id: string): Source | undefined => allSources().find((s) => s.id === id);
 export const isCustom = (id: string) => custom.has(id);
 

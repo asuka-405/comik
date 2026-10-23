@@ -1,0 +1,811 @@
+[
+ {
+  "id": "mihon-8513894820944573933",
+  "name": "Akaza Scans",
+  "baseUrl": "https://akazascans.org",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-8904806262353429205",
+  "name": "Anisa Scans",
+  "baseUrl": "https://anisascans.in",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-626267698662819838",
+  "name": "Aqua Manga",
+  "baseUrl": "https://aquareader.org",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://aquareader.org/manga?page={page}",
+  "searchUrl": "https://aquareader.org/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-8861274191478178487",
+  "name": "Arena Scans",
+  "baseUrl": "https://arenascan.com",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-640484333556017983",
+  "name": "Arven Scans",
+  "baseUrl": "https://arvenscans.net",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://arvenscans.net",
+  "searchUrl": "https://arvenscans.net/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-1931493862544259486",
+  "name": "Aster Scans",
+  "baseUrl": "https://asterscans.com",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-6247824327199706550",
+  "name": "Asura Scans",
+  "baseUrl": "https://asurascans.com",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://asurascans.com/manga?page={page}",
+  "searchUrl": "https://asurascans.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-427734044452073936",
+  "name": "Athrea Scans",
+  "baseUrl": "https://athreascans.com",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-5944672760629857205",
+  "name": "Bun Manga",
+  "baseUrl": "https://bunmanga.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-3544369893051520689",
+  "name": "Cocomic",
+  "baseUrl": "https://cocomic.co",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-2571489285618757730",
+  "name": "Coffee Manga (Unoriginal)",
+  "baseUrl": "https://coffeemanga.net",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://coffeemanga.net/manga?page={page}",
+  "paged": true
+ },
+ {
+  "id": "mihon-954997815643613941",
+  "name": "Comivex",
+  "baseUrl": "https://comivex.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://comivex.com",
+  "paged": false
+ },
+ {
+  "id": "mihon-7432245132662185058",
+  "name": "Decadence Scans",
+  "baseUrl": "https://reader.decadencescans.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-1911019612901009263",
+  "name": "Eva Scans",
+  "baseUrl": "https://evascans.net",
+  "engine": "themesia",
+  "path": "series"
+ },
+ {
+  "id": "mihon-5246625723235112128",
+  "name": "GakaMangas",
+  "baseUrl": "https://gakamangas.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-4598626990187882152",
+  "name": "GalaxyDegenScans",
+  "baseUrl": "https://gdscans.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-3694940277826033657",
+  "name": "Gourmet Scans",
+  "baseUrl": "https://gourmetsupremacy.com",
+  "engine": "madara",
+  "path": "project"
+ },
+ {
+  "id": "mihon-7008887237419113673",
+  "name": "Grabber Zone",
+  "baseUrl": "https://grabber.zone",
+  "engine": "madara",
+  "path": "comics"
+ },
+ {
+  "id": "mihon-454381816904772144",
+  "name": "Hijala Scans",
+  "baseUrl": "https://en-hijala.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://en-hijala.com/series?page={page}",
+  "searchUrl": "https://en-hijala.com/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-1063521896373496908",
+  "name": "Honeytoon",
+  "baseUrl": "https://honeytoon.com",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://honeytoon.com/manga?page={page}",
+  "searchUrl": "https://honeytoon.com/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-3876544289472679486",
+  "name": "Hunlight Comics",
+  "baseUrl": "https://hunlightcomics.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-5727368826344311935",
+  "name": "Jinmangas",
+  "baseUrl": "https://mangafree.info",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-5815628626283130746",
+  "name": "KaliScan.org (unoriginal)",
+  "baseUrl": "https://kaliscan.org",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-1879005209022234038",
+  "name": "KaliScans.org (unoriginal)",
+  "baseUrl": "https://kaliscans.org",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://kaliscans.org",
+  "searchUrl": "https://kaliscans.org/search?q={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-7831933086917318633",
+  "name": "Ken Scans",
+  "baseUrl": "https://kencomics.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://kencomics.com/series?page={page}",
+  "searchUrl": "https://kencomics.com/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-9153097368891994905",
+  "name": "King of Shojo",
+  "baseUrl": "https://kingofshojo.com",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-58992897252080929",
+  "name": "KokoMangas",
+  "baseUrl": "https://kokomangas.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-4307007494151154546",
+  "name": "KSGroupScans",
+  "baseUrl": "https://ksgroupscans.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-7947062020376654174",
+  "name": "Kun Manga Online",
+  "baseUrl": "https://www.kunmanga.online",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-7925933833035450162",
+  "name": "Lagoon Scans",
+  "baseUrl": "https://lagoonscans.com",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-8802607595629671202",
+  "name": "LHTranslation",
+  "baseUrl": "https://lhtranslation.net",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-8622937201319058235",
+  "name": "LinkManga",
+  "baseUrl": "https://linkmanga.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://linkmanga.com/series?page={page}",
+  "searchUrl": "https://linkmanga.com/search?q={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-3971812949560196318",
+  "name": "Lovesjane Scans",
+  "baseUrl": "https://lovesjane.site",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-5466172882050312169",
+  "name": "LustToon",
+  "baseUrl": "https://lustoon.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://lustoon.com",
+  "searchUrl": "https://lustoon.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-2136088453725931591",
+  "name": "MadaraDex",
+  "baseUrl": "https://madaradex.org",
+  "engine": "madara",
+  "path": "title"
+ },
+ {
+  "id": "mihon-5571661567325096882",
+  "name": "Manga Dass",
+  "baseUrl": "https://mangadass.com",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://mangadass.com/manga?page={page}",
+  "searchUrl": "https://mangadass.com/search?q={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-2964723819258267786",
+  "name": "Manga District",
+  "baseUrl": "https://mangadistrict.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-5229341270935044914",
+  "name": "Manga Eclipse",
+  "baseUrl": "https://mangaeclipse.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-1983630122600815139",
+  "name": "Manga Trend",
+  "baseUrl": "https://mangatrend.org",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-4215511432986138970",
+  "name": "Mangabat",
+  "baseUrl": "https://www.mangabats.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://www.mangabats.com",
+  "searchUrl": "https://www.mangabats.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-286088605022156276",
+  "name": "MangaBolt",
+  "baseUrl": "https://mangabolt.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://mangabolt.com",
+  "searchUrl": "https://mangabolt.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-7208855238528281651",
+  "name": "Mangack",
+  "baseUrl": "https://mangack.com",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://mangack.com/manga?page={page}",
+  "searchUrl": "https://mangack.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-6484561431658238800",
+  "name": "MangaFox",
+  "baseUrl": "https://fanfox.net",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://fanfox.net/manga?page={page}",
+  "searchUrl": "https://fanfox.net/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-734865402529567092",
+  "name": "MangaGeko",
+  "baseUrl": "https://www.mgeko.cc",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://www.mgeko.cc",
+  "searchUrl": "https://www.mgeko.cc/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-2",
+  "name": "Mangahere",
+  "baseUrl": "https://www.mangahere.cc",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://www.mangahere.cc/series?page={page}",
+  "searchUrl": "https://www.mangahere.cc/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-2528986671771677900",
+  "name": "Mangakakalot",
+  "baseUrl": "https://www.kakamanga.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://www.kakamanga.com",
+  "searchUrl": "https://www.kakamanga.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-7661417715431651982",
+  "name": "MangaPanda.onl",
+  "baseUrl": "https://mangapanda.onl",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://mangapanda.onl/manga?page={page}",
+  "searchUrl": "https://mangapanda.onl/search?q={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-2681651342533848540",
+  "name": "MangaRead.org",
+  "baseUrl": "https://www.mangaread.org",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-2527199067559866087",
+  "name": "MangaReader.site",
+  "baseUrl": "https://mangareader.site",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://mangareader.site/manga?page={page}",
+  "searchUrl": "https://mangareader.site/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-3606721916149050760",
+  "name": "Mangasushi",
+  "baseUrl": "https://mangasushi.org",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-712011166912060070",
+  "name": "MangaYi",
+  "baseUrl": "https://mangayi.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://mangayi.com",
+  "searchUrl": "https://mangayi.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-9030178752551947945",
+  "name": "Manhua Plus",
+  "baseUrl": "https://manhuaplus.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-7638481723868333116",
+  "name": "ManhuaHot",
+  "baseUrl": "https://manhuahot.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-3544957587727489204",
+  "name": "Manhuanext",
+  "baseUrl": "https://manhuanext.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-3315938131690984352",
+  "name": "Manhwa Reads",
+  "baseUrl": "https://manhwareads.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-3590279382085161370",
+  "name": "Manhwa Toon",
+  "baseUrl": "https://www.manhwatoon.me",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-562792527363909585",
+  "name": "Manhwaddict",
+  "baseUrl": "https://manhwaddict.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://manhwaddict.com",
+  "searchUrl": "https://manhwaddict.com/search?q={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-3663840686576348637",
+  "name": "ManhwaNex",
+  "baseUrl": "https://manhwanex.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-6460882153975501439",
+  "name": "ManhwaOnline",
+  "baseUrl": "https://manhwaonline.org",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://manhwaonline.org",
+  "searchUrl": "https://manhwaonline.org/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-651625426989893977",
+  "name": "ManhwaZ",
+  "baseUrl": "https://manhwaz.cc",
+  "engine": "heuristic",
+  "path": "webtoon",
+  "listUrl": "https://manhwaz.cc/webtoon?page={page}",
+  "searchUrl": "https://manhwaz.cc/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-6237269852978906906",
+  "name": "Niadd",
+  "baseUrl": "https://www.niadd.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://www.niadd.com/series?page={page}",
+  "searchUrl": "https://www.niadd.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-419822582289753882",
+  "name": "Nyx Scans",
+  "baseUrl": "https://nyxscans.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://nyxscans.com/series?page={page}",
+  "searchUrl": "https://nyxscans.com/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-7776050777496310004",
+  "name": "Orion Scans",
+  "baseUrl": "https://orion-scans.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://orion-scans.com/series?page={page}",
+  "searchUrl": "https://orion-scans.com/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-5806040666300479660",
+  "name": "QiScans",
+  "baseUrl": "https://qimanga.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://qimanga.com/series?page={page}",
+  "searchUrl": "https://qimanga.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-263040414613624318",
+  "name": "Rackus",
+  "baseUrl": "https://rackusreads.com",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-5509878196968851775",
+  "name": "Rawkuma.me",
+  "baseUrl": "https://rawkuma.me",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://rawkuma.me/manga?page={page}",
+  "searchUrl": "https://rawkuma.me/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-8930801332831394412",
+  "name": "Read Attack on Titan Shingeki no Kyojin Manga",
+  "baseUrl": "https://ww12.readsnk.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://ww12.readsnk.com",
+  "searchUrl": "https://ww12.readsnk.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-808850989053853006",
+  "name": "Read Jujutsu Kaisen Manga Online",
+  "baseUrl": "https://ww6.readjujutsukaisen.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://ww6.readjujutsukaisen.com",
+  "searchUrl": "https://ww6.readjujutsukaisen.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-7167497376777041176",
+  "name": "Read Maid Sama Manga Online",
+  "baseUrl": "https://w14.maid-sama.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://w14.maid-sama.com/series?page={page}",
+  "searchUrl": "https://w14.maid-sama.com/search?q={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-3945031984510180731",
+  "name": "Read Nanatsu no Taizai 7 Deadly Sins Manga Online",
+  "baseUrl": "https://ww8.read7deadlysins.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://ww8.read7deadlysins.com",
+  "searchUrl": "https://ww8.read7deadlysins.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-1061544757733451419",
+  "name": "Read One Piece Manga Online",
+  "baseUrl": "https://ww13.readonepiece.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://ww13.readonepiece.com",
+  "searchUrl": "https://ww13.readonepiece.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-8254209929759906152",
+  "name": "Read One-Punch Man Manga Online",
+  "baseUrl": "https://ww7.readopm.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://ww7.readopm.com",
+  "searchUrl": "https://ww7.readopm.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-1374366734159205648",
+  "name": "Read Solo Leveling Manga Manhwa Online",
+  "baseUrl": "https://ww4.readsololeveling.org",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://ww4.readsololeveling.org",
+  "searchUrl": "https://ww4.readsololeveling.org/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-6468833665354206027",
+  "name": "Read Tokyo Ghoul Re & Tokyo Ghoul Manga Online",
+  "baseUrl": "https://ww12.tokyoghoulre.com",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://ww12.tokyoghoulre.com",
+  "searchUrl": "https://ww12.tokyoghoulre.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-4915548839286527736",
+  "name": "Rinko Comics",
+  "baseUrl": "https://rinkocomics.com",
+  "engine": "heuristic",
+  "path": "comic",
+  "listUrl": "https://rinkocomics.com/comic?page={page}",
+  "searchUrl": "https://rinkocomics.com/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-3062320139670175675",
+  "name": "Rizz Comic",
+  "baseUrl": "https://rizzfables.com",
+  "engine": "themesia",
+  "path": "series"
+ },
+ {
+  "id": "mihon-830150807344972132",
+  "name": "RokariComics",
+  "baseUrl": "https://rokaricomics.com",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-4870917758913494428",
+  "name": "S2Manga",
+  "baseUrl": "https://s2read.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-1931508394363321246",
+  "name": "Sana Scans",
+  "baseUrl": "https://sanascans.com",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://sanascans.com/series?page={page}",
+  "searchUrl": "https://sanascans.com/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-160957764321519511",
+  "name": "SayManhwa",
+  "baseUrl": "https://saymanhwa.net",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://saymanhwa.net/series?page={page}",
+  "searchUrl": "https://saymanhwa.net/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-1124131000360667434",
+  "name": "Scythe Scans",
+  "baseUrl": "https://scythescans.com",
+  "engine": "themesia",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-5756634909776784131",
+  "name": "Sleepy Translations",
+  "baseUrl": "https://sleepytranslations.com",
+  "engine": "madara",
+  "path": "series"
+ },
+ {
+  "id": "mihon-2848420679472350044",
+  "name": "Thunder Scans",
+  "baseUrl": "https://en-thunderscans.com",
+  "engine": "themesia",
+  "path": "comics"
+ },
+ {
+  "id": "mihon-339438238793535753",
+  "name": "ToonGod (Unoriginal)",
+  "baseUrl": "https://toongod.cc",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://toongod.cc",
+  "searchUrl": "https://toongod.cc/?s={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-5404499323728358840",
+  "name": "Toonizy",
+  "baseUrl": "https://toonizy.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-368848319592333339",
+  "name": "Top Manhua",
+  "baseUrl": "https://mangatop.org",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-6293890187960663957",
+  "name": "TopManhua.fan",
+  "baseUrl": "https://www.topmanhua.fan",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-6421630287504544593",
+  "name": "TopManhua.net",
+  "baseUrl": "https://topmanhua.net",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-6032516943051342273",
+  "name": "TritiniaScans",
+  "baseUrl": "https://tritinia.org",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-9079184529211162476",
+  "name": "Violet Scans",
+  "baseUrl": "https://violetmanga.com",
+  "engine": "themesia",
+  "path": "comics"
+ },
+ {
+  "id": "mihon-2559570015828016575",
+  "name": "Vortex Scans",
+  "baseUrl": "https://vortexscans.org",
+  "engine": "heuristic",
+  "path": "series",
+  "listUrl": "https://vortexscans.org/series?page={page}",
+  "searchUrl": "https://vortexscans.org/?s={query}",
+  "paged": true
+ },
+ {
+  "id": "mihon-6540843430852844328",
+  "name": "WuxiaWorld",
+  "baseUrl": "https://wuxiaworld.site",
+  "engine": "madara",
+  "path": "comic"
+ },
+ {
+  "id": "mihon-4871612284225100668",
+  "name": "YakshaComics",
+  "baseUrl": "https://yakshacomics.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-2975409305226490397",
+  "name": "YaoiScan (Unoriginal)",
+  "baseUrl": "https://yaoiscan.me",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://yaoiscan.me",
+  "searchUrl": "https://yaoiscan.me/search?q={query}",
+  "paged": false
+ },
+ {
+  "id": "mihon-1264036757248780997",
+  "name": "Zazamanga",
+  "baseUrl": "https://www.zazamanga.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-5990114708086767078",
+  "name": "Zinmanga",
+  "baseUrl": "https://mangazin.org",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-1987105317893699901",
+  "name": "Zinmanga.net",
+  "baseUrl": "https://www.zinmanga.net",
+  "engine": "madara",
+  "path": "manga"
+ }
+]

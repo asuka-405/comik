@@ -26,6 +26,7 @@ export function Browse() {
   const sources = useSources();
   const nav = useNavigate();
   const fx = useSettings((s) => s.fx);
+  const disabledSourceIds = useSettings((s) => s.disabledSourceIds);
   const q = params.get("q") ?? "";
   const [text, setText] = useState(q);
   const dq = useDebounced(text, 450);
@@ -35,8 +36,13 @@ export function Browse() {
     setParams(dq ? { q: dq } : {}, { replace: true });
   }, [dq, setParams]);
 
-  const langs = useMemo(() => [...new Set(sources.map((s) => s.lang))], [sources]);
-  const shown = sources.filter((s) => s.lang === lang || s.lang === "all");
+  const enabledSources = useMemo(() => sources.filter((s) => !disabledSourceIds.includes(s.id)), [sources, disabledSourceIds]);
+  const langs = useMemo(() => [...new Set(enabledSources.map((s) => s.lang))], [enabledSources]);
+  const [sq, setSq] = useState("");
+  const shown = enabledSources
+    .filter((s) => s.lang === lang || s.lang === "all")
+    .filter((s) => !sq || `${s.name} ${s.baseUrl}`.toLowerCase().includes(sq.toLowerCase()));
+  const searchable = shown.filter((s) => s.id !== "local");
 
   return (
     <div className="page">
@@ -58,28 +64,48 @@ export function Browse() {
       </div>
 
       {q ? (
-        <div className="stack" style={{ marginTop: 14 }}>
-          {shown.filter((s) => s.id !== "local").map((s) => <GlobalRow key={s.id + q} source={s} q={q} />)}
-        </div>
+        searchable.length ? <div className="stack" style={{ marginTop: 14 }}>
+          {searchable.map((s) => <GlobalRow key={s.id + q} source={s} q={q} />)}
+        </div> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
       ) : (
-        <div className="two" style={{ marginTop: 14 }}>
+        <>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "10px 0 12px" }}>
+          <input className="input" style={{ maxWidth: 320 }} value={sq} onChange={(e) => setSq(e.target.value)} placeholder={`Filter ${shown.length} sources`} aria-label="Filter sources" />
+          <span className="mono muted" style={{ fontSize: 12 }}>{shown.length} shown</span>
+        </div>
+        <div className="src-grid">
           {shown.map((s, i) => (
-            <Link key={s.id} to={`/browse/${s.id}`} className="panel source-card" data-hue={i % 7} style={{ ["--h" as string]: s.tint }}>
+            <Link key={s.id} to={`/browse/${s.id}`} className="panel source-card compact" data-hue={i % 7} style={{ ["--h" as string]: s.tint }}>
               <div className="ico">{s.name.slice(0, 2)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, color: "var(--ink)", fontSize: 17 }}>{s.name} <span className="mono muted" style={{ fontSize: 12 }}>{s.lang}</span></div>
-                <div className="muted" style={{ fontSize: 13 }}>{s.blurb}</div>
+                <div className="src-name">{s.name}</div>
+                <div className="muted src-sub">{s.blurb}</div>
               </div>
             </Link>
           ))}
-          <button className="panel source-card" data-hue="6" onClick={() => nav("/settings#sources")} style={{ borderStyle: "dashed" }}>
+          <button className="panel source-card compact" data-hue="6" onClick={() => nav("/settings#sources")} style={{ borderStyle: "dashed" }}>
             <div className="ico"><Plus size={20} /></div>
-            <div><div style={{ fontWeight: 800, color: "var(--ink)" }}>Add a source</div><div className="muted" style={{ fontSize: 13 }}>Madara, MangaThemesia or your own selectors</div></div>
+            <div><div className="src-name">Add a source</div><div className="muted src-sub">Madara, MangaThemesia or your own selectors</div></div>
           </button>
         </div>
+        </>
       )}
     </div>
   );
+}
+
+/** Global search must not hit 100 sites at once. */
+let active = 0;
+const waiting: (() => void)[] = [];
+async function slot<T>(fn: () => Promise<T>): Promise<T> {
+  if (active >= 4) await new Promise<void>((r) => waiting.push(r));
+  active++;
+  try {
+    return await fn();
+  } finally {
+    active--;
+    waiting.shift()?.();
+  }
 }
 
 function GlobalRow({ source, q }: { source: Source; q: string }) {
@@ -92,8 +118,7 @@ function GlobalRow({ source, q }: { source: Source; q: string }) {
     let dead = false;
     setItems(null);
     setErr("");
-    source
-      .search(1, q, source.getFilterList())
+    slot(() => source.search(1, q, source.getFilterList()))
       .then(async (r) => {
         const saved = await Promise.all(r.mangas.slice(0, 12).map((m) => upsertManga(source.id, m)));
         if (!dead) { setItems(r.mangas); setRows(saved); }

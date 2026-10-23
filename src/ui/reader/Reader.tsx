@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, BookmarkSimple, CaretLeft, CaretRight, SlidersHorizontal } from "@phosphor-icons/react";
@@ -6,7 +6,7 @@ import { db } from "@/core/db";
 import { useSettings } from "@/core/settings";
 import { loadPages, releasePages, type ReaderPage } from "@/core/pages";
 import { patchManga, saveProgress, setBookmark } from "@/core/repo";
-import { readingOrder } from "@/core/progress";
+import { dedupeByNumber, readingOrder } from "@/core/progress";
 import { formatChapterNumber, missingBetween } from "@/core/chapterRecognition";
 import { deleteDownloads } from "@/core/downloads";
 import type { ChapterRow, MangaRow, ReaderMode } from "@/core/types";
@@ -39,22 +39,69 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
   const [hud, setHud] = useState(true);
   const [menu, setMenu] = useState(false);
   const [cur, setCur] = useState(0);
+  const [activeChapterId, setActiveChapterId] = useState(chapter.id);
+  const [activeTotal, setActiveTotal] = useState(0);
+  const [autoNextPaused, setAutoNextPaused] = useState(false);
   const [pieces, setPieces] = useState<Record<number, Piece[]>>({});
+  const [streamChapters, setStreamChapters] = useState<ChapterRow[]>([]);
+  const [previousChapters, setPreviousChapters] = useState<ChapterRow[]>([]);
   const [strip, setStrip] = useState<boolean | null>(null);
   const [preview, setPreview] = useState<number | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const startPage = useRef(!chapter.read && chapter.lastPage > 0 ? chapter.lastPage : 0);
+  const streamAppendRequests = useRef(new Set<string>());
+  const streamPrependRequests = useRef(new Set<string>());
+  const touchStartY = useRef<number | null>(null);
+  const pendingScrollAnchor = useRef<number | null>(null);
 
-  const order = useMemo(() => readingOrder(siblings), [siblings]);
-  const idx = order.findIndex((c) => c.id === chapter.id);
-  const pick = (dir: 1 | -1) => {
-    for (let i = idx + dir; i >= 0 && i < order.length; i += dir) {
+  const order = useMemo(() => readingOrder(dedupeByNumber(siblings)), [siblings]);
+  const idx = order.findIndex((c) => c.id === chapter.id || (chapter.number >= 0 && c.number === chapter.number));
+  const adjacent = useCallback((from: ChapterRow, dir: 1 | -1) => {
+    const fromIndex = order.findIndex((item) => item.id === from.id);
+    for (let i = fromIndex + dir; i >= 0 && i < order.length; i += dir) {
       if (dir === 1 && st.skipReadChapters && order[i]!.read) continue;
       return order[i];
     }
-  };
-  const next = pick(1), prev = pick(-1);
+  }, [order, st.skipReadChapters]);
+  const next = idx >= 0 ? adjacent(chapter, 1) : undefined;
+  const prev = idx >= 0 ? adjacent(chapter, -1) : undefined;
+  const activeChapter = order.find((item) => item.id === activeChapterId) ?? chapter;
+  const activePrev = adjacent(activeChapter, -1);
+  const activeNext = adjacent(activeChapter, 1);
   const gap = next ? missingBetween(chapter.number, next.number) : 0;
+  const updateActiveChapter = useCallback((item: ChapterRow, page: number, pageTotal: number) => {
+    setActiveChapterId(item.id);
+    setCur(page);
+    setActiveTotal(pageTotal);
+  }, []);
+
+  const appendStreamChapter = useCallback((from: ChapterRow) => {
+    if (streamAppendRequests.current.has(from.id)) return;
+    const upcoming = adjacent(from, 1);
+    if (!upcoming) return;
+    streamAppendRequests.current.add(from.id);
+    setStreamChapters((current) => current.some((item) => item.id === upcoming.id) ? current : [...current, upcoming]);
+  }, [adjacent]);
+
+  const prependStreamChapter = useCallback(() => {
+    const oldest = previousChapters[0] ?? chapter;
+    if (streamPrependRequests.current.has(oldest.id)) return;
+    const earlier = adjacent(oldest, -1);
+    if (!earlier) return;
+    streamPrependRequests.current.add(oldest.id);
+    const anchor = document.getElementById("reader-current-anchor");
+    pendingScrollAnchor.current = anchor?.getBoundingClientRect().top ?? null;
+    setPreviousChapters((items) => items.some((item) => item.id === earlier.id) ? items : [earlier, ...items]);
+  }, [adjacent, chapter, previousChapters]);
+
+  useLayoutEffect(() => {
+    const previousTop = pendingScrollAnchor.current;
+    const root = scroller.current;
+    const anchor = document.getElementById("reader-current-anchor");
+    if (previousTop === null || !root || !anchor) return;
+    root.scrollTop += anchor.getBoundingClientRect().top - previousTop;
+    pendingScrollAnchor.current = null;
+  }, [previousChapters]);
 
   /* ---- load pages ---- */
   useEffect(() => {
@@ -72,6 +119,10 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
 
   /* ---- analyse + process pages (paged modes) ---- */
   const paged = mode !== "webtoon";
+  useEffect(() => {
+    if (paged || !next) return;
+    setStreamChapters((current) => current.length ? current : [next]);
+  }, [paged, next?.id]);
   useEffect(() => {
     if (!pages) return;
     let dead = false;
@@ -121,8 +172,10 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
   const step = useCallback((dir: 1 | -1) => {
     if (!paged) return;
     const s = slides[at];
-    const second = st.doublePages && s && !s.data.wide && slides[at + 1] && !slides[at + 1]!.data.wide ? 2 : 1;
-    const nextIdx = dir === 1 ? at + second : at - (st.doublePages && at >= 2 && !slides[at - 1]?.data.wide && !slides[at - 2]?.data.wide ? 2 : 1);
+    const canPair = (slide?: Slide) => !!slide && (!st.smartSpreads || !slide.data.wide);
+    const second = st.doublePages && canPair(s) && canPair(slides[at + 1]) ? 2 : 1;
+    const previousPair = st.doublePages && at >= 2 && canPair(slides[at - 1]) && canPair(slides[at - 2]);
+    const nextIdx = dir === 1 ? at + second : at - (previousPair ? 2 : 1);
     if (nextIdx >= slides.length) return setEnd(true);
     if (nextIdx < 0) { if (prev) nav(`/read/${encodeURIComponent(prev.id)}`, { replace: true }); return; }
     setEnd(false);
@@ -131,13 +184,23 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
 
   const goChapter = useCallback((c?: ChapterRow) => c && nav(`/read/${encodeURIComponent(c.id)}`, { replace: true }), [nav]);
 
+  useEffect(() => {
+    setAutoNextPaused(false);
+  }, [chapter.id]);
+
+  useEffect(() => {
+    if (!paged || !end || !next || !st.autoNextChapter || autoNextPaused) return;
+    const timer = window.setTimeout(() => goChapter(next), 3000);
+    return () => window.clearTimeout(timer);
+  }, [paged, end, next, st.autoNextChapter, autoNextPaused, goChapter]);
+
   /* ---- progress ---- */
   useEffect(() => {
-    if (!pages) return;
-    const finished = paged ? end || cur >= total - 1 : false;
+    if (!pages || activeChapterId !== chapter.id) return;
+    const finished = end || (paged && cur >= total - 1);
     const t = setTimeout(() => void saveProgress(chapter.id, cur, total, finished), 500);
     return () => clearTimeout(t);
-  }, [cur, end, total, pages, paged, chapter.id]);
+  }, [cur, end, total, pages, paged, chapter.id, activeChapterId]);
 
   useEffect(() => {
     if (end && st.deleteAfterRead) void deleteDownloads([chapter.id]);
@@ -174,20 +237,24 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
   useEffect(() => {
     if (paged || !pages || !scroller.current) return;
     const root = scroller.current;
-    const slots = root.querySelectorAll<HTMLElement>("[data-page]");
+    const slots = root.querySelectorAll<HTMLElement>("[data-primary-page]");
     // a page is "current" while it crosses the vertical middle of the viewport (works for 10,000px strips)
     const io = new IntersectionObserver((entries) => {
-      for (const en of entries) if (en.isIntersecting) setCur(Number((en.target as HTMLElement).dataset.page));
+      for (const en of entries) if (en.isIntersecting) updateActiveChapter(chapter, Number((en.target as HTMLElement).dataset.page), pages.length);
     }, { root, rootMargin: "-50% 0px -50% 0px", threshold: 0 });
     slots.forEach((s) => io.observe(s));
-    const sentinel = root.querySelector("[data-end]");
-    const endIo = new IntersectionObserver(([e]) => e?.isIntersecting && setEnd(true), { root, threshold: 0.4 });
+    const sentinel = root.querySelector("[data-current-end]");
+    const endIo = new IntersectionObserver(([e]) => {
+      if (!e?.isIntersecting) return;
+      setEnd(true);
+      void saveProgress(chapter.id, pages.length - 1, pages.length, true);
+    }, { root, threshold: 0.4 });
     if (sentinel) endIo.observe(sentinel);
     // resume position
     if (startPage.current > 0) root.querySelector<HTMLElement>(`[data-page="${startPage.current}"]`)?.scrollIntoView();
     startPage.current = 0;
     return () => { io.disconnect(); endIo.disconnect(); };
-  }, [paged, pages]);
+  }, [paged, pages, chapter, updateActiveChapter]);
 
   useEffect(() => {
     if (paged && pages && startPage.current > 0 && slides.length) {
@@ -216,20 +283,33 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
   /* ---- render ---- */
   const parts = [st.brightness !== 1 && `brightness(${st.brightness})`, st.grayscale && "grayscale(1)", st.invert && "invert(1)", st.sepia > 0 && `sepia(${st.sepia})`].filter(Boolean);
   const filter = parts.length ? parts.join(" ") : "none"; // filtering a giant scroll container stalls the compositor, so it is applied per image
-  const label = `Ch. ${formatChapterNumber(chapter.number)}${chapter.name && !/^\s*(ch|chapter)/i.test(chapter.name) ? `, ${chapter.name}` : ""}`;
-  const shown = Math.min(cur + 1, total);
+  const label = `Ch. ${formatChapterNumber(activeChapter.number)}${activeChapter.name && !/^\s*(ch|chapter)/i.test(activeChapter.name) ? `, ${activeChapter.name}` : ""}`;
+  const activePageTotal = activeTotal || total;
+  const shown = Math.min(cur + 1, activePageTotal);
+  const visibleStream = streamChapters.length ? streamChapters : (!paged && next ? [next] : []);
+  const goActiveChapter = (direction: 1 | -1) => {
+    const target = direction === 1 ? activeNext : activePrev;
+    if (!target) return;
+    const inline = !paged ? document.getElementById(`stream-${encodeURIComponent(target.id)}`) : null;
+    if (inline) inline.scrollIntoView({ behavior: "smooth", block: "start" });
+    else goChapter(target);
+  };
 
   const endCard = (
-    <div className="interstitial" data-end>
-      <div className="kicker">Finished</div>
+    <div className="interstitial" data-current-end>
+      <div className="kicker">Chapter transition</div>
       <h2>{label}</h2>
       {gap > 0 && <div className="gap-note">{gap} chapter{gap === 1 ? "" : "s"} missing before the next one.</div>}
       {next ? (
         <>
-          <p className="muted">Up next: Ch. {formatChapterNumber(next.number)} {next.name}</p>
-          <button className="btn primary" onClick={() => goChapter(next)}>Next chapter</button>
+          <p className="muted">Up next: Ch. {formatChapterNumber(next.number)}{next.name ? `, ${next.name}` : ""}</p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+            {prev && <button className="btn" onClick={() => goChapter(prev)}>Previous chapter</button>}
+            <button className="btn primary" onClick={() => goChapter(next)}>{st.autoNextChapter && !autoNextPaused ? "Continue now" : "Next chapter"}</button>
+          </div>
+          {st.autoNextChapter && !autoNextPaused && <button className="btn ghost" onClick={() => setAutoNextPaused(true)}>Stay on this chapter</button>}
         </>
-      ) : <p className="muted">That is the latest chapter. Check back after the next update.</p>}
+      ) : <><p className="muted">That is the latest chapter. Check back after the next update.</p>{prev && <button className="btn" onClick={() => goChapter(prev)}>Previous chapter</button>}</>}
       <button className="btn ghost" onClick={() => nav(`/series/${encodeURIComponent(manga.id)}`)}>Back to series</button>
     </div>
   );
@@ -246,54 +326,99 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
           </div>
         </div>
       )}
-      {!pages && !error && <div className="interstitial"><div className="skel" style={{ width: 220, height: 14 }} /><span className="mono muted">Fetching pages</span></div>}
+      {paged && !pages && !error && <div className="interstitial"><div className="skel" style={{ width: 220, height: 14 }} /><span className="mono muted">Fetching pages</span></div>}
 
-      {pages && !paged && (
-        <div ref={scroller} onClick={onTap} style={{ position: "absolute", inset: 0, overflowY: "auto" }}>
-          <div className="col" style={{ padding: `0 ${st.webtoonSidePadding}%`, maxWidth: 760, margin: "0 auto", gap: st.webtoonGap }}>
-            {pages.map((p) => <ScrollPage key={p.index} page={p} crop={st.cropBorders} />)}
-          </div>
-          {endCard}
+      {!paged && (
+        <div
+          ref={scroller}
+          onClick={onTap}
+          onWheel={(event) => { if (event.deltaY < 0 && event.currentTarget.scrollTop <= 1) prependStreamChapter(); }}
+          onTouchStart={(event) => { touchStartY.current = event.touches[0]?.clientY ?? null; }}
+          onTouchMove={(event) => {
+            const y = event.touches[0]?.clientY;
+            if (y !== undefined && touchStartY.current !== null && y > touchStartY.current && event.currentTarget.scrollTop <= 1) prependStreamChapter();
+            touchStartY.current = y ?? null;
+          }}
+          style={{ position: "absolute", inset: 0, overflowY: "auto", overflowAnchor: "auto" }}
+        >
+          {previousChapters.map((item) => (
+            <ContinuousChapter
+              key={item.id}
+              chapter={item}
+              manga={manga}
+              rootRef={scroller}
+              crop={st.cropBorders}
+              preload={st.preload}
+              onActive={updateActiveChapter}
+              gap={missingBetween(item.number, (adjacent(item, 1) ?? chapter).number)}
+              next={adjacent(item, 1) ?? chapter}
+              onNeedNext={appendStreamChapter}
+            />
+          ))}
+          <div id="reader-current-anchor" />
+          {pages ? (
+            <>
+              <div id={`stream-${encodeURIComponent(chapter.id)}`} className="col" style={{ padding: `0 ${st.webtoonSidePadding}%`, maxWidth: 760, margin: "0 auto", gap: st.webtoonGap }}>
+                {pages.map((p) => <ScrollPage key={`${chapter.id}-${p.index}`} chapterId={chapter.id} page={p} crop={st.cropBorders} preload={st.preload} primary />)}
+              </div>
+              {next ? <ChapterDivider chapter={chapter} next={next} gap={gap} /> : endCard}
+              <div className="reader-boundary" data-current-end />
+            </>
+          ) : <ChapterLoading label={label} />}
+          {visibleStream.map((item) => (
+            <ContinuousChapter
+              key={item.id}
+              chapter={item}
+              manga={manga}
+              rootRef={scroller}
+              crop={st.cropBorders}
+              preload={st.preload}
+              onActive={updateActiveChapter}
+              gap={adjacent(item, 1) ? missingBetween(item.number, adjacent(item, 1)!.number) : 0}
+              next={adjacent(item, 1)}
+              onNeedNext={appendStreamChapter}
+            />
+          ))}
         </div>
       )}
 
       {pages && paged && !end && (
         <div className="stage" onClick={onTap}>
-          <PagedView slides={slides} at={at} double={st.doublePages && st.smartSpreads !== undefined} rtl={rtl} fit={st.fit} vertical={mode === "paged-vertical"} />
+          <PagedView slides={slides} at={at} double={st.doublePages} smart={st.smartSpreads} rtl={rtl} fit={st.fit} vertical={mode === "paged-vertical"} />
         </div>
       )}
       {pages && paged && end && <div className="stage">{endCard}</div>}
 
-      {pages && st.showPageNumber && !hud && !end && <div className="pageno">{shown} / {total}</div>}
+      {pages && st.showPageNumber && !hud && !end && <div className="pageno">{shown} / {activePageTotal}</div>}
 
       <div className={`hud top${hud ? "" : " hide"}`}>
         <button className="icon-btn" onClick={() => nav(`/series/${encodeURIComponent(manga.id)}`)} aria-label="Back to series"><ArrowLeft size={18} /></button>
         <div className="title" style={{ flex: 1 }}>{manga.title}<small>{label}</small></div>
-        <button className={`icon-btn${chapter.bookmark ? " on" : ""}`} onClick={() => void setBookmark(chapter.id, !chapter.bookmark)} aria-label="Bookmark chapter"><BookmarkSimple size={18} weight={chapter.bookmark ? "fill" : "regular"} /></button>
+        <button className={`icon-btn${activeChapter.bookmark ? " on" : ""}`} onClick={() => void setBookmark(activeChapter.id, !activeChapter.bookmark)} aria-label="Bookmark chapter"><BookmarkSimple size={18} weight={activeChapter.bookmark ? "fill" : "regular"} /></button>
         <button className="icon-btn" onClick={() => setMenu(true)} aria-label="Reader settings"><SlidersHorizontal size={18} /></button>
       </div>
 
       <div className={`hud bottom${hud ? "" : " hide"}`}>
         <div className="scrub">
-          <button className="icon-btn" disabled={!prev} onClick={() => goChapter(prev)} aria-label="Previous chapter"><CaretLeft size={18} /></button>
+          <button className="icon-btn" disabled={!activePrev} onClick={() => goActiveChapter(-1)} aria-label="Previous chapter"><CaretLeft size={18} /></button>
           <span className="mono" style={{ width: 44, textAlign: "right" }}>{shown}</span>
           <div style={{ position: "relative", flex: 1, direction: rtl ? "rtl" : "ltr" }}>
-            {preview !== null && pages?.[preview] && (
-              <img src={pages[preview]!.src} alt="" style={{ position: "absolute", bottom: 34, left: `clamp(0px, calc(${(preview / Math.max(total - 1, 1)) * 100}% - 45px), calc(100% - 90px))`, width: 90, height: 128, objectFit: "cover", border: "1px solid var(--accent)", boxShadow: "4px 4px 0 var(--accent-soft)", background: "#12101a" }} />
+            {preview !== null && activeChapter.id === chapter.id && pages?.[preview] && (
+              <img src={pages[preview]!.src} alt="" style={{ position: "absolute", bottom: 34, left: `clamp(0px, calc(${(preview / Math.max(activePageTotal - 1, 1)) * 100}% - 45px), calc(100% - 90px))`, width: 90, height: 128, objectFit: "cover", border: "1px solid var(--accent)", boxShadow: "4px 4px 0 var(--accent-soft)", background: "#12101a" }} />
             )}
             <input
-              type="range" min={0} max={Math.max(total - 1, 0)} value={Math.min(cur, Math.max(total - 1, 0))} style={{ width: "100%" }} aria-label="Page"
+              type="range" min={0} max={Math.max(activePageTotal - 1, 0)} value={Math.min(cur, Math.max(activePageTotal - 1, 0))} style={{ width: "100%" }} aria-label="Page"
               onChange={(e) => {
                 const p = Number(e.target.value);
                 setPreview(p); setEnd(false);
                 if (paged) setSlideCur(Math.max(0, slides.findIndex((s) => s.page === p && s.piece === 0)));
-                else scroller.current?.querySelector<HTMLElement>(`[data-page="${p}"]`)?.scrollIntoView();
+                else (activeChapter.id === chapter.id ? scroller.current : document.getElementById(`stream-${encodeURIComponent(activeChapter.id)}`))?.querySelector<HTMLElement>(`[data-page="${p}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
               }}
               onPointerUp={() => setPreview(null)} onBlur={() => setPreview(null)}
             />
           </div>
-          <span className="mono" style={{ width: 44 }}>{total}</span>
-          <button className="icon-btn" disabled={!next} onClick={() => goChapter(next)} aria-label="Next chapter"><CaretRight size={18} /></button>
+          <span className="mono" style={{ width: 44 }}>{activePageTotal}</span>
+          <button className="icon-btn" disabled={!activeNext} onClick={() => goActiveChapter(1)} aria-label="Next chapter"><CaretRight size={18} /></button>
         </div>
       </div>
 
@@ -302,8 +427,107 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
   );
 }
 
+function ChapterLoading({ label }: { label: string }) {
+  return (
+    <div className="chapter-loading" role="status" aria-live="polite">
+      <span className="reader-spinner" />
+      <div><strong>{label}</strong><span>Loading chapter pages</span></div>
+      <div className="chapter-skeleton" aria-hidden="true"><i /><i /><i /></div>
+    </div>
+  );
+}
+
+function ChapterDivider({ chapter, next, gap }: { chapter: ChapterRow; next: ChapterRow; gap: number }) {
+  return (
+    <div className="chapter-divider">
+      <span className="kicker">Chapter complete</span>
+      <strong>Ch. {formatChapterNumber(chapter.number)}{chapter.name ? ` · ${chapter.name}` : ""}</strong>
+      <span>Next: Ch. {formatChapterNumber(next.number)}{next.name ? ` · ${next.name}` : ""}</span>
+      {gap > 0 && <small>{gap} chapter{gap === 1 ? "" : "s"} missing</small>}
+    </div>
+  );
+}
+
+function ContinuousChapter({ chapter, manga, rootRef, crop, preload, onActive, gap, next, onNeedNext }: {
+  chapter: ChapterRow;
+  manga: MangaRow;
+  rootRef: React.RefObject<HTMLDivElement | null>;
+  crop: boolean;
+  preload: number;
+  onActive: (chapter: ChapterRow, page: number, total: number) => void;
+  gap: number;
+  next?: ChapterRow;
+  onNeedNext: (chapter: ChapterRow) => void;
+}) {
+  const [pages, setPages] = useState<ReaderPage[] | null>(null);
+  const [error, setError] = useState("");
+  const [tries, setTries] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [finished, setFinished] = useState(false);
+  const section = useRef<HTMLElement>(null);
+  const settings = useSettings();
+  const label = `Ch. ${formatChapterNumber(chapter.number)}${chapter.name ? `, ${chapter.name}` : ""}`;
+
+  useEffect(() => {
+    let dead = false;
+    setPages(null);
+    setError("");
+    loadPages(manga, chapter).then((result) => !dead && setPages(result)).catch((cause: Error) => !dead && setError(cause.message));
+    return () => { dead = true; releasePages(chapter.id); };
+  }, [manga, chapter, tries]);
+
+  useEffect(() => {
+    const container = section.current;
+    if (!container || !pages || !rootRef.current) return;
+    const pageObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) if (entry.isIntersecting) {
+        const page = Number((entry.target as HTMLElement).dataset.page);
+        setCurrentPage(page);
+        onActive(chapter, page, pages.length);
+      }
+    }, { root: rootRef.current, rootMargin: "-50% 0px -50% 0px" });
+    container.querySelectorAll<HTMLElement>("[data-page]").forEach((slot) => pageObserver.observe(slot));
+    const prefetch = container.querySelector("[data-stream-prefetch]");
+    const prefetchObserver = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting && next) onNeedNext(chapter);
+    }, { root: rootRef.current, rootMargin: "1600px 0px" });
+    if (prefetch) prefetchObserver.observe(prefetch);
+    const end = container.querySelector("[data-stream-end]");
+    const endObserver = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) setFinished(true);
+    }, { root: rootRef.current });
+    if (end) endObserver.observe(end);
+    return () => { pageObserver.disconnect(); prefetchObserver.disconnect(); endObserver.disconnect(); };
+  }, [pages, rootRef, next, onNeedNext, onActive, chapter]);
+
+  useEffect(() => {
+    if (!pages) return;
+    const timer = window.setTimeout(() => void saveProgress(chapter.id, currentPage, pages.length, finished), 400);
+    return () => window.clearTimeout(timer);
+  }, [pages, chapter.id, currentPage, finished]);
+
+  useEffect(() => {
+    if (finished && settings.deleteAfterRead) void deleteDownloads([chapter.id]);
+  }, [finished, settings.deleteAfterRead, chapter.id]);
+
+  return (
+    <section ref={section} id={`stream-${encodeURIComponent(chapter.id)}`} className="stream-chapter" aria-label={label}>
+      <div className="stream-heading"><span className="kicker">Now reading</span><strong>{label}</strong></div>
+      {pages ? (
+        <div className="col" style={{ padding: `0 ${settings.webtoonSidePadding}%`, maxWidth: 760, margin: "0 auto", gap: settings.webtoonGap }}>
+          {pages.map((page) => <ScrollPage key={`${chapter.id}-${page.index}`} chapterId={chapter.id} page={page} crop={crop} preload={preload} />)}
+        </div>
+      ) : error ? (
+        <div className="chapter-loading" role="alert"><span>{error}</span><button className="btn sm" onClick={() => setTries((value) => value + 1)}>Retry chapter</button></div>
+      ) : <ChapterLoading label={label} />}
+      {next ? <><div className="reader-boundary" data-stream-prefetch /><ChapterDivider chapter={chapter} next={next} gap={gap} /></> : <div className="chapter-divider"><span className="kicker">End of available chapters</span><strong>{label}</strong><span>Check back after the next update.</span></div>}
+      <div className="reader-boundary" data-stream-end />
+    </section>
+  );
+}
+
 /* ----------------------------- webtoon page ----------------------------- */
-function ScrollPage({ page, crop }: { page: ReaderPage; crop: boolean }) {
+function ScrollPage({ page, chapterId, crop, preload, primary = false }: { page: ReaderPage; chapterId: string; crop: boolean; preload: number; primary?: boolean }) {
   const [src, setSrc] = useState<string>(page.src);
   const [state, setState] = useState<"idle" | "loaded" | "error">("idle");
   const [n, setN] = useState(0);
@@ -313,7 +537,7 @@ function ScrollPage({ page, crop }: { page: ReaderPage; crop: boolean }) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const io = new IntersectionObserver(([e]) => e?.isIntersecting && setNear(true), { rootMargin: "1800px 0px" });
+    const io = new IntersectionObserver(([e]) => e?.isIntersecting && setNear(true), { rootMargin: `${Math.max(1200, preload * 500)}px 0px` });
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -329,19 +553,19 @@ function ScrollPage({ page, crop }: { page: ReaderPage; crop: boolean }) {
   }, [near, crop, page.src]);
 
   return (
-    <div ref={ref} data-page={page.index} className={`rslot${state === "loaded" ? " loaded" : ""}`} style={state === "loaded" ? undefined : { minHeight: "70vh" }}>
-      {state !== "loaded" && <span className="ph">{state === "error" ? "" : page.index + 1}</span>}
-      {near && state !== "error" && <img className="rimg" src={n ? `${src}${src.includes("?") ? "&" : "?"}r=${n}` : src} alt={`Page ${page.index + 1}`} onLoad={() => setState("loaded")} onError={() => (n < 2 ? setTimeout(() => setN(n + 1), 600) : setState("error"))} draggable={false} />}
+    <div ref={ref} data-page={page.index} data-chapter-id={chapterId} data-primary-page={primary ? "" : undefined} className={`rslot${state === "loaded" ? " loaded" : ""}`} style={state === "loaded" ? undefined : { minHeight: "70vh" }}>
+      {state !== "loaded" && state !== "error" && <div className="page-loading" aria-hidden="true"><span className="reader-spinner" /><span className="ph">{page.index + 1}</span></div>}
+      {near && state !== "error" && <img className="rimg" src={n ? `${src}${src.includes("?") ? "&" : "?"}r=${n}` : src} alt={`Page ${page.index + 1}`} loading="eager" decoding="async" fetchPriority={page.index < 2 ? "high" : "auto"} onLoad={() => setState("loaded")} onError={() => (n < 2 ? setTimeout(() => setN(n + 1), 600) : setState("error"))} draggable={false} />}
       {state === "error" && <button className="btn sm" onClick={(e) => { e.stopPropagation(); setN(0); setState("idle"); setSrc(page.src + `${page.src.includes("?") ? "&" : "?"}x=${Date.now()}`); }}>Page {page.index + 1} failed. Retry</button>}
     </div>
   );
 }
 
 /* ------------------------------- paged view ------------------------------- */
-function PagedView({ slides, at, double, rtl, fit, vertical }: { slides: Slide[]; at: number; double: boolean; rtl: boolean; fit: string; vertical: boolean }) {
+function PagedView({ slides, at, double, smart, rtl, fit, vertical }: { slides: Slide[]; at: number; double: boolean; smart: boolean; rtl: boolean; fit: string; vertical: boolean }) {
   const a = slides[at];
-  const b = double && a && !a.data.wide ? slides[at + 1] : undefined;
-  const pair = b && !b.data.wide ? [a!, b] : a ? [a] : [];
+  const b = double && a && (!smart || !a.data.wide) ? slides[at + 1] : undefined;
+  const pair = b && (!smart || !b.data.wide) ? [a!, b] : a ? [a] : [];
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number } | null>(null);

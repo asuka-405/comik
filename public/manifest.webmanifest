@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Comik - Manga Reader",
+  "short_name": "Comik",
+  "description": "A personal manga reader and library.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#121019",
+  "theme_color": "#121019",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

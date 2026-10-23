@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { create } from "zustand";
-import { X } from "@phosphor-icons/react";
+import { ArrowLeft, X } from "@phosphor-icons/react";
 import { imageUrl } from "@/core/http";
 import { getSource } from "@/core/sources/registry";
 import { hash53 } from "@/core/hash";
@@ -151,4 +151,14 @@ export function useDebounced<T>(value: T, ms = 300): T {
     return () => clearTimeout(t);
   }, [value, ms]);
   return v;
+}
+
+/** Back button that floats over the page corner instead of taking a row in the header. */
+export function FloatBack({ to }: { to?: string }) {
+  const nav = useNavigate();
+  return (
+    <button className="float-back" aria-label="Back" title="Back" onClick={() => (to ? nav(to) : history.length > 1 ? nav(-1) : nav("/"))}>
+      <ArrowLeft size={18} />
+    </button>
+  );
 }

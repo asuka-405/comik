@@ -1,25 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, ArrowsDownUp, BookmarkSimple, Check, DownloadSimple, Play, Plus, Trash, ArrowsClockwise, Tag } from "@phosphor-icons/react";
+import { ArrowsDownUp, BookmarkSimple, CaretLeft, CaretRight, Check, DownloadSimple, Play, Plus, Trash, ArrowsClockwise, Tag } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { getSource } from "@/core/sources/registry";
 import { findDuplicates, markPreviousRead, setBookmark, setInLibrary, setMangaCategories, setRead, patchManga } from "@/core/repo";
 import { refreshManga } from "@/core/updater";
-import { resumeTarget, readingOrder } from "@/core/progress";
+import { resumeTarget, readingOrder, dedupeByNumber } from "@/core/progress";
 import { formatChapterNumber, missingBetween } from "@/core/chapterRecognition";
 import { deleteDownloads, enqueueDownloads } from "@/core/downloads";
 import type { ChapterRow } from "@/core/types";
-import { Empty, Sheet, coverSrc, hueOf, timeAgo, toast } from "../common";
+import { Empty, FloatBack, Sheet, coverSrc, hueOf, timeAgo, toast } from "../common";
 import { dominantColor } from "../color";
 
 type Filt = "unread" | "bookmarked" | "downloaded";
+const CHAPTERS_PER_PAGE = 50;
 
 export function Series() {
   const id = decodeURIComponent(useParams().id ?? "");
   const nav = useNavigate();
   const manga = useLiveQuery(() => db.manga.get(id), [id]);
   const chapters = useLiveQuery(() => db.chapters.where("mangaId").equals(id).toArray(), [id], [] as ChapterRow[]);
+  const chapterCount = useLiveQuery(() => db.chapters.where("mangaId").equals(id).count(), [id]);
   const downloads = useLiveQuery(() => db.downloads.where("mangaId").equals(id).toArray(), [id], []);
   const cats = useLiveQuery(() => db.categories.orderBy("order").toArray().then((c) => c.filter((x) => !x.deleted)), [], []);
   const [loading, setLoading] = useState(false);
@@ -28,6 +30,10 @@ export function Series() {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<Set<Filt>>(new Set());
   const [catSheet, setCatSheet] = useState(false);
+  const [showDupes, setShowDupes] = useState(false);
+  const [chapterPage, setChapterPage] = useState(0);
+
+  useEffect(() => setChapterPage(0), [id]);
 
   const source = manga ? getSource(manga.sourceId) : undefined;
   const dlMap = useMemo(() => new Map((downloads ?? []).map((d) => [d.chapterId, d])), [downloads]);
@@ -58,18 +64,22 @@ export function Series() {
 
   const asc = manga?.chapterSortAsc ?? false;
   const list = useMemo(() => {
-    let l = readingOrder(chapters ?? []);
+    let l = readingOrder(showDupes ? (chapters ?? []) : dedupeByNumber(chapters ?? []));
     if (filters.has("unread")) l = l.filter((c) => !c.read);
     if (filters.has("bookmarked")) l = l.filter((c) => c.bookmark);
     if (filters.has("downloaded")) l = l.filter((c) => dlMap.get(c.id)?.state === "done");
     return asc ? l : l.reverse();
-  }, [chapters, filters, asc, dlMap]);
+  }, [chapters, filters, asc, dlMap, showDupes]);
+  const pageCount = Math.ceil(list.length / CHAPTERS_PER_PAGE);
+  const pageIndex = Math.min(chapterPage, Math.max(0, pageCount - 1));
+  const visibleChapters = list.slice(pageIndex * CHAPTERS_PER_PAGE, (pageIndex + 1) * CHAPTERS_PER_PAGE);
 
   if (manga === undefined) return <div className="page"><div className="skel" style={{ height: 320 }} /></div>;
   if (!manga) return <div className="page"><Empty title="Series not found" body="Open it from Discover again." action={<button className="btn primary" onClick={() => nav("/browse")}>Discover</button>} /></div>;
 
   const target = resumeTarget(chapters ?? []);
-  const unread = (chapters ?? []).filter((c) => !c.read).length;
+  const unread = dedupeByNumber(chapters ?? []).filter((c) => !c.read).length;
+  const dupeCount = (chapters?.length ?? 0) - dedupeByNumber(chapters ?? []).length;
   const toggleSel = (cid: string) => setSel((s) => { const n = new Set(s); n.has(cid) ? n.delete(cid) : n.add(cid); return n; });
   const chosen = (chapters ?? []).filter((c) => sel.has(c.id));
 
@@ -93,9 +103,10 @@ export function Series() {
 
   let prev: ChapterRow | undefined;
   return (
-    <div className="page" style={{ ["--series" as string]: manga.accent ?? "var(--accent)" }} data-hue={hueOf(manga.id)}>
+    <>
+    <FloatBack />
+    <div className="page has-back" style={{ ["--series" as string]: manga.accent ?? "var(--accent)" }} data-hue={hueOf(manga.id)}>
       <div className="topbar">
-        <button className="icon-btn" onClick={() => nav(-1)} aria-label="Back"><ArrowLeft size={18} /></button>
         <span className="kicker">{source?.name ?? manga.sourceId}</span>
         <div className="spacer" />
         <button className="icon-btn" onClick={refresh} aria-label="Refresh" title="Refresh"><ArrowsClockwise size={18} className={loading ? "spin" : ""} /></button>
@@ -108,7 +119,7 @@ export function Series() {
           <div className="muted" style={{ marginTop: 6, fontWeight: 600 }}>{[manga.author, manga.artist && manga.artist !== manga.author ? manga.artist : ""].filter(Boolean).join(", ") || "Unknown author"}</div>
           <div className="facts">
             {manga.status !== "unknown" && <span className="tag" style={{ background: "var(--series)", color: "#101018", textTransform: "capitalize" }}>{manga.status}</span>}
-            <span className="tag dim">{chapters?.length ?? 0} chapters</span>
+            <span className="tag dim">{chapterCount ?? chapters?.length ?? 0} chapters</span>
             {unread > 0 && <span className="tag warm">{unread} unread</span>}
             {manga.genres.slice(0, 6).map((g) => <span className="tag dim" key={g}>{g}</span>)}
           </div>
@@ -130,9 +141,10 @@ export function Series() {
       <div className="topbar" style={{ marginBottom: 12 }}>
         <div className="kicker" style={{ flex: 1 }}>Chapters</div>
         {(["unread", "bookmarked", "downloaded"] as Filt[]).map((f) => (
-          <button key={f} className={`chip${filters.has(f) ? " on" : ""}`} onClick={() => setFilters((s) => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n; })} style={{ textTransform: "capitalize" }}>{f}</button>
+          <button key={f} className={`chip${filters.has(f) ? " on" : ""}`} onClick={() => { setChapterPage(0); setFilters((s) => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n; }); }} style={{ textTransform: "capitalize" }}>{f}</button>
         ))}
-        <button className="icon-btn" onClick={() => patchManga(manga.id, { chapterSortAsc: !asc })} aria-label="Reverse order" title={asc ? "Oldest first" : "Newest first"}><ArrowsDownUp size={18} /></button>
+        {dupeCount > 0 && <button className={`chip${showDupes ? " on" : ""}`} onClick={() => { setShowDupes((v) => !v); setChapterPage(0); }} title="Other uploads of the same chapter number">{dupeCount} duplicate{dupeCount === 1 ? "" : "s"}</button>}
+        <button className="icon-btn" onClick={() => { setChapterPage(0); void patchManga(manga.id, { chapterSortAsc: !asc }); }} aria-label="Reverse order" title={asc ? "Oldest first" : "Newest first"}><ArrowsDownUp size={18} /></button>
         <button className="btn sm" onClick={() => setSel(new Set(list.map((c) => c.id)))}>Select all</button>
       </div>
 
@@ -140,7 +152,7 @@ export function Series() {
       {!loading && !chapters?.length && !error && <Empty title="No readable chapters" body="This source has none in this language. Some titles only link out to the publisher, which cannot be read here. You can refresh or try another source." />}
 
       <div>
-        {list.map((c) => {
+        {visibleChapters.map((c) => {
           const gap = prev && !filters.size && asc ? missingBetween(prev.number, c.number) : 0;
           const gapDesc = prev && !filters.size && !asc ? missingBetween(c.number, prev.number) : 0;
           prev = c;
@@ -167,6 +179,15 @@ export function Series() {
         })}
       </div>
 
+      {list.length > 0 && <div className="topbar" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+        <span className="muted mono" style={{ fontSize: 12 }}>
+          {pageIndex * CHAPTERS_PER_PAGE + 1}-{Math.min((pageIndex + 1) * CHAPTERS_PER_PAGE, list.length)} of {list.length}
+        </span>
+        <button className="icon-btn" onClick={() => setChapterPage((p) => Math.max(0, p - 1))} disabled={pageIndex === 0} aria-label="Previous chapter page" title="Previous page"><CaretLeft size={18} /></button>
+        <span className="muted mono" style={{ fontSize: 12 }}>Page {pageIndex + 1} of {pageCount}</span>
+        <button className="icon-btn" onClick={() => setChapterPage((p) => Math.min(pageCount - 1, p + 1))} disabled={pageIndex >= pageCount - 1} aria-label="Next chapter page" title="Next page"><CaretRight size={18} /></button>
+      </div>}
+
       {sel.size > 0 && (
         <div className="selbar" role="toolbar" aria-label="Selected chapters">
           <button className="btn sm" onClick={() => { void setRead([...sel], true); setSel(new Set()); }}><Check size={14} /> Read</button>
@@ -191,5 +212,6 @@ export function Series() {
         </Sheet>
       )}
     </div>
+    </>
   );
 }

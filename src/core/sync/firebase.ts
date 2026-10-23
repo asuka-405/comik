@@ -11,6 +11,10 @@ import type { FirebaseOptions } from "firebase/app";
  */
 
 const LS_KEY = "comik.firebase.config";
+const MODE_KEY = "comik.firebase.mode";
+const ENV_CONFIG = import.meta.env.VITE_FIREBASE_CONFIG as string | undefined;
+
+export type FirebaseMode = "default" | "custom";
 
 export type SyncStatus = "off" | "connecting" | "ready" | "error";
 
@@ -38,15 +42,31 @@ export const useSync = create<SyncStore>((set) => ({
   patch: (p) => set(p),
 }));
 
-export function readFirebaseConfig(): FirebaseOptions | null {
+function parseConfig(raw: string | undefined): FirebaseOptions | null {
   try {
-    const raw = localStorage.getItem(LS_KEY) ?? (import.meta.env.VITE_FIREBASE_CONFIG as string | undefined);
     if (!raw) return null;
     const cfg = JSON.parse(raw) as FirebaseOptions;
-    return cfg.apiKey && cfg.projectId ? cfg : null;
+    return cfg.apiKey && cfg.projectId && cfg.appId ? cfg : null;
   } catch {
     return null;
   }
+}
+
+export function getFirebaseMode(): FirebaseMode {
+  const selected = localStorage.getItem(MODE_KEY);
+  if (selected === "default" || selected === "custom") return selected;
+  return localStorage.getItem(LS_KEY) ? "custom" : "default";
+}
+
+export function setFirebaseMode(mode: FirebaseMode) {
+  localStorage.setItem(MODE_KEY, mode);
+  bits = null;
+}
+
+export const defaultFirebaseAvailable = () => parseConfig(ENV_CONFIG) !== null;
+
+export function readFirebaseConfig(): FirebaseOptions | null {
+  return getFirebaseMode() === "custom" ? parseConfig(localStorage.getItem(LS_KEY) ?? undefined) : parseConfig(ENV_CONFIG);
 }
 
 /** Accepts strict JSON or the JS object literal Firebase's console shows (`const firebaseConfig = {...}`). */
@@ -65,8 +85,13 @@ export function parseFirebaseConfig(input: string): FirebaseOptions {
 }
 
 export function saveFirebaseConfig(cfg: FirebaseOptions | null) {
-  if (cfg) localStorage.setItem(LS_KEY, JSON.stringify(cfg));
-  else localStorage.removeItem(LS_KEY);
+  if (cfg) {
+    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+    setFirebaseMode("custom");
+  } else {
+    localStorage.removeItem(LS_KEY);
+    setFirebaseMode("default");
+  }
 }
 
 export const syncAvailable = () => readFirebaseConfig() !== null;
@@ -86,7 +111,8 @@ export function loadFirebase(): Promise<FirebaseBits> {
   if (!cfg) return Promise.reject(new Error("Firebase is not configured"));
   bits = (async () => {
     const [{ initializeApp, getApps }, authMod, fsMod] = await Promise.all([import("firebase/app"), import("firebase/auth"), import("firebase/firestore")]);
-    const app = getApps()[0] ?? initializeApp(cfg);
+    const appName = `comik-${cfg.projectId}`;
+    const app = getApps().find((candidate) => candidate.name === appName) ?? initializeApp(cfg, appName);
     const auth = authMod.getAuth(app);
     // Firestore's own offline cache doubles as a write queue when the network drops.
     const fs = fsMod.initializeFirestore(app, { localCache: fsMod.persistentLocalCache({ tabManager: fsMod.persistentMultipleTabManager() }) });

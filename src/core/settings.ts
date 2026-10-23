@@ -13,6 +13,11 @@ export interface Settings {
   fx: boolean;
   /** Where the proxy lives. Empty = same origin (/api). */
   proxyUrl: string;
+  /** Source IDs disabled on this device. */
+  disabledSourceIds: string[];
+  /** Firebase Analytics is explicitly opt-in. */
+  analyticsConsent: boolean;
+  imgurClientId: string;
 
   // library
   librarySort: LibrarySort;
@@ -60,6 +65,9 @@ export const useSettings = create<Settings>()(
       theme: "system",
       fx: true,
       proxyUrl: "",
+      disabledSourceIds: [],
+      analyticsConsent: false,
+      imgurClientId: "",
 
       librarySort: "lastRead",
       librarySortAsc: false,
