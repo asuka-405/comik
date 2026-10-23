@@ -22,7 +22,7 @@ Browsers cannot read most comic sites (no CORS, referer-locked images). `server/
 
 ## Sync (optional)
 
-Settings > Sync lets a reader use the app server's Firebase project or bring their own. The hosted project is configured at build time with `VITE_FIREBASE_CONFIG` (a JSON Firebase web config); set it on the deployment server to enable the shared community backend. Without it, readers can select Own Firebase and enter their own project config.
+Settings > Sync lets a reader use the app server's Firebase project or bring their own. The app-server project has a built-in Firebase web config; deployments can override it at build time with `VITE_FIREBASE_CONFIG`. Readers can also select Own Firebase and enter their own project config.
 
 Enable Google sign-in and Anonymous auth in Firebase Authentication, create Firestore, then apply the rules shown in Settings. Sync stays private under `users/{uid}`. Community posts, comments, ratings, and polls are shared only inside the selected Firebase project; community contributions require a non-anonymous sign-in. Each Firebase project uses its own named client app and user session.
 

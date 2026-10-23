@@ -13,6 +13,15 @@ import type { FirebaseOptions } from "firebase/app";
 const LS_KEY = "comik.firebase.config";
 const MODE_KEY = "comik.firebase.mode";
 const ENV_CONFIG = import.meta.env.VITE_FIREBASE_CONFIG as string | undefined;
+const BUILT_IN_CONFIG: FirebaseOptions = {
+  apiKey: "AIzaSyC-Td_4ePDAi_y3rjNYV3e2Wh-QzoLzXH8",
+  authDomain: "comik-7157c.firebaseapp.com",
+  projectId: "comik-7157c",
+  storageBucket: "comik-7157c.firebasestorage.app",
+  messagingSenderId: "202200394347",
+  appId: "1:202200394347:web:060ac88d29594d1afe9f2e",
+  measurementId: "G-CK0GZMT50R",
+};
 
 export type FirebaseMode = "default" | "custom";
 
@@ -63,10 +72,12 @@ export function setFirebaseMode(mode: FirebaseMode) {
   bits = null;
 }
 
-export const defaultFirebaseAvailable = () => parseConfig(ENV_CONFIG) !== null;
+export const defaultFirebaseAvailable = () => !!parseConfig(ENV_CONFIG) || !!BUILT_IN_CONFIG.projectId;
 
 export function readFirebaseConfig(): FirebaseOptions | null {
-  return getFirebaseMode() === "custom" ? parseConfig(localStorage.getItem(LS_KEY) ?? undefined) : parseConfig(ENV_CONFIG);
+  return getFirebaseMode() === "custom"
+    ? parseConfig(localStorage.getItem(LS_KEY) ?? undefined)
+    : parseConfig(ENV_CONFIG) ?? BUILT_IN_CONFIG;
 }
 
 /** Accepts strict JSON or the JS object literal Firebase's console shows (`const firebaseConfig = {...}`). */
