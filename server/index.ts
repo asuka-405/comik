@@ -252,14 +252,16 @@ function errorResponse(err: unknown): Response {
   return Response.json({ error: timeout ? "upstream timeout" : message }, { status: timeout ? 504 : 502 });
 }
 
-if (process.env.NODE_ENV === "production") {
-  app.use("/*", serveStatic({ root: "./dist" }));
-  const indexHtml = await readFile("./dist/index.html", "utf8").catch(() => null);
-  if (indexHtml) app.get("*", (c) => c.html(indexHtml));
-}
+async function startServer() {
+  if (process.env.NODE_ENV === "production") {
+    app.use("/*", serveStatic({ root: "./dist" }));
+    const indexHtml = await readFile("./dist/index.html", "utf8").catch(() => null);
+    if (indexHtml) app.get("*", (c) => c.html(indexHtml));
+  }
 
-if (!process.env.NETLIFY) {
   serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`comik proxy listening on :${info.port}`);
   });
 }
+
+if (!process.env.NETLIFY) void startServer();
