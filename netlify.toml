@@ -8,3 +8,9 @@
 
 [functions]
   node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/comik-api/:splat"
+  status = 200
+  force = true

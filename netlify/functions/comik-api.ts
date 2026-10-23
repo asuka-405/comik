@@ -9,15 +9,19 @@ interface NetlifyEvent {
   isBase64Encoded?: boolean;
 }
 
-export const config = { path: "/api/*" };
-
 export async function handler(event: NetlifyEvent) {
   const headers = new Headers();
   for (const [key, value] of Object.entries(event.headers)) if (value) headers.set(key, value);
   const host = headers.get("x-forwarded-host") ?? headers.get("host") ?? "localhost";
   const protocol = headers.get("x-forwarded-proto") ?? "https";
   const requestUrl = new URL(event.rawUrl ?? event.path, `${protocol}://${host}`);
-  if (!requestUrl.pathname.startsWith("/api/")) requestUrl.pathname = `/api/${requestUrl.pathname.replace(/^\/+/, "")}`;
+  const functionPrefix = "/.netlify/functions/comik-api";
+  if (requestUrl.pathname.startsWith(functionPrefix)) {
+    const suffix = requestUrl.pathname.slice(functionPrefix.length).replace(/^\/+/, "");
+    requestUrl.pathname = `/api/${suffix}`;
+  } else if (!requestUrl.pathname.startsWith("/api/")) {
+    requestUrl.pathname = `/api/${requestUrl.pathname.replace(/^\/+/, "")}`;
+  }
 
   const init: RequestInit = { method: event.httpMethod, headers };
   if (event.body && event.httpMethod !== "GET" && event.httpMethod !== "HEAD") {
