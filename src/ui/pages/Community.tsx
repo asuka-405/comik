@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChatCircleDots, Heart, MagnifyingGlass, ShareNetwork } from "@phosphor-icons/react";
+import { ArrowLeft, ChatCircleDots, Heart, MagnifyingGlass, PencilSimpleLine, ShareNetwork } from "@phosphor-icons/react";
 import { useSettings } from "@/core/settings";
 import { db } from "@/core/db";
 import { hash53 } from "@/core/hash";
@@ -61,7 +61,10 @@ export function CommunityPage() {
         <main className="community-main">
       <div className="community-titlebar">
         <div><div className="kicker">Comik · readers' corner</div><h1>Community</h1><p>Talk chapters, trade recommendations, and find your next read.</p></div>
-        {sync.user?.isAnonymous && <button className="btn primary" onClick={() => void linkGoogle().then(() => toast("Google account connected")).catch((cause: Error) => toast(cause.message, true))}>Sign in with Google</button>}
+        <div className="community-title-actions">
+          <Link className="btn primary" to="/community/new"><PencilSimpleLine size={18} />Write a post</Link>
+          {sync.user?.isAnonymous && <button className="btn" onClick={() => void linkGoogle().then(() => toast("Google account connected")).catch((cause: Error) => toast(cause.message, true))}>Sign in</button>}
+        </div>
       </div>
       {!config ? (
         <section className="panel"><h2>Firebase is not configured</h2><p className="muted">Choose the app server or connect your Firebase project in Settings to use the community.</p><a className="btn" href="#/settings">Open Firebase settings</a></section>
@@ -70,7 +73,6 @@ export function CommunityPage() {
       ) : (
         <>
           {error && <div className="err" role="alert">{error}</div>}
-          <CommunityComposer onPublished={(post) => setPosts((items) => [post, ...items])} />
           <div className="community-feed-tools">
             <div className="community-feed-filters" role="tablist" aria-label="Filter community posts">
               {([ ["all", "For you"], ["discussion", "Discussions"], ["recommendation", "Picks"], ["poll", "Polls"] ] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={kindFilter === value} className={kindFilter === value ? "active" : ""} onClick={() => setKindFilter(value)}>{label}</button>)}
@@ -95,6 +97,34 @@ export function CommunityPage() {
           <div className="community-aside-foot">Posts and ratings are shared within the selected Firebase project.</div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+export function CommunityNewPostPage() {
+  const sync = useSync();
+  const config = readFirebaseConfig();
+  const navigate = useNavigate();
+  const connect = () => {
+    localStorage.setItem("comik.sync.enabled", "1");
+    void startSync();
+  };
+
+  return (
+    <div className="page community-new-page">
+      <Link className="community-back" to="/community"><ArrowLeft size={17} />Back to community</Link>
+      <header className="community-new-heading"><div className="kicker">The reading room</div><h1>Start a conversation</h1><p>Share a thought, put a question to readers, or give someone their next favorite series.</p></header>
+      {!config ? (
+        <section className="community-gate"><h2>Set up Firebase first</h2><p>Connect the app server or your own Firebase project to publish community posts.</p><Link className="btn primary" to="/settings">Open Firebase settings</Link></section>
+      ) : sync.status === "off" ? (
+        <section className="community-gate"><h2>Connect to the reading room</h2><p>Posts and replies are shared with people using this Firebase project.</p><button className="btn primary" onClick={connect}>Connect</button></section>
+      ) : (
+        <>
+          {sync.status === "error" && <div className="err" role="alert">{sync.error}</div>}
+          <CommunityComposer onPublished={() => navigate("/community", { replace: true })} />
+          {(!sync.user || sync.user.isAnonymous) && <Link className="community-login-prompt" to="/login">Sign in with Google to publish</Link>}
+        </>
+      )}
     </div>
   );
 }

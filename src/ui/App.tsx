@@ -19,7 +19,7 @@ import { Series } from "./pages/Series";
 import { Timeline } from "./pages/Timeline";
 import { SettingsPage } from "./pages/Settings";
 import { SourceSettingsPage } from "./pages/SourceSettings";
-import { CommunityPage } from "./pages/Community";
+import { CommunityNewPostPage, CommunityPage } from "./pages/Community";
 import { AccountPage } from "./pages/Account";
 import { LoginPage } from "./pages/Login";
 import { SourceStudioPage } from "./components/SourceStudio";
@@ -32,7 +32,7 @@ function useTheme() {
     const apply = () => {
       const resolved = theme === "system" ? (mq.matches ? "light" : "dark") : theme;
       document.documentElement.dataset.theme = resolved;
-      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "light" ? "#d8d4e4" : "#121019");
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "light" ? "#e6ecdf" : "#111713");
     };
     apply();
     mq.addEventListener("change", apply);
@@ -107,6 +107,7 @@ export function App() {
             <Route path="/series/:id" element={<Series />} />
             <Route path="/timeline" element={<Timeline />} />
             <Route path="/community" element={<CommunityPage />} />
+            <Route path="/community/new" element={<CommunityNewPostPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/settings" element={<SettingsPage />} />
