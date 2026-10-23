@@ -60,7 +60,7 @@ export async function removeCustomSource(id: string) {
 
 export const onSourcesChange = (fn: () => void) => {
   subs.add(fn);
-  return () => subs.delete(fn);
+  return () => { subs.delete(fn); };
 };
 
 export const allSources = (): Source[] => [...builtin, ...custom.values()];
