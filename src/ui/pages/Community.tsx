@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { ChatCircleDots, Heart, MagnifyingGlass, ShareNetwork } from "@phosphor-icons/react";
 import { useSettings } from "@/core/settings";
 import { db } from "@/core/db";
 import { hash53 } from "@/core/hash";
@@ -7,17 +9,20 @@ import { trackAnalytics } from "@/core/analytics";
 import { getSource } from "@/core/sources/registry";
 import { defaultFirebaseAvailable, linkGoogle, readFirebaseConfig, useSync } from "@/core/sync/firebase";
 import { startSync } from "@/core/sync/engine";
-import { addComment, comicReference, publishPost, rateComic, subscribeComments, subscribePollVotes, subscribePosts, subscribeRatings, uploadCommunityImage, votePoll, type CommunityComment, type CommunityKind, type CommunityPost, type RatingRecord } from "@/core/community";
-import { toast } from "../common";
+import { addComment, comicReference, publishPost, rateComic, setPostLike, subscribeComments, subscribePollVotes, subscribePostLikes, subscribePosts, subscribeRatings, uploadCommunityImage, votePoll, type CommunityComment, type CommunityKind, type CommunityPost, type PostLikeState, type RatingRecord } from "@/core/community";
+import { timeAgo, toast } from "../common";
 
 const KINDS: [CommunityKind, string][] = [["discussion", "Discussion"], ["recommendation", "Recommendation"], ["poll", "Poll"]];
 
 export function CommunityPage() {
   const sync = useSync();
   const config = readFirebaseConfig();
+  const [searchParams] = useSearchParams();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [kindFilter, setKindFilter] = useState<"all" | CommunityKind>("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!config || sync.status === "off") return;
@@ -30,6 +35,21 @@ export function CommunityPage() {
     return () => { dead = true; unsubscribe?.(); };
   }, [config?.projectId, sync.status]);
 
+  useEffect(() => {
+    const postId = searchParams.get("post");
+    if (!postId || !posts.some((post) => post.id === postId)) return;
+    setKindFilter("all");
+    setSearch("");
+    document.getElementById(`community-post-${postId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [posts, searchParams]);
+
+  const visiblePosts = posts.filter((post) => {
+    if (kindFilter !== "all" && post.kind !== kindFilter) return false;
+    if (!search.trim()) return true;
+    const text = `${post.title} ${post.body} ${post.comic?.title ?? ""} ${post.authorName}`.toLowerCase();
+    return text.includes(search.trim().toLowerCase());
+  });
+
   const startCommunity = () => {
     localStorage.setItem("comik.sync.enabled", "1");
     void startSync();
@@ -37,9 +57,10 @@ export function CommunityPage() {
 
   return (
     <div className="page community-page">
-      <div className="topbar">
-        <div><div className="kicker">Comik community</div><h1>Read together</h1></div>
-        <div className="spacer" />
+      <div className="community-layout">
+        <main className="community-main">
+      <div className="community-titlebar">
+        <div><div className="kicker">Comik · readers' corner</div><h1>Community</h1><p>Talk chapters, trade recommendations, and find your next read.</p></div>
         {sync.user?.isAnonymous && <button className="btn primary" onClick={() => void linkGoogle().then(() => toast("Google account connected")).catch((cause: Error) => toast(cause.message, true))}>Sign in with Google</button>}
       </div>
       {!config ? (
@@ -50,16 +71,30 @@ export function CommunityPage() {
         <>
           {error && <div className="err" role="alert">{error}</div>}
           <CommunityComposer onPublished={(post) => setPosts((items) => [post, ...items])} />
+          <div className="community-feed-tools">
+            <div className="community-feed-filters" role="tablist" aria-label="Filter community posts">
+              {([ ["all", "For you"], ["discussion", "Discussions"], ["recommendation", "Picks"], ["poll", "Polls"] ] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={kindFilter === value} className={kindFilter === value ? "active" : ""} onClick={() => setKindFilter(value)}>{label}</button>)}
+            </div>
+            <label className="community-search"><MagnifyingGlass size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a post" aria-label="Search community posts" /></label>
+          </div>
           <div className="community-feed" aria-live="polite">
             {loading && <div className="chapter-loading"><span className="reader-spinner" /><span>Loading discussions</span></div>}
-            {!loading && !posts.length && !error && <section className="empty"><h2>Nothing here yet</h2><p>Start a discussion, recommend a series, or ask the community a question.</p></section>}
-            {posts.map((post) => <PostView key={post.id} post={post} />)}
+            {!loading && !posts.length && !error && <section className="community-empty"><span className="community-empty-mark">✳</span><h2>Start the conversation</h2><p>Your reader community is just getting started. Share a favorite, ask a question, or make a poll.</p></section>}
+            {!loading && posts.length > 0 && !visiblePosts.length && <section className="community-empty"><h2>No posts match</h2><p>Try another search or post type.</p></section>}
+            {visiblePosts.map((post) => <PostView key={post.id} post={post} />)}
           </div>
         </>
       )}
       {config && sync.status === "error" && <div className="err" role="alert">Firebase connection failed: {sync.error}</div>}
       {config && sync.status === "ready" && sync.user?.isAnonymous && <p className="hint muted">You are browsing anonymously. Google sign-in is required to contribute.</p>}
       {config && !defaultFirebaseAvailable() && <p className="hint muted">Using the selected Firebase project. Community data is private to this project.</p>}
+        </main>
+        <aside className="community-aside">
+          <section className="community-aside-intro"><span className="kicker">The reading room</span><h2>Good stories get better shared.</h2><p>Keep it kind. Mark spoilers. Link the source when you recommend a series.</p></section>
+          <section className="community-aside-section"><h3>In this room</h3><div><i className="aside-dot coral" />Discussions<span>{posts.filter((post) => post.kind === "discussion").length}</span></div><div><i className="aside-dot teal" />Recommendations<span>{posts.filter((post) => post.kind === "recommendation").length}</span></div><div><i className="aside-dot gold" />Polls<span>{posts.filter((post) => post.kind === "poll").length}</span></div></section>
+          <div className="community-aside-foot">Posts and ratings are shared within the selected Firebase project.</div>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -119,6 +154,7 @@ function CommunityComposer({ onPublished }: { onPublished: (post: CommunityPost)
 
   return (
     <form className="community-compose" onSubmit={(event) => void submit(event)}>
+      <div className="community-compose-head"><SocialAvatar name={user?.name || user?.email || "Reader"} /><div><strong>{signedIn ? `Posting as ${user?.name || user?.email}` : "Join the conversation"}</strong><span>{signedIn ? "Share a thought with the room" : "Sign in with Google to post, reply, and vote"}</span></div></div>
       <div className="seg" role="tablist" aria-label="Post type">
         {KINDS.map(([value, label]) => <button type="button" key={value} className={kind === value ? "on" : ""} onClick={() => setKind(value)}>{label}</button>)}
       </div>
@@ -144,6 +180,7 @@ function PostView({ post }: { post: CommunityPost }) {
   const [votes, setVotes] = useState<Record<string, number>>({});
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [comments, setComments] = useState<CommunityComment[]>([]);
+  const [likes, setLikes] = useState<PostLikeState>({ count: 0, liked: false });
   const [comment, setComment] = useState("");
   const [showComments, setShowComments] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -176,6 +213,22 @@ function PostView({ post }: { post: CommunityPost }) {
 
   const ratingAverage = ratings.length ? ratings.reduce((sum, rating) => sum + rating.score, 0) / ratings.length : 0;
   const userVote = user ? votes[user.uid] : undefined;
+  useEffect(() => {
+    let dead = false;
+    let unsubscribe: (() => void) | undefined;
+    void subscribePostLikes(post.id, user?.uid ?? "", setLikes, () => {}).then((off) => { if (dead) off(); else unsubscribe = off; });
+    return () => { dead = true; unsubscribe?.(); };
+  }, [post.id, user?.uid]);
+
+  const share = async () => {
+    const url = `${location.origin}${location.pathname}#/community?post=${encodeURIComponent(post.id)}`;
+    try {
+      if (navigator.share) await navigator.share({ title: post.title, url });
+      else { await navigator.clipboard.writeText(url); toast("Post link copied"); }
+    } catch (cause) {
+      if ((cause as Error).name !== "AbortError") toast("Could not share this post", true);
+    }
+  };
   const submitComment = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!comment.trim()) return;
@@ -185,11 +238,10 @@ function PostView({ post }: { post: CommunityPost }) {
   };
 
   return (
-    <article className="community-post">
-      <header><span className="tag">{post.kind}</span><time className="muted">{new Date(post.createdAt).toLocaleString()}</time></header>
+    <article id={`community-post-${post.id}`} className="community-post">
+      <header className="community-post-head"><SocialAvatar name={post.authorName} /><div className="community-post-author"><strong>{post.authorName}</strong><span>{timeAgo(post.createdAt) || new Date(post.createdAt).toLocaleDateString()}</span></div><span className={`community-kind ${post.kind}`}>{post.kind === "recommendation" ? "reader pick" : post.kind}</span></header>
       <h2>{post.title}</h2>
       <p>{post.body}</p>
-      <div className="muted community-author">{post.authorName}</div>
       {post.comic && (post.comic.sourceUrl ? <a className="community-reference" href={post.comic.sourceUrl} target="_blank" rel="noreferrer"><strong>{post.comic.title}</strong><span>Open at {post.comic.sourceName}</span></a> : <div className="community-reference"><strong>{post.comic.title}</strong><span>Local comic · {post.comic.sourceName}</span></div>)}
       {post.imageUrl && <img className="community-image" src={post.imageUrl} alt="Image attached to this post" loading="lazy" />}
       {post.kind === "poll" && <div className="community-poll">{pollOptions.map((option, index) => {
@@ -199,11 +251,21 @@ function PostView({ post }: { post: CommunityPost }) {
         </button>;
       })}<span className="muted">{Object.keys(votes).length} votes</span></div>}
       {post.comic && <div className="community-rating"><span>Rating {ratingAverage ? `${ratingAverage.toFixed(1)} / 5 · ${ratings.length}` : "No ratings yet"}</span><div className="rating-buttons" aria-label="Rate this comic">{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" aria-label={`Rate ${score} out of 5`} disabled={!user || user.isAnonymous} className={(ratings.find((rating) => rating.uid === user?.uid)?.score ?? 0) >= score ? "on" : ""} onClick={() => void rateComic(post.comic!, score).then(() => trackAnalytics("community_rating", { score })).catch((cause: Error) => toast(cause.message, true))}>★</button>)}</div></div>}
-      <button className="btn sm" onClick={() => setShowComments((value) => !value)}>{showComments ? "Hide comments" : "Comments"}</button>
+      <div className="community-post-actions">
+        <button className={`community-action like${likes.liked ? " liked" : ""}`} disabled={!user || user.isAnonymous} aria-pressed={likes.liked} onClick={() => void setPostLike(post.id, likes.liked).then(() => trackAnalytics("community_like")).catch((cause: Error) => toast(cause.message, true))}><Heart size={19} weight={likes.liked ? "fill" : "regular"} /><span>{likes.count ? likes.count : "Like"}</span></button>
+        <button className={`community-action${showComments ? " selected" : ""}`} onClick={() => setShowComments((value) => !value)}><ChatCircleDots size={19} /><span>{showComments ? "Hide replies" : "Reply"}</span></button>
+        <button className="community-action" onClick={() => void share()}><ShareNetwork size={18} /><span>Share</span></button>
+      </div>
       {showComments && <div className="community-comments">
         {comments.map((item) => <div key={item.id} className="community-comment"><strong>{item.authorName}</strong><span>{item.body}</span></div>)}
         <form onSubmit={(event) => void submitComment(event)}><input className="input" value={comment} onChange={(event) => setComment(event.target.value)} maxLength={2000} placeholder="Add a comment" aria-label="Add a comment" /><button className="btn" disabled={busy || !user || user.isAnonymous}>Reply</button></form>
       </div>}
     </article>
   );
+}
+
+function SocialAvatar({ name }: { name: string }) {
+  const colors = ["coral", "teal", "gold", "leaf", "sky"];
+  const color = colors[name.charCodeAt(0) % colors.length];
+  return <span className={`social-avatar ${color}`} aria-hidden="true">{name.trim().slice(0, 1).toUpperCase() || "R"}</span>;
 }

@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, onSnapshot, orderBy, query, setDoc, where, limit, type Unsubscribe } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, where, limit, type Unsubscribe } from "firebase/firestore";
 import { hash53 } from "./hash";
 import { loadFirebase, useSync } from "./sync/firebase";
 import type { MangaRow } from "./types";
@@ -37,6 +37,11 @@ export interface CommunityComment {
 export interface RatingRecord {
   uid: string;
   score: number;
+}
+
+export interface PostLikeState {
+  count: number;
+  liked: boolean;
 }
 
 function requireUser() {
@@ -79,6 +84,21 @@ export async function addComment(postId: string, body: string): Promise<void> {
     body: body.trim().slice(0, 2000),
     createdAt: Date.now(),
   });
+}
+
+export async function subscribePostLikes(postId: string, uid: string, onLikes: (state: PostLikeState) => void, onError: (error: Error) => void): Promise<Unsubscribe> {
+  const { fs } = await loadFirebase();
+  return onSnapshot(collection(fs, "communityPosts", postId, "likes"), (snapshot) => {
+    onLikes({ count: snapshot.size, liked: !!uid && snapshot.docs.some((item) => item.id === uid) });
+  }, onError);
+}
+
+export async function setPostLike(postId: string, liked: boolean): Promise<void> {
+  const user = requireUser();
+  const { fs } = await loadFirebase();
+  const reference = doc(fs, "communityPosts", postId, "likes", user.uid);
+  if (liked) await deleteDoc(reference);
+  else await setDoc(reference, { uid: user.uid, createdAt: Date.now() });
 }
 
 export async function subscribePollVotes(postId: string, onVotes: (votes: Record<string, number>) => void, onError: (error: Error) => void): Promise<Unsubscribe> {

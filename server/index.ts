@@ -150,7 +150,7 @@ function refererFor(target: URL, explicit?: string | null): string {
   return target.origin + "/";
 }
 
-const app = new Hono();
+export const app = new Hono();
 
 app.use(
   "/api/*",
@@ -258,6 +258,8 @@ if (process.env.NODE_ENV === "production") {
   if (indexHtml) app.get("*", (c) => c.html(indexHtml));
 }
 
-serve({ fetch: app.fetch, port: PORT }, (info) => {
-  console.log(`comik proxy listening on :${info.port}`);
-});
+if (!process.env.NETLIFY) {
+  serve({ fetch: app.fetch, port: PORT }, (info) => {
+    console.log(`comik proxy listening on :${info.port}`);
+  });
+}

@@ -1,29 +1,29 @@
 @import "@fontsource-variable/plus-jakarta-sans";
 @import "@fontsource-variable/geist-mono";
 
-/* Tokens follow the Sutrid site: purple accent, supporting hues, square corners, hard offset shadows. */
+/* Colorful reading palette: warm coral leads, with teal, gold, and leaf accents. */
 :root {
-  --ink: #f4f2ff; --text: #d4cfec; --muted: #a39ab8; --line: rgba(196,190,230,.14);
-  --surface: #1a1728; --surface-2: #211d33; --canvas: #121019;
-  --accent: #9d6cff; --accent-2: #c4a6ff; --accent-soft: rgba(157,108,255,.16); --accent-hover: #8452e6;
-  --on-accent: #120d22;
-  --warm: #fa625f; --gold: #e8b84a; --teal: #45d3c3; --blue: #6fb0ff; --green: #62d69d; --pink: #f68fc3;
+  --ink: #f4f6ef; --text: #d5ded5; --muted: #9daaa2; --line: rgba(205,222,209,.15);
+  --surface: #1a211d; --surface-2: #242e28; --canvas: #111713;
+  --accent: #ff795e; --accent-2: #ff9c72; --accent-soft: rgba(255,121,94,.16); --accent-hover: #ed6049;
+  --on-accent: #24120e;
+  --warm: #ff795e; --gold: #f0c65b; --teal: #51d0b0; --blue: #6ab8ef; --green: #a4d76a; --pink: #f092ad;
   --radius: 0; --font: "Plus Jakarta Sans Variable","Plus Jakarta Sans",system-ui,sans-serif; --mono: "Geist Mono Variable",ui-monospace,monospace;
   --shadow-panel: 0 8px 40px rgba(0,0,0,.45), 0 2px 12px rgba(0,0,0,.25);
   --ease: cubic-bezier(.22,1,.36,1); --ease-hover: cubic-bezier(.4,0,.2,1);
-  --focus: 0 0 0 3px rgba(157,108,255,.35);
+  --focus: 0 0 0 3px rgba(255,121,94,.34);
   --rail: 76px; --dock: 68px;
   --z-bg: 0; --z-main: 1; --z-nav: 20; --z-sheet: 40; --z-toast: 60;
 }
 :root[data-theme="light"] {
-  --ink: #1a1824; --text: #3a3848; --muted: #6e6a7c; --line: rgba(72,64,96,.16);
-  --surface: #e4e1ec; --surface-2: #ece9f3; --canvas: #d8d4e4;
-  --accent: #7c3aed; --accent-2: #a78bfa; --accent-soft: rgba(124,58,237,.12); --accent-hover: #6d28d9; --on-accent: #fff;
-  --warm: #e85552; --gold: #b4800c; --teal: #14917f; --blue: #2a68cc; --green: #1c9660; --pink: #cc4189;
-  --shadow-panel: 0 6px 36px rgba(22,18,40,.1), 0 2px 10px rgba(22,18,40,.06);
-  --focus: 0 0 0 3px rgba(124,58,237,.22);
+  --ink: #1b2922; --text: #34473c; --muted: #687b70; --line: rgba(42,71,54,.16);
+  --surface: #fbfcf5; --surface-2: #eef2e7; --canvas: #e6ecdf;
+  --accent: #df573e; --accent-2: #c64a34; --accent-soft: rgba(223,87,62,.12); --accent-hover: #c74731; --on-accent: #fffaf3;
+  --warm: #df573e; --gold: #a97a10; --teal: #078a76; --blue: #286fa0; --green: #528d2d; --pink: #b74d73;
+  --shadow-panel: 0 6px 36px rgba(35,55,40,.1), 0 2px 10px rgba(35,55,40,.06);
+  --focus: 0 0 0 3px rgba(223,87,62,.22);
 }
-[data-hue="0"]{--h:var(--accent)} [data-hue="1"]{--h:var(--warm)} [data-hue="2"]{--h:var(--teal)} [data-hue="3"]{--h:var(--gold)}
+[data-hue="0"]{--h:var(--accent)} [data-hue="1"]{--h:var(--teal)} [data-hue="2"]{--h:var(--gold)} [data-hue="3"]{--h:var(--green)}
 [data-hue="4"]{--h:var(--blue)} [data-hue="5"]{--h:var(--green)} [data-hue="6"]{--h:var(--pink)}
 
 *{box-sizing:border-box} html{-webkit-text-size-adjust:100%;color-scheme:dark} :root[data-theme="light"]{color-scheme:light}
@@ -41,14 +41,14 @@ h1,h2,h3,p{margin:0}
 /* ---------- background ---------- */
 .bg{position:fixed;inset:0;z-index:var(--z-bg);pointer-events:none;overflow:hidden;background:var(--canvas)}
 .bg-grid{position:absolute;inset:-20%;background-size:56px 56px;animation:drift 72s linear infinite;
-  background-image:linear-gradient(rgba(157,108,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(157,108,255,.055) 1px,transparent 1px)}
-:root[data-theme="light"] .bg-grid{background-image:linear-gradient(rgba(90,78,120,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(90,78,120,.1) 1px,transparent 1px)}
+  background-image:linear-gradient(rgba(81,208,176,.075) 1px,transparent 1px),linear-gradient(90deg,rgba(255,121,94,.055) 1px,transparent 1px)}
+:root[data-theme="light"] .bg-grid{background-image:linear-gradient(rgba(7,138,118,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(223,87,62,.08) 1px,transparent 1px)}
 .bg-glow{position:absolute;inset:0;background-size:56px 56px;mix-blend-mode:plus-lighter;
-  background-image:linear-gradient(rgba(255,148,145,.9) 1px,transparent 1px),linear-gradient(90deg,rgba(255,148,145,.9) 1px,transparent 1px);
+  background-image:linear-gradient(rgba(240,198,91,.8) 1px,transparent 1px),linear-gradient(90deg,rgba(255,121,94,.8) 1px,transparent 1px);
   -webkit-mask-image:radial-gradient(ellipse 300px 230px at var(--px,50%) var(--py,36%),#000 0%,rgba(0,0,0,.6) 24%,rgba(0,0,0,.22) 55%,transparent 100%);
   mask-image:radial-gradient(ellipse 300px 230px at var(--px,50%) var(--py,36%),#000 0%,rgba(0,0,0,.6) 24%,rgba(0,0,0,.22) 55%,transparent 100%)}
-:root[data-theme="light"] .bg-glow{mix-blend-mode:normal;background-image:linear-gradient(rgba(88,68,200,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(88,68,200,.5) 1px,transparent 1px)}
-.bg-vignette{position:absolute;inset:0;background:radial-gradient(ellipse 90% 55% at 15% -10%,rgba(157,108,255,.1),transparent 52%),radial-gradient(ellipse 70% 45% at 100% 0,rgba(232,184,74,.05),transparent 48%),radial-gradient(120% 80% at 50% 100%,rgba(0,0,0,.35),transparent 55%)}
+:root[data-theme="light"] .bg-glow{mix-blend-mode:normal;background-image:linear-gradient(rgba(7,138,118,.42) 1px,transparent 1px),linear-gradient(90deg,rgba(223,87,62,.4) 1px,transparent 1px)}
+.bg-vignette{position:absolute;inset:0;background:radial-gradient(ellipse 90% 55% at 15% -10%,rgba(81,208,176,.11),transparent 52%),radial-gradient(ellipse 70% 45% at 100% 0,rgba(240,198,91,.07),transparent 48%),radial-gradient(120% 80% at 50% 100%,rgba(0,0,0,.28),transparent 55%)}
 .bg canvas{position:absolute;inset:0;width:100%;height:100%;opacity:.26}:root[data-theme="light"] .bg canvas{opacity:.22}
 @keyframes drift{to{transform:translate3d(28px,28px,0)}}
 
