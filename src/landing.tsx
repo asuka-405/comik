@@ -26,7 +26,7 @@ function LandingPage() {
             <h1>Your comics.<br />Your shelf.<br /><em>Your rules.</em></h1>
             <p>Bring your favorite sources together. Read on the web or install Comik on your device.</p>
             <div className="landing-actions">
-              <a className="landing-button primary" href="#downloads">Get Comik <ArrowRight size={18} /></a>
+              <a className="landing-button primary" href="/releases/">Get Comik <ArrowRight size={18} /></a>
               <a className="landing-button secondary" href="/web/">Open the web reader</a>
             </div>
           </div>
@@ -68,13 +68,13 @@ function LandingPage() {
             <p>Choose the build that fits your device.</p>
           </div>
           <div className="download-list">
-            <a href="https://github.com/asuka-405/comik/releases/latest/download/Comik-android.apk" className="download-row">
+            <a href="/releases/" className="download-row">
               <AndroidLogo size={25} /><span><strong>Android</strong><small>APK for Android 6 and newer</small></span><ArrowRight size={19} />
             </a>
-            <a href="https://github.com/asuka-405/comik/releases/latest/download/Comik-linux-x64.AppImage" className="download-row">
+            <a href="/releases/" className="download-row">
               <LinuxLogo size={25} /><span><strong>Linux</strong><small>AppImage for x64</small></span><ArrowRight size={19} />
             </a>
-            <a href="https://github.com/asuka-405/comik/releases/latest/download/Comik-windows-x64.zip" className="download-row">
+            <a href="/releases/" className="download-row">
               <WindowsLogo size={25} /><span><strong>Windows</strong><small>Portable x64 app</small></span><ArrowRight size={19} />
             </a>
           </div>
