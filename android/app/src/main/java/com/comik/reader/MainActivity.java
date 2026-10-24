@@ -1,6 +1,7 @@
 package com.comik.reader;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -8,6 +9,7 @@ import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.ViewGroup;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -15,7 +17,10 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import androidx.webkit.WebViewAssetLoader;
 import androidx.core.graphics.Insets;
@@ -47,8 +52,12 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public final class MainActivity extends Activity {
     private static final String APP_HOST = "appassets.androidplatform.net";
@@ -281,7 +290,8 @@ public final class MainActivity extends Activity {
             String method = request.getMethod();
             String referer = endpoint.getQueryParameter("ref");
             String encodedHeaders = header(request.getRequestHeaders(), "x-comik-headers");
-            connection = openResolved(rawTarget, method, referer, encodedHeaders, header(request.getRequestHeaders(), "accept"), userAgent);
+            connection = openResolved(rawTarget, method, referer, encodedHeaders, header(request.getRequestHeaders(), "accept"), userAgent,
+                    "1".equals(header(request.getRequestHeaders(), "x-comik-no-challenge")));
             int status = connection.getResponseCode();
             InputStream input = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
             if (input == null) input = new ByteArrayInputStream(new byte[0]);
@@ -294,6 +304,7 @@ public final class MainActivity extends Activity {
             Map<String, String> headers = new HashMap<>();
             headers.put("Content-Type", contentType == null ? "application/octet-stream" : contentType);
             headers.put("X-Comik-Final-Url", finalUrl);
+            if ((status == 403 || status == 503) && isCloudflareChallenge(connection)) headers.put("X-Comik-Challenge", "cloudflare");
             headers.put("Cache-Control", "no-store");
             return new WebResourceResponse(mimeType(contentType), charset(contentType), status,
                     reasonPhrase(connection, status), headers, new ByteArrayInputStream(bytes));
@@ -310,7 +321,7 @@ public final class MainActivity extends Activity {
             String rawTarget = endpoint.getQueryParameter("url");
             if (rawTarget == null) return textResponse("text/plain", 400, "Bad Request", "missing url");
             connection = openResolved(rawTarget, "GET", endpoint.getQueryParameter("ref"), null,
-                    "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", userAgent);
+                    "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", userAgent, false);
             int status = connection.getResponseCode();
             String contentType = connection.getContentType();
             if (status < 400 && contentType != null && !contentType.startsWith("image/")
@@ -339,14 +350,30 @@ public final class MainActivity extends Activity {
     /**
      * Opens the request and follows redirects by hand. HttpURLConnection never follows a redirect that
      * changes scheme (http to https), which many sites rely on, so every hop is reopened here.
+     *
+     * Cookies are shared with the WebView, so a Cloudflare clearance earned in a WebView also applies to
+     * these requests. When a site answers with a Cloudflare check, it is solved once in a real WebView
+     * (see solveCloudflare) and the request is repeated.
      */
-    private static HttpURLConnection openResolved(String rawUrl, String method, String referer,
-                                                   String encodedHeaders, String accept, String userAgent) throws Exception {
+    private HttpURLConnection openResolved(String rawUrl, String method, String referer,
+                                           String encodedHeaders, String accept, String userAgent, boolean noChallenge) throws Exception {
         String current = rawUrl;
         String currentMethod = method;
+        boolean triedChallenge = noChallenge;
         for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
             HttpURLConnection connection = openConnection(current, currentMethod, referer, encodedHeaders, accept, userAgent);
             int status = connection.getResponseCode();
+            storeCookies(current, connection);
+            if ((status == 403 || status == 503) && isCloudflareChallenge(connection) && !triedChallenge) {
+                triedChallenge = true;
+                // Keep this response open: if the check cannot be solved it is what the caller reports.
+                if (solveCloudflare(originOf(current))) {
+                    connection.disconnect();
+                    hop--;
+                    continue;
+                }
+                return connection;
+            }
             String location = connection.getHeaderField("Location");
             if (status < 300 || status >= 400 || location == null) return connection;
             URL next = new URL(new URL(current), location);
@@ -359,8 +386,8 @@ public final class MainActivity extends Activity {
         throw new IOException("too many redirects");
     }
 
-    private static HttpURLConnection openConnection(String rawUrl, String method, String referer,
-                                                     String encodedHeaders, String accept, String userAgent) throws Exception {
+    private HttpURLConnection openConnection(String rawUrl, String method, String referer,
+                                             String encodedHeaders, String accept, String userAgent) throws Exception {
         URL url = new URL(rawUrl);
         if (!"http".equals(url.getProtocol()) && !"https".equals(url.getProtocol())) {
             throw new IOException("only http(s) sources are supported");
@@ -389,12 +416,129 @@ public final class MainActivity extends Activity {
                 }
             }
         }
+        // Cookies the WebView holds for this site, including any Cloudflare clearance.
+        String stored = CookieManager.getInstance().getCookie(rawUrl);
+        if (stored != null && !stored.isEmpty()) {
+            String own = connection.getRequestProperty("Cookie");
+            connection.setRequestProperty("Cookie", own == null || own.isEmpty() ? stored : own + "; " + stored);
+        }
         // WebView does not expose request bodies to shouldInterceptRequest, so POSTs go out empty.
         if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
             connection.setDoOutput(true);
             connection.getOutputStream().close();
         }
         return connection;
+    }
+
+    /** Keep the cookies a site sets so later requests, and the WebView, see them. */
+    private static void storeCookies(String url, HttpURLConnection connection) {
+        CookieManager manager = CookieManager.getInstance();
+        for (Map.Entry<String, List<String>> entry : connection.getHeaderFields().entrySet()) {
+            if (entry.getKey() == null || !"set-cookie".equalsIgnoreCase(entry.getKey())) continue;
+            for (String cookie : entry.getValue()) manager.setCookie(url, cookie);
+        }
+        manager.flush();
+    }
+
+    private static boolean isCloudflareChallenge(HttpURLConnection connection) {
+        String mitigated = connection.getHeaderField("cf-mitigated");
+        String server = connection.getHeaderField("Server");
+        return "challenge".equalsIgnoreCase(mitigated) || (server != null && server.toLowerCase().contains("cloudflare"));
+    }
+
+    private static String originOf(String url) {
+        Uri uri = Uri.parse(url);
+        return uri.getScheme() + "://" + uri.getAuthority();
+    }
+
+    private final ConcurrentHashMap<String, CountDownLatch> solving = new ConcurrentHashMap<>();
+
+    /**
+     * Pass a Cloudflare check the way a person would: load the site in a real WebView and wait for the
+     * clearance cookie. The WebView stays hidden while the check solves itself, which is usually a few
+     * seconds. If it needs a click, a window opens so the person can do it. Blocks the calling thread.
+     */
+    private boolean solveCloudflare(String origin) {
+        CountDownLatch mine = new CountDownLatch(1);
+        CountDownLatch running = solving.putIfAbsent(origin, mine);
+        try {
+            if (running != null) {
+                // Another request is already solving this site; wait for it and reuse the result.
+                running.await(130, TimeUnit.SECONDS);
+                return hasClearance(origin);
+            }
+            mainHandler.post(() -> showCloudflareCheck(origin, mine));
+            mine.await(130, TimeUnit.SECONDS);
+            return hasClearance(origin);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        } finally {
+            if (running == null) solving.remove(origin);
+        }
+    }
+
+    private static boolean hasClearance(String origin) {
+        String cookies = CookieManager.getInstance().getCookie(origin);
+        return cookies != null && cookies.contains("cf_clearance=");
+    }
+
+    /** Runs on the main thread. */
+    private void showCloudflareCheck(String origin, CountDownLatch finished) {
+        String host = Uri.parse(origin).getHost();
+        CookieManager cookies = CookieManager.getInstance();
+        // Forget an old clearance so the check below has to earn a new one.
+        for (String domain : new String[]{"", "; Domain=" + host, "; Domain=." + host}) {
+            cookies.setCookie(origin, "cf_clearance=; Max-Age=0; Path=/" + domain);
+        }
+
+        WebView check = new WebView(this);
+        check.getSettings().setJavaScriptEnabled(true);
+        check.getSettings().setDomStorageEnabled(true);
+        check.getSettings().setUserAgentString(userAgent);
+        cookies.setAcceptThirdPartyCookies(check, true);
+        check.setWebViewClient(new WebViewClient());
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setBackgroundColor(0xFF111713);
+        TextView title = new TextView(this);
+        title.setText("Checking " + host + "\nThis usually takes a few seconds. If a box appears, tick it.");
+        title.setTextColor(0xFFF4F6EF);
+        title.setPadding(32, 40, 32, 24);
+        Button cancel = new Button(this);
+        cancel.setText("Cancel");
+        layout.addView(title);
+        layout.addView(check, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        layout.addView(cancel);
+
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Material_NoActionBar);
+        dialog.setContentView(layout);
+        dialog.setCancelable(true);
+
+        boolean[] done = {false};
+        Runnable[] poll = new Runnable[1];
+        Runnable finish = () -> {
+            if (done[0]) return;
+            done[0] = true;
+            mainHandler.removeCallbacksAndMessages(check);
+            if (dialog.isShowing()) dialog.dismiss();
+            check.destroy();
+            cookies.flush();
+            finished.countDown();
+        };
+        poll[0] = () -> {
+            if (done[0]) return;
+            if (hasClearance(origin)) finish.run();
+            else mainHandler.postAtTime(poll[0], check, android.os.SystemClock.uptimeMillis() + 600);
+        };
+        cancel.setOnClickListener((view) -> finish.run());
+        dialog.setOnCancelListener((view) -> finish.run());
+        // Most checks pass on their own, so only show the window if it is taking long.
+        mainHandler.postAtTime(() -> { if (!done[0] && !isFinishing()) dialog.show(); }, check, android.os.SystemClock.uptimeMillis() + 8000);
+        mainHandler.postAtTime(finish, check, android.os.SystemClock.uptimeMillis() + 120000);
+        poll[0].run();
+        check.loadUrl(origin + "/");
     }
 
     private static String header(Map<String, String> headers, String name) {

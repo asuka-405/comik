@@ -2,6 +2,27 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.3.1-beta
+
+### Cloudflare checks
+- **The Android, Linux and Windows apps now pass Cloudflare checks**, the way Tachiyomi does: requests share a cookie jar with a real browser engine (Chromium on desktop, the system WebView on Android). When a site answers with a check, the app opens it in that engine, waits for the clearance cookie, then repeats the request. The same clearance covers pages and images afterwards.
+- **Better than a silent wait.** The check runs in a hidden window and solves itself in a few seconds. Only if it needs a click does a window open, titled with the site's name, and you can cancel it.
+- **Global search never opens check windows.** It searches about a hundred sites, so instead of a window per site, sites that need a check are listed in one panel, each with its own "Verify and search" button.
+- **The website cannot pass these checks.** It now says so in plain words instead of showing a bare 403.
+
+### Sources
+- New and checked end to end: **Omega Scans** (a new engine for HeanCMS sites that read from a JSON API), **Grim Scans** (a new engine for Keyoapp sites), **ManhuaTop**, **Manhwatop**, **MangaDNA** and **Manhwa18.cc**.
+- **WebtoonXYZ** and **WebtoonScan** are added from their known settings, but their check needs a click and I could not complete it here, so they are not tested. Use Verify and search once.
+- Page detection now accepts the lazy-load classes many readers use ("loading", "lazy"), which was hiding the pages of several sites.
+- The desktop app no longer breaks sites that redirect through plain http.
+- All 104 sources were run through the health check from the desktop app: 99 work end to end. The ones that do not: Gourmet Scans (pages), MangaForFree.net (chapters, flaky), Akaza Scans (page 2) and two slow sites that sometimes time out (Bun Manga, Manhuanext).
+
+### Still not available from your list
+- **Dead or reused addresses:** Akai Comic, Free Comic Online, Oppai Stream, CulturedWorks, ManyToon and Manhwahentai.me no longer serve a comic site.
+- **Next.js sites:** Comic Asura, Drake Scans and InfinityScans send their pages through server actions with changing ids. They need a dedicated reader each.
+- **Own page layout, not yet written:** Cutie Comics, MurimScan, Doujin.io, Hentai2Read, E-Hentai, Luscious, Comic Fury, DeviantArt, Manhwa Hentai and izneo.
+- **Left out on purpose:** Coomer, CosplayTele, Everia.club, Hentai Cosplay, Photos18 and Playmate Hunter. They publish photographs of real people, often taken from creators' paid or private pages without permission.
+
 ## 0.3.0-beta
 
 ### Search

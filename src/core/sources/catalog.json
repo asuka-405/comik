@@ -139,6 +139,13 @@
   "path": "comics"
  },
  {
+  "id": "mihon-manual-grimscans",
+  "name": "Grim Scans",
+  "baseUrl": "https://grimscans.com",
+  "engine": "keyoapp",
+  "path": ""
+ },
+ {
   "id": "mihon-extra-hentaiwebtoon",
   "name": "HentaiWebtoon",
   "baseUrl": "https://hentaiwebtoon.com",
@@ -352,6 +359,16 @@
   "paged": false
  },
  {
+  "id": "mihon-5181311401760417052",
+  "name": "MangaDNA",
+  "baseUrl": "https://mangadna.com",
+  "engine": "heuristic",
+  "path": "manga",
+  "listUrl": "https://mangadna.com/manga?page={page}",
+  "searchUrl": "https://mangadna.com/search?q={query}",
+  "paged": true
+ },
+ {
   "id": "mihon-7450882931813509619",
   "name": "MangaForFree.net",
   "baseUrl": "https://mangaforfree.net",
@@ -465,6 +482,13 @@
   "path": "manga"
  },
  {
+  "id": "mihon-1903782575226230108",
+  "name": "ManhuaTop",
+  "baseUrl": "https://manhuatop.org",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
   "id": "mihon-3315938131690984352",
   "name": "Manhwa Reads",
   "baseUrl": "https://manhwareads.com",
@@ -477,6 +501,17 @@
   "baseUrl": "https://www.manhwatoon.me",
   "engine": "madara",
   "path": "manga"
+ },
+ {
+  "id": "mihon-4841602236575491202",
+  "name": "Manhwa18.cc",
+  "baseUrl": "https://manhwa18.cc",
+  "engine": "heuristic",
+  "path": "",
+  "listUrl": "https://manhwa18.cc",
+  "searchUrl": "https://manhwa18.cc/search?q={query}",
+  "paged": false,
+  "nsfw": true
  },
  {
   "id": "mihon-562792527363909585",
@@ -514,6 +549,13 @@
   "paged": false
  },
  {
+  "id": "mihon-5177484976652938680",
+  "name": "Manhwatop",
+  "baseUrl": "https://manhwatop.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
   "id": "mihon-651625426989893977",
   "name": "ManhwaZ",
   "baseUrl": "https://manhwaz.cc",
@@ -532,6 +574,15 @@
   "listUrl": "https://nyxscans.com/series?page={page}",
   "searchUrl": "https://nyxscans.com/?s={query}",
   "paged": true
+ },
+ {
+  "id": "mihon-manual-omegascans",
+  "name": "Omega Scans",
+  "baseUrl": "https://omegascans.org",
+  "engine": "heancms",
+  "path": "",
+  "apiUrl": "https://api.omegascans.org",
+  "nsfw": true
  },
  {
   "id": "mihon-7776050777496310004",
@@ -769,6 +820,20 @@
   "listUrl": "https://vortexscans.org/series?page={page}",
   "searchUrl": "https://vortexscans.org/?s={query}",
   "paged": true
+ },
+ {
+  "id": "mihon-manual-webtoonscan",
+  "name": "WebtoonScan",
+  "baseUrl": "https://webtoonscan.com",
+  "engine": "madara",
+  "path": "manga"
+ },
+ {
+  "id": "mihon-manual-webtoonxyz",
+  "name": "WebtoonXYZ",
+  "baseUrl": "https://www.webtoon.xyz",
+  "engine": "madara",
+  "path": "read"
  },
  {
   "id": "mihon-6540843430852844328",

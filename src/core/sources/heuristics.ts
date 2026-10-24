@@ -104,7 +104,9 @@ export function extractPageImages(doc: Document, base: string, min = 3): string[
   for (const img of doc.querySelectorAll("img")) {
     const src = bestImgSrc(img, base);
     if (!src) continue;
-    const marker = `${img.getAttribute("class") ?? ""} ${img.getAttribute("id") ?? ""} ${src}`;
+    // "loading" and "lazy" classes are how readers mark images that are about to load, not placeholders.
+    const classes = (img.getAttribute("class") ?? "").replace(/\b(?:loading|loaded|lazy\w*)\b/gi, "");
+    const marker = `${classes} ${img.getAttribute("id") ?? ""} ${src}`;
     if (JUNK_IMG.test(marker) || /thumb|cover|poster/i.test(img.getAttribute("class") ?? "")) continue;
     const w = Number(img.getAttribute("width")), h = Number(img.getAttribute("height"));
     if ((w && w < 160) || (h && h < 160)) continue;

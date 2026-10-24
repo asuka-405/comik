@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, net, session, shell } = require("electron");
 const { createServer } = require("node:http");
 const { lookup } = require("node:dns/promises");
 const { isIP } = require("node:net");
@@ -8,7 +8,6 @@ const path = require("node:path");
 const DIST_ROOT = app.isPackaged
   ? path.join(process.resourcesPath, "dist")
   : path.resolve(__dirname, "../dist");
-const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const HTML_LIMIT = 12 * 1024 * 1024;
 const IMAGE_LIMIT = 40 * 1024 * 1024;
 const APP_PORT = 41739;
@@ -71,7 +70,6 @@ async function assertPublicUrl(raw) {
 
 function upstreamHeaders(request, target, referer) {
   const headers = new Headers({
-    "user-agent": USER_AGENT,
     accept: request.headers.get("accept") || "*/*",
     "accept-language": request.headers.get("accept-language") || "en-US,en;q=0.9",
     referer: referer || `${target.origin}/`,
@@ -119,19 +117,128 @@ async function readBounded(response, limit) {
   return bytes;
 }
 
+/**
+ * Source requests go through Chromium's own network stack and cookie jar instead of Node's fetch.
+ * Many sites sit behind Cloudflare, which checks the TLS fingerprint and, when unsure, serves a
+ * JavaScript challenge. Chromium's fingerprint passes most checks, and for the rest solveCloudflare
+ * runs the challenge in a real browser window. The clearance cookie lands in the same jar, so every
+ * later request, including images, is let through.
+ */
+const isCloudflareChallenge = (response) =>
+  response.headers.get("cf-mitigated") === "challenge"
+  || ([403, 503].includes(response.status) && /cloudflare/i.test(response.headers.get("server") || ""));
+
+const solving = new Map();
+
+/** Open the site in a hidden window until Cloudflare hands out a clearance cookie. Shown only if a person has to act. */
+function solveCloudflare(origin) {
+  if (solving.has(origin)) return solving.get(origin);
+  const host = new URL(origin).host;
+  const job = new Promise((resolve) => {
+    let finished = false;
+    let window;
+    const timers = [];
+    const done = (ok) => {
+      if (finished) return;
+      finished = true;
+      timers.forEach((timer) => clearTimeout(timer));
+      if (window && !window.isDestroyed()) window.destroy();
+      resolve(ok);
+    };
+    session.defaultSession.cookies.get({ url: origin })
+      .then((cookies) => Promise.all(cookies.filter((c) => c.name === "cf_clearance").map((c) => session.defaultSession.cookies.remove(origin, c.name))))
+      .catch(() => {})
+      .then(() => {
+        window = new BrowserWindow({
+          show: false,
+          width: 520,
+          height: 680,
+          title: `Verifying ${host}`,
+          backgroundColor: "#111713",
+          webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+        });
+        window.setMenuBarVisibility(false);
+        window.on("closed", () => done(false));
+        const poll = async () => {
+          if (finished) return;
+          const cookies = await session.defaultSession.cookies.get({ url: origin }).catch(() => []);
+          if (cookies.some((c) => c.name === "cf_clearance")) return done(true);
+          timers.push(setTimeout(poll, 600));
+        };
+        void poll();
+        // Most checks finish by themselves in a few seconds. A checkbox needs the window on screen.
+        timers.push(setTimeout(() => { if (!finished && window && !window.isDestroyed()) window.show(); }, 8000));
+        timers.push(setTimeout(() => done(false), 120000));
+        window.loadURL(`${origin}/`).catch(() => {});
+      });
+  }).finally(() => solving.delete(origin));
+  solving.set(origin, job);
+  return job;
+}
+
+/**
+ * One request over Chromium's network stack and the app's cookie jar, as a standard Response.
+ * Redirects are not followed: a 3xx is returned so guardedFetch can vet each hop. (net.fetch cannot do
+ * this, it throws "Redirect was cancelled" when asked for manual redirects.)
+ */
+function chromiumRequest(url, { method, headers, body }) {
+  return new Promise((resolve, reject) => {
+    const request = net.request({ url: url.toString(), method, session: session.defaultSession, useSessionCookies: true, redirect: "manual" });
+    const fail = (error) => { clearTimeout(timer); reject(error); };
+    const timer = setTimeout(() => {
+      request.abort();
+      fail(Object.assign(new Error("upstream timeout"), { name: "TimeoutError" }));
+    }, 25000);
+    const entries = headers instanceof Headers ? [...headers.entries()] : Object.entries(headers || {});
+    for (const [name, value] of entries) {
+      try { request.setHeader(name, String(value)); } catch { /* Chromium refuses a few headers (Host, Content-Length); the stack sets them itself */ }
+    }
+    request.on("redirect", (status, _method, redirectUrl) => {
+      clearTimeout(timer);
+      request.abort();
+      resolve(new Response(null, { status, headers: { location: redirectUrl } }));
+    });
+    request.on("response", (incoming) => {
+      const chunks = [];
+      let total = 0;
+      incoming.on("data", (chunk) => {
+        total += chunk.length;
+        if (total > IMAGE_LIMIT) { request.abort(); fail(new Error("upstream response too large")); return; }
+        chunks.push(chunk);
+      });
+      incoming.on("end", () => {
+        clearTimeout(timer);
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(incoming.headers)) {
+          if (name.toLowerCase() === "set-cookie") continue;
+          responseHeaders.set(name, Array.isArray(value) ? value.join(", ") : String(value));
+        }
+        const empty = [101, 204, 205, 304].includes(incoming.statusCode);
+        resolve(new Response(empty ? null : Buffer.concat(chunks), { status: incoming.statusCode, statusText: incoming.statusMessage, headers: responseHeaders }));
+      });
+      incoming.on("error", fail);
+    });
+    request.on("error", fail);
+    if (body && body.byteLength) request.write(Buffer.from(body));
+    request.end();
+  });
+}
+
 async function guardedFetch(target, init) {
   let current = target.toString();
   let method = init.method;
   let body = init.body;
   for (let hop = 0; hop <= 5; hop++) {
     const url = await assertPublicUrl(current);
-    const response = await fetch(url, {
-      method,
-      headers: init.headers,
-      body,
-      redirect: "manual",
-      signal: AbortSignal.timeout(25000),
-    });
+    // Chromium refuses to send an https Referer to an http address (some sites redirect through one), so drop it there.
+    const hopHeaders = new Headers(init.headers);
+    if (url.protocol === "http:") hopHeaders.delete("referer");
+    const send = () => chromiumRequest(url, { method, headers: hopHeaders, body });
+    let response = await send();
+    if (!init.noChallenge && isCloudflareChallenge(response) && await solveCloudflare(url.origin)) {
+      await response.body?.cancel().catch(() => {});
+      response = await send();
+    }
     if (response.status >= 300 && response.status < 400 && response.headers.has("location")) {
       current = new URL(response.headers.get("location"), url).toString();
       if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST")) {
@@ -140,6 +247,8 @@ async function guardedFetch(target, init) {
       }
       continue;
     }
+    // Chromium reports an empty url for manually followed redirects, so remember where the chain ended.
+    response.finalUrl = url.toString();
     return response;
   }
   throw new Error("too many redirects");
@@ -152,6 +261,8 @@ async function fetchSource(request, target, referer) {
     method,
     headers: upstreamHeaders(request, target, referer),
     body,
+    // Global search asks not to open check windows for every site; see silenceChallenges in the web code.
+    noChallenge: request.headers.get("x-comik-no-challenge") === "1",
   });
   const bytes = await readBounded(upstream, HTML_LIMIT);
   return new Response([204, 205, 304].includes(upstream.status) ? null : bytes, {
@@ -159,7 +270,8 @@ async function fetchSource(request, target, referer) {
     statusText: upstream.statusText,
     headers: {
       "content-type": upstream.headers.get("content-type") || "application/octet-stream",
-      "x-comik-final-url": upstream.url,
+      "x-comik-final-url": upstream.finalUrl || upstream.url,
+      ...(isCloudflareChallenge(upstream) ? { "x-comik-challenge": "cloudflare" } : {}),
       "cache-control": "no-store",
     },
   });
@@ -168,7 +280,6 @@ async function fetchSource(request, target, referer) {
 async function fetchImage(target, referer) {
   const upstream = await guardedFetch(target, {
     headers: {
-      "user-agent": USER_AGENT,
       accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
       referer: referer || `${target.origin}/`,
     },
@@ -285,6 +396,8 @@ async function listen(server) {
 }
 
 async function start() {
+  // Chromium's own agent string, without the Electron and app tokens that sites treat as a bot.
+  session.defaultSession.setUserAgent(session.defaultSession.getUserAgent().replace(/\s(Electron|comik-desktop|Comik)\/\S+/gi, ""));
   const server = createServer(async (incoming, outgoing) => {
     try {
       const url = new URL(incoming.url || "/", "http://localhost");

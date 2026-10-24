@@ -12,7 +12,7 @@ Visual language follows the Sutrid site (purple accent, square corners, hard off
 
 ## How it works
 
-Browsers cannot read most comic sites (no CORS, referer-locked images), so something must make the request. The apps do it from the device. The web build uses a proxy in the user's own Firebase project (`functions/`, same code as `server/app.ts`, which blocks private networks). The hosted site never proxies comics itself, because one shared address would be banned by every source. Sources run in the app and parse HTML with DOMParser. See [docs/FIREBASE.md](docs/FIREBASE.md).
+Browsers cannot read most comic sites (no CORS, referer-locked images), so something must make the request. The apps do it from the device, and pass Cloudflare checks in a real browser engine (Chromium on desktop, WebView on Android) the way Tachiyomi does. The web build uses a proxy in the user's own Firebase project (`functions/`, same code as `server/app.ts`, which blocks private networks). The hosted site never proxies comics itself, because one shared address would be banned by every source. Sources run in the app and parse HTML with DOMParser. See [docs/FIREBASE.md](docs/FIREBASE.md).
 
 - `src/core/sources/` Webtoon (HTML), Madara and MangaThemesia engines, user-defined CSS-selector sources, local CBZ.
 - `src/core/chapterRecognition.ts` chapter number parsing; `repo.ts` chapter list reconciliation (keeps read state, follows chapter numbers across re-uploads).

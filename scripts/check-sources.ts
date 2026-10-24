@@ -28,6 +28,7 @@ for (const [key, value] of Object.entries({ DOMParser, localStorage: storage, se
 
 const PROXY = process.env.PROXY ?? "http://localhost:8799";
 const filter = process.argv.slice(2).find((a) => !a.startsWith("--") && !a.endsWith(".json"))?.toLowerCase();
+const skip = (process.env.SKIP ?? "").toLowerCase().split("|").filter(Boolean);
 const jsonOut = process.argv.includes("--json") ? process.argv[process.argv.indexOf("--json") + 1] : undefined;
 
 const { useSettings } = await import("../src/core/settings");
@@ -84,7 +85,7 @@ async function check(source: Source): Promise<Row> {
   return row(lastStage, false, lastError);
 }
 
-const sources = allSources().filter((s) => s.id !== "local" && !s.id.startsWith("webtoons") && (!filter || filter.split("|").some((part) => s.name.toLowerCase().includes(part))));
+const sources = allSources().filter((s) => s.id !== "local" && !s.id.startsWith("webtoons") && (!skip.some((part) => s.name.toLowerCase().includes(part))) && (!filter || filter.split("|").some((part) => s.name.toLowerCase().includes(part))));
 console.log(`checking ${sources.length} sources through ${PROXY}`);
 const rows: Row[] = new Array(sources.length);
 let next = 0;

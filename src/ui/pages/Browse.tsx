@@ -7,6 +7,8 @@ import { allSources, onSourcesChange } from "@/core/sources/registry";
 import { upsertManga } from "@/core/repo";
 import type { Source } from "@/core/types";
 import { filterSources } from "@/core/sources/filter";
+import { ChallengeError, silenceChallenges, verifySite } from "@/core/http";
+import { isNativeShell } from "@/core/platform";
 import { Cover, CoverSkeletons, ReadingNotice, hueOf, useDebounced } from "../common";
 import { PanelField } from "../PanelField";
 import { useSettings } from "@/core/settings";
@@ -101,9 +103,13 @@ const PER_SOURCE = 12;
 /**
  * Searches every enabled source and shows one loader for the whole search. A source joins the list
  * below as soon as it has results. Sources with no match, or that fail, simply never appear.
+ *
+ * Sites behind a Cloudflare check are never checked automatically here: that would open a window per
+ * site. They are listed apart, each with its own button that runs that one check and then searches it.
  */
 function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
   const [results, setResults] = useState<SourceResult[]>([]);
+  const [blocked, setBlocked] = useState<Source[]>([]);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const lib = useLiveQuery(() => db.manga.filter((m) => m.inLibrary).primaryKeys(), [], [] as string[]);
   // The list of sources can change while a search runs; the search itself only restarts on a new query.
@@ -111,30 +117,44 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
   sourcesRef.current = sources;
   const ids = sources.map((s) => s.id).join("|");
 
+  /** Search one source and add what it finds. Returns true when it was stopped by a Cloudflare check. */
+  const searchOne = async (source: Source, alive: () => boolean, quiet: boolean): Promise<boolean> => {
+    const release = quiet ? silenceChallenges(source.baseUrl) : () => {};
+    try {
+      const page = await source.search(1, q, source.getFilterList());
+      if (alive() && page.mangas.length) {
+        const rows = await Promise.all(page.mangas.slice(0, PER_SOURCE).map((m) => upsertManga(source.id, m)));
+        if (alive()) setResults((current) => (current.some((r) => r.source.id === source.id) ? current : [...current, { source, rows }]));
+      }
+      return false;
+    } catch (error) {
+      return error instanceof ChallengeError;
+    } finally {
+      release();
+    }
+  };
+
   useEffect(() => {
     let dead = false;
     const queue = [...sourcesRef.current];
     setResults([]);
+    setBlocked([]);
     setProgress({ done: 0, total: queue.length });
     const worker = async () => {
       while (!dead) {
         const source = queue.shift();
         if (!source) return;
-        try {
-          const page = await source.search(1, q, source.getFilterList());
-          if (!dead && page.mangas.length) {
-            const rows = await Promise.all(page.mangas.slice(0, PER_SOURCE).map((m) => upsertManga(source.id, m)));
-            if (!dead) setResults((current) => [...current, { source, rows }]);
-          }
-        } catch {
-          // A source that cannot answer is left out rather than shown as an error.
-        }
+        const needsCheck = await searchOne(source, () => !dead, true);
+        if (!dead && needsCheck) setBlocked((current) => [...current, source]);
         if (!dead) setProgress((p) => ({ ...p, done: p.done + 1 }));
       }
     };
     for (let i = 0; i < SEARCH_PARALLEL; i++) void worker();
     return () => { dead = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, ids]);
+
+  const verified = (source: Source) => setBlocked((current) => current.filter((s) => s.id !== source.id));
 
   const searching = progress.done < progress.total;
   return (
@@ -146,7 +166,7 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
           <span className="mono muted">{progress.done} / {progress.total}</span>
           <progress value={progress.done} max={progress.total} aria-hidden="true" />
         </div>
-      ) : !results.length ? (
+      ) : !results.length && !blocked.length ? (
         <div className="empty"><h2>No results for “{q}”</h2><p>Try fewer words or another spelling.</p></div>
       ) : (
         <div className="global-search-status done" role="status"><span>{results.length} source{results.length === 1 ? "" : "s"} had matches for “{q}”</span></div>
@@ -162,7 +182,37 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
           </div>
         </section>
       ))}
+      {blocked.length > 0 && (
+        <section className="panel verify-panel" data-hue="5">
+          <h3>{blocked.length} source{blocked.length === 1 ? "" : "s"} need a quick check</h3>
+          <p className="muted">{isNativeShell ? "These sites ask for a browser check before they answer. Run the ones you want, one at a time. Each search result appears above once its check passes." : "These sites are protected by Cloudflare, which the browser version cannot pass. The Android, Linux and Windows apps can."}</p>
+          {isNativeShell && <ul className="verify-list">{blocked.map((source) => <VerifyRow key={source.id} source={source} onVerify={() => searchOne(source, () => true, false).then((stillBlocked) => { if (!stillBlocked) verified(source); return stillBlocked; })} />)}</ul>}
+        </section>
+      )}
     </div>
+  );
+}
+
+/** One site that needs its Cloudflare check, with a button that runs just that check. */
+function VerifyRow({ source, onVerify }: { source: Source; onVerify: () => Promise<boolean> }) {
+  const [state, setState] = useState<"idle" | "working" | "failed">("idle");
+  const run = async () => {
+    setState("working");
+    try {
+      // Pass the check first, so the search below finds the site open.
+      await verifySite(source.baseUrl + "/");
+      setState((await onVerify()) ? "failed" : "idle");
+    } catch {
+      setState("failed");
+    }
+  };
+  return (
+    <li className="verify-row">
+      <span className="verify-name">{source.name}</span>
+      <button className={`btn sm${state === "failed" ? "" : " primary"}`} disabled={state === "working"} onClick={() => void run()}>
+        {state === "working" ? "Checking…" : state === "failed" ? "Try again" : "Verify and search"}
+      </button>
+    </li>
   );
 }
 

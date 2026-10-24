@@ -161,7 +161,7 @@ app.use(
     },
     // A wildcard does not cover Authorization, which the Firebase proxy needs.
     allowHeaders: ["authorization", "content-type", "accept", "accept-language", "range", "x-comik-headers"],
-    exposeHeaders: ["x-comik-final-url", "x-comik-set-cookie"],
+    exposeHeaders: ["x-comik-final-url", "x-comik-set-cookie", "x-comik-challenge"],
     maxAge: 86400,
   }),
 );
@@ -206,6 +206,8 @@ app.all("/api/fetch", async (c) => {
     const out = new Headers();
     out.set("content-type", res.headers.get("content-type") ?? "application/octet-stream");
     out.set("x-comik-final-url", finalUrl);
+    // Lets the client explain a Cloudflare block instead of showing a bare 403.
+    if (res.headers.get("cf-mitigated") === "challenge" || ([403, 503].includes(res.status) && /cloudflare/i.test(res.headers.get("server") ?? ""))) out.set("x-comik-challenge", "cloudflare");
     out.set("cache-control", "no-store");
     return new Response(bytes as unknown as BodyInit, { status: res.status, headers: out });
   } catch (err) {

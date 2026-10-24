@@ -21,9 +21,17 @@ interface Ext { packageName: string; contentWarning?: string; sources: { id: str
 import type { CatalogEntry } from "../src/core/sources/catalogTypes";
 
 const MIN_MS = Number(process.env.GET_MS ?? 0);
+// PROXY=http://localhost:41739 routes every request through the desktop app, which passes Cloudflare
+// checks in a real browser window. Without it requests go straight out and Cloudflare sites fail.
+const PROXY = process.env.PROXY?.replace(/\/+$/, "");
 async function get(url: string, requested = 12000): Promise<{ html: string; url: string } | null> {
   const ms = Math.max(requested, MIN_MS);
   try {
+    if (PROXY) {
+      const res = await fetch(`${PROXY}/api/fetch?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(ms) });
+      if (!res.ok) return null;
+      return { html: await res.text(), url: res.headers.get("x-comik-final-url") ?? url };
+    }
     const res = await fetch(url, { headers: { "user-agent": UA, accept: "text/html,*/*" }, signal: AbortSignal.timeout(ms), redirect: "follow" });
     if (!res.ok) return null;
     return { html: await res.text(), url: res.url };
@@ -112,7 +120,7 @@ async function probe(name: string, id: string, home: string): Promise<CatalogEnt
   if (/mangadex\.org|webtoons\.com/.test(origin)) return why("native", name);
   const engine = detectEngine(first.html);
   if (!engine) {
-    if (/cf-chl|challenge-platform|just a moment/i.test(first.html)) return why("cloudflare", name);
+    if (/<title>\s*just a moment/i.test(first.html)) return why("cloudflare", name);
     return (await probeHeuristic(name, id, origin)) ?? why("heuristic-failed", name);
   }
   if (engine === "madara") {

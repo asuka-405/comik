@@ -7,6 +7,8 @@ import { createThemesia } from "./themesia";
 import { createSelectorSource } from "./selector";
 import { localSource } from "./local";
 import { createHeuristic } from "./heuristic";
+import { createHeanCms } from "./heancms";
+import { createKeyoapp } from "./keyoapp";
 import catalog from "./catalog.json";
 import type { CatalogEntry } from "./catalogTypes";
 import type { Source } from "../types";
@@ -17,6 +19,8 @@ const WT_LANGS: [string, string][] = [["en", "English"], ["es", "Spanish"], ["fr
 function fromCatalog(e: CatalogEntry): Source {
   if (e.engine === "madara") return createMadara({ id: e.id, name: e.name, baseUrl: e.baseUrl, lang: "en", mangaSubString: e.path, nsfw: e.nsfw });
   if (e.engine === "themesia") return createThemesia({ id: e.id, name: e.name, baseUrl: e.baseUrl, lang: "en", listPath: e.path, nsfw: e.nsfw });
+  if (e.engine === "keyoapp") return createKeyoapp({ id: e.id, name: e.name, baseUrl: e.baseUrl, nsfw: e.nsfw });
+  if (e.engine === "heancms") return createHeanCms({ id: e.id, name: e.name, baseUrl: e.baseUrl, apiUrl: e.apiUrl, nsfw: e.nsfw });
   return createHeuristic(e);
 }
 
