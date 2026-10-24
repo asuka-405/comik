@@ -16,6 +16,7 @@ import { Row, Toggle, bytes, timeAgo, toast } from "../common";
 import type { CustomSourceRow } from "@/core/db";
 import { refreshAnalyticsConsent } from "@/core/analytics";
 import { useWalkthrough } from "@/core/onboarding";
+import { TachiyomiImport } from "../components/TachiyomiImport";
 import RULES from "../../../firestore.rules?raw";
 
 declare const __APP_VERSION__: string;
@@ -166,6 +167,7 @@ export function DownloadsSettings() {
         <Row title="Delete download after reading"><Toggle label="Delete after read" on={s.deleteAfterRead} onChange={(v) => s.set({ deleteAfterRead: v })} /></Row>
       </Section>
       <Data />
+      <TachiyomiImport />
     </Detail>
   );
 }

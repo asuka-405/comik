@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookBookmark, ChatCircleText, Clock, Compass, GearSix, MagnifyingGlass, UserCircle } from "@phosphor-icons/react";
+import { BookBookmark, ChatCircleText, Clock, Compass, MagnifyingGlass } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { useSettings } from "@/core/settings";
 import { trackAnalytics } from "@/core/analytics";
@@ -27,6 +27,7 @@ import { Reader } from "./reader/Reader";
 import { WebSetup } from "./pages/WebSetup";
 import { proxyToken } from "@/core/http";
 import { Onboarding } from "./Onboarding";
+import { AccountMenu } from "./AccountMenu";
 
 function useTheme() {
   const theme = useSettings((s) => s.theme);
@@ -107,20 +108,20 @@ export function App() {
           <NavLink to="/browse" className="nav-btn" aria-label="Discover"><Compass size={24} /><span className="tip">Discover</span></NavLink>
           <NavLink to="/timeline" className="nav-btn" aria-label="Timeline"><Clock size={24} />{!!newCount && <span className="dot">{newCount > 99 ? "99+" : newCount}</span>}<span className="tip">Timeline</span></NavLink>
           <NavLink to="/community" className="nav-btn" aria-label="Community"><ChatCircleText size={24} /><span className="tip">Community</span></NavLink>
-          <NavLink to="/account" className="nav-btn" aria-label="Account"><UserCircle size={24} /><span className="tip">Account and sync</span></NavLink>
-          <div className="grow" />
-          <NavLink to="/settings" className="nav-btn" aria-label="Settings"><GearSix size={24} /><span className="tip">Settings</span></NavLink>
         </nav>
         <main>
-          <form className="shell-searchbar" role="search" onSubmit={(event) => {
-            event.preventDefault();
-            const query = (event.currentTarget.elements.namedItem("global-search") as HTMLInputElement).value.trim();
-            if (query) nav(`/browse?q=${encodeURIComponent(query)}`);
-          }}>
-            <MagnifyingGlass size={18} aria-hidden="true" />
-            <input name="global-search" type="search" placeholder="Search your shelf and every source" aria-label="Search your shelf and every source" />
-            <button type="button" className="shell-search-shortcut" onClick={() => setPalette(true)}>Ctrl K</button>
-          </form>
+          <div className="shell-top">
+            <form className="shell-searchbar" role="search" onSubmit={(event) => {
+              event.preventDefault();
+              const query = (event.currentTarget.elements.namedItem("global-search") as HTMLInputElement).value.trim();
+              if (query) nav(`/browse?q=${encodeURIComponent(query)}`);
+            }}>
+              <MagnifyingGlass size={18} aria-hidden="true" />
+              <input name="global-search" type="search" placeholder="Search your shelf and every source" aria-label="Search your shelf and every source" />
+              <button type="button" className="shell-search-shortcut" onClick={() => setPalette(true)}>Ctrl K</button>
+            </form>
+            <AccountMenu />
+          </div>
           <Routes>
             <Route path="/" element={<Shelf onSearch={() => setPalette(true)} />} />
             <Route path="/browse" element={<Browse />} />

@@ -2,6 +2,15 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.2.2-beta
+
+### New
+- **Import from Tachiyomi and Mihon.** Settings, Downloads and storage, Import from Tachiyomi or Mihon. Pick a `.tachibk` or `.proto.gz` backup and see what will come across before you import. Your library, categories, reading mode, read and bookmarked chapters, last page and read dates are added to your shelf. Series from sources Comik does not have are listed and skipped. The file is read on your device and never uploaded.
+- **Account menu.** The account button now sits at the end of the search bar. It opens a menu with My account and App settings, so the dock keeps only Shelf, Discover, Timeline and Community.
+
+### Fixes
+- Android: the search bar could still sit slightly under the status bar on phones with a notch or punch-hole camera. The page now also accounts for display cutouts.
+
 ## 0.2.1-beta
 
 Sign-in, sync and Community now work for everyone through Comik's Firebase, and reading comics in the browser moves to your own Firebase. Still a beta: some sources may stop working as their sites change.

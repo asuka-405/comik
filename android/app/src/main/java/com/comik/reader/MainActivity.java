@@ -85,8 +85,13 @@ public final class MainActivity extends Activity {
         FrameLayout container = new FrameLayout(this);
         container.setBackgroundColor(0xFF111713);
         ViewCompat.setOnApplyWindowInsetsListener(container, (view, insets) -> {
-            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime());
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            // Cutouts (notches and punch holes) are not part of the system bars on every device, so ask for both.
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars()
+                    | WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime());
+            // The status bar is always drawn in this layout. If a device reports less than its real height,
+            // fall back to the platform's own value so the page never starts underneath it.
+            int top = Math.max(bars.top, statusBarHeight());
+            view.setPadding(bars.left, top, bars.right, bars.bottom);
             return WindowInsetsCompat.CONSUMED;
         });
         userAgent = webView.getSettings().getUserAgentString();
@@ -193,6 +198,11 @@ public final class MainActivity extends Activity {
         public void requestGoogleIdToken(String requestId, String serverClientId) {
             mainHandler.post(() -> startGoogleIdTokenRequest(requestId, serverClientId));
         }
+    }
+
+    private int statusBarHeight() {
+        int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        return id > 0 ? getResources().getDimensionPixelSize(id) : 0;
     }
 
     private void startGoogleIdTokenRequest(String requestId, String serverClientId) {

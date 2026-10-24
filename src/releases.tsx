@@ -20,7 +20,7 @@ const FEATURES: { title: string; body: string }[] = [
   { title: "Downloads and updates", body: "Save chapters for offline reading and check the whole library for new chapters in one pass." },
   { title: "Sign in and sync, built in", body: "Everything stays on your device until you turn on sync. Comik's Firebase handles guest or Google sign-in, sync and the public Community with no setup. Bring your own Firebase and everything is stored in your project, with nothing kept by Comik." },
   { title: "Your Firebase reads for you on the web", body: "The apps fetch comics from your device. In the browser, a small proxy in your own Firebase project does it, so no shared address gets banned by the sources." },
-  { title: "Backups", body: "Export your library and progress to a file and restore it on any device." },
+  { title: "Backups and Tachiyomi import", body: "Export your library and progress to a file and restore it on any device, or import a Tachiyomi or Mihon backup to bring your whole shelf and read progress across." },
   { title: "Community", body: "Share what you are reading, rate comics, vote in polls and open private rooms with an invite link." },
   { title: "Safe mode on by default", body: "Adult-marked sources are hidden from Discover, search, your shelf and community posts until you turn it off." },
   { title: "Source Studio", body: "Build a source for a site you are allowed to read with CSS selectors, preview it live, and save it into your catalogue." },

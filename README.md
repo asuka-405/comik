@@ -18,6 +18,7 @@ Browsers cannot read most comic sites (no CORS, referer-locked images), so somet
 - `src/core/chapterRecognition.ts` chapter number parsing; `repo.ts` chapter list reconciliation (keeps read state, follows chapter numbers across re-uploads).
 - `src/ui/reader/` paged (LTR/RTL/vertical, optional two-page spreads) and webtoon modes, crop borders, tall-image splitting, colour filters.
 - Offline: downloads are stored as blobs in IndexedDB.
+- `src/core/tachiyomi.ts` decodes Tachiyomi and Mihon backups (gzip-wrapped protobuf, hand-written reader) and `tachiyomiApply.ts` writes the library, categories and read progress into IndexedDB. Series are matched by Tachiyomi source id (catalogue sources are stored as `mihon-<id>`), then by source name.
 
 ## Firebase
 
