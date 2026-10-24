@@ -546,3 +546,4 @@ button.cm-row:hover{border-color:var(--cm,var(--accent))}.cm-row.static{cursor:d
   .cm-page{padding-inline:12px}.cm-hero{padding:14px;gap:12px}.cm-hero-actions .btn{flex:1 1 auto}.cm-card-box{padding:14px}.cm-copy{flex-direction:column}.cm-row{padding:10px}.cm-member-actions{width:100%}
   .community-compose-tools .btn.primary{width:100%}
 }
+.attach-chip{display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:8px 10px;border:1px solid var(--line);background:var(--surface-2);font-size:13px;font-weight:700}.attach-chip>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attach-chip button{flex:none;color:var(--muted);font-size:18px;line-height:1}.attach-chip button:hover{color:var(--warm)}

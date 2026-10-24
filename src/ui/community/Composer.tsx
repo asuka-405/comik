@@ -2,12 +2,12 @@ import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, EyeSlash } from "@phosphor-icons/react";
-import { useSettings } from "@/core/settings";
 import { db } from "@/core/db";
 import { trackAnalytics } from "@/core/analytics";
 import { getSource } from "@/core/sources/registry";
-import { comicReference, communityTarget, publishPost, PUBLIC_ID, uploadCommunityImage, type CommunityKind } from "@/core/community";
-import { toast } from "../common";
+import { comicReference, communityTarget, publishPost, PUBLIC_ID, type CommunityKind } from "@/core/community";
+import { INLINE_LIMIT, shrinkToDataUrl, uploadToImgbb } from "@/core/communityImage";
+import { Sheet, toast } from "../common";
 import { wrapSpoiler } from "./Feed";
 import { PUBLIC_COMMUNITY, SocialAvatar, useCommunity, useCommunityUser, useDirectory } from "./shared";
 
@@ -65,7 +65,6 @@ export function CommunityNewPostPage() {
 }
 
 function CommunityComposer({ communityId, name, onPublished }: { communityId: string; name: string; onPublished: () => void }) {
-  const settings = useSettings();
   const library = useLiveQuery(() => db.manga.filter((item) => item.inLibrary).toArray(), [], []);
   const [params] = useSearchParams();
   const [kind, setKind] = useState<CommunityKind>(() => (params.get("comic") ? "recommendation" : "discussion"));
@@ -73,7 +72,8 @@ function CommunityComposer({ communityId, name, onPublished }: { communityId: st
   const [body, setBody] = useState("");
   const [mangaId, setMangaId] = useState(() => params.get("comic") ?? "");
   const [options, setOptions] = useState("");
-  const [image, setImage] = useState<File | null>(null);
+  const [image, setImage] = useState<Attachment | null>(null);
+  const [picked, setPicked] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -94,7 +94,16 @@ function CommunityComposer({ communityId, name, onPublished }: { communityId: st
         } catch { /* Local imports have no external source URL. */ }
       }
       const comic = selectedManga && source ? comicReference(selectedManga, source.name, sourceUrl) : undefined;
-      const imageUrl = image ? await uploadCommunityImage(image, settings.imgurClientId) : undefined;
+      let imageUrl = image?.mode === "inline" ? image.dataUrl : undefined;
+      if (image?.mode === "upload") {
+        try {
+          imageUrl = await uploadToImgbb(image.file);
+        } catch (cause) {
+          // The host is unreachable or refused it. Keep the image in the post instead of losing it.
+          imageUrl = await shrinkToDataUrl(image.file);
+          toast(`${(cause as Error).message} The image was shrunk and kept in the post instead.`, true);
+        }
+      }
       await publishPost({
         kind,
         title: title.trim().slice(0, 160),
@@ -130,10 +139,53 @@ function CommunityComposer({ communityId, name, onPublished }: { communityId: st
           <option value="">Reference a comic (optional)</option>
           {library?.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
         </select>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(event) => setImage(event.target.files?.[0] ?? null)} />
-        <button className="btn attach" type="button" onClick={() => fileRef.current?.click()}>{image ? `${image.name} · ${(image.size / 1024).toFixed(1)} KB` : "Attach image"}</button>
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(event) => { setPicked(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+        {image ? (
+          <span className="attach-chip"><span>{image.name} · {image.mode === "upload" ? "ImgBB" : `${(image.size / 1024).toFixed(0)} KB`}</span><button type="button" aria-label="Remove image" onClick={() => setImage(null)}>×</button></span>
+        ) : <button className="btn attach" type="button" onClick={() => fileRef.current?.click()}>Attach image</button>}
         <button className="btn primary" type="submit" disabled={busy}>{busy ? "Publishing" : "Post"}</button>
       </div>
+      {picked && <ImageChoice file={picked} onClose={() => setPicked(null)} onDone={(attachment) => { setImage(attachment); setPicked(null); }} />}
     </form>
+  );
+}
+
+type Attachment = { name: string; size: number } & ({ mode: "upload"; file: File } | { mode: "inline"; dataUrl: string });
+
+/** Ask where the image goes before it leaves the device: ImgBB, or shrunk into the post itself. */
+function ImageChoice({ file, onClose, onDone }: { file: File; onClose: () => void; onDone: (attachment: Attachment) => void }) {
+  const [step, setStep] = useState<"upload" | "resize">("upload");
+  const [busy, setBusy] = useState(false);
+  const small = file.size <= INLINE_LIMIT;
+  const keep = async () => {
+    setBusy(true);
+    try {
+      const dataUrl = await shrinkToDataUrl(file);
+      onDone({ mode: "inline", name: file.name, size: Math.round((dataUrl.length - dataUrl.indexOf(",") - 1) * 0.75), dataUrl });
+    } catch (cause) {
+      toast((cause as Error).message, true);
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet title={step === "upload" ? "Upload this image?" : small ? "Attach this image" : "Shrink this image?"} onClose={onClose} center>
+      {step === "upload" ? (
+        <>
+          <p className="muted" style={{ marginBottom: 16 }}>When you post, <strong>{file.name}</strong> ({(file.size / 1024).toFixed(0)} KB) is uploaded to ImgBB, a third-party image host, and the post links to it. ImgBB's terms apply and anyone with the link can see the image. Nothing is uploaded until you press Post.</p>
+          <div className="dialog-actions">
+            <button type="button" className="btn" onClick={() => setStep("resize")}>No, keep it in the post</button>
+            <button type="button" className="btn primary" onClick={() => onDone({ mode: "upload", name: file.name, size: file.size, file })}>Upload to ImgBB</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="muted" style={{ marginBottom: 16 }}>{small ? "This image is small enough to be stored inside your post as it is. It stays on Comik's servers only." : `Without uploading, the image has to fit in ${INLINE_LIMIT / 1024} KB. Comik will make it smaller (lower resolution, saved as JPEG) and store it inside your post.`}</p>
+          <div className="dialog-actions">
+            <button type="button" className="btn" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn primary" disabled={busy} onClick={() => void keep()}>{busy ? "Working" : small ? "Attach" : "Shrink and attach"}</button>
+          </div>
+        </>
+      )}
+    </Sheet>
   );
 }

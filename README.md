@@ -26,7 +26,7 @@ Comik's own Firebase project (`comik-7157c`) handles sign-in, library sync and t
 
 Sync stays private under `users/{uid}`. Community contributions require a non-anonymous sign-in. Deploy the checked-in rules with `firebase deploy --only firestore:rules --project <project id>`. Deployments can override the built-in config at build time with `VITE_FIREBASE_CONFIG`.
 
-Firebase Analytics requires `measurementId` in the selected config and remains disabled unless the reader opts in under Settings. Events contain generic screen names only. Community image uploads use an optional Imgur Client ID; without one, attached images are limited to 50 KB and stored as a data URL in the post document.
+Firebase Analytics requires `measurementId` in the selected config and remains disabled unless the reader opts in under Settings. Events contain generic screen names only. Community images are uploaded to ImgBB by the app, after asking, with Comik's ImgBB key (`VITE_IMGBB_KEY` replaces it at build time). If the reader declines, or the upload fails, the image is shrunk to 50 KB and stored as a data URL in the post document. If the reader declines, the image is shrunk to 50 KB and stored as a data URL in the post document.
 
 ## Native Apps
 

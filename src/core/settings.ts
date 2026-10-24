@@ -29,7 +29,6 @@ export interface Settings {
   disabledSourceIds: string[];
   /** Firebase Analytics is explicitly opt-in. */
   analyticsConsent: boolean;
-  imgurClientId: string;
 
   // library
   librarySort: LibrarySort;
@@ -84,7 +83,6 @@ export const useSettings = create<Settings>()(
       proxyUrl: "",
       disabledSourceIds: [],
       analyticsConsent: false,
-      imgurClientId: "",
 
       librarySort: "lastRead",
       librarySortAsc: false,

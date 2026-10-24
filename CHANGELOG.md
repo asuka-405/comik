@@ -2,6 +2,14 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.3.4-beta
+
+### Community
+- **Fixed posting with a comic reference.** The security rules checked the comic's link in a way that rejected every real link, so posts that referenced a comic from a source site failed with "Not allowed". Image links were affected the same way. Deploy `firestore.rules` for this to take effect.
+- **The Spoiler button now works.** With text selected it wraps it; with nothing selected it inserts a placeholder you can type over.
+- **Image attachments ask first.** Picking an image offers to upload it to ImgBB, an outside image host (nothing is sent until you post). Decline, and the image is shrunk to 50 KB and stored in the post. If the upload fails, the image is kept in the post the same way.
+- No account or key is needed from readers. Larger images up to 32 MB upload to ImgBB.
+
 ## 0.3.3-beta
 
 ### Community

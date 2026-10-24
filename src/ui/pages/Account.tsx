@@ -102,7 +102,7 @@ export function AccountPage() {
             <li>Discussion and recommendation posts, including comic/source references</li>
             <li>Comments, poll options, and individual poll votes</li>
             <li>Your comic ratings</li>
-            <li>Optional attachments: Imgur URLs, or images up to 50 KB stored with a post</li>
+            <li>Optional attachments: an ImgBB link (you are asked first), or an image shrunk to 50 KB and stored with the post</li>
           </ul>
           <div className="account-local-note">Downloads, page images, imported files, and source page lists stay in this browser. Analytics are sent only when you opt in under Settings.</div>
         </section>

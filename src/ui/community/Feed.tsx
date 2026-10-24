@@ -18,12 +18,19 @@ export function hashtagsOf(text: string): string[] {
   return [...text.matchAll(HASHTAG)].map((m) => m[1]!.toLowerCase());
 }
 
-/** Wrap the selected text of a textarea in ||spoiler|| markers. */
+/**
+ * Wrap the selected text of a textarea in ||spoiler|| markers. With nothing selected, drop in a
+ * placeholder and select it so typing replaces it. Selection and focus are put back afterwards.
+ */
 export function wrapSpoiler(field: HTMLTextAreaElement | null, body: string, set: (value: string) => void) {
   const start = field?.selectionStart ?? body.length;
   const end = field?.selectionEnd ?? body.length;
-  if (start === end) return toast("Select the text to hide first.", true);
-  set(`${body.slice(0, start)}||${body.slice(start, end)}||${body.slice(end)}`);
+  const inner = start === end ? "spoiler" : body.slice(start, end);
+  set(`${body.slice(0, start)}||${inner}||${body.slice(end)}`);
+  requestAnimationFrame(() => {
+    field?.focus();
+    field?.setSelectionRange(start + 2, start + 2 + inner.length);
+  });
 }
 
 /** Post text with #tags that filter the feed and ||spoilers|| hidden until tapped. Plain React text, never HTML. */

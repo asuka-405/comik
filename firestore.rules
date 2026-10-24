@@ -8,8 +8,8 @@ service cloud.firestore {
     function validImage(data) {
       return !('imageUrl' in data)
         || (data.imageUrl is string
-          && (data.imageUrl.matches('^https://')
-            || (data.imageUrl.matches('^data:image/') && data.imageUrl.size() <= 70000)));
+          && (data.imageUrl.matches('^https://.*')
+            || (data.imageUrl.matches('^data:image/.*') && data.imageUrl.size() <= 70000)));
     }
     function validPost(data) {
       return data.keys().hasOnly(['kind', 'title', 'body', 'authorId', 'authorName', 'createdAt', 'comic', 'pollOptions', 'imageUrl', 'pinned'])
@@ -28,7 +28,7 @@ service cloud.firestore {
             && data.comic.sourceId is string && data.comic.sourceId.size() <= 120
             && data.comic.sourceName is string && data.comic.sourceName.size() <= 100
             && data.comic.sourceUrl is string && data.comic.sourceUrl.size() <= 2048
-            && (data.comic.sourceUrl == '' || data.comic.sourceUrl.matches('^https?://'))))
+            && (data.comic.sourceUrl == '' || data.comic.sourceUrl.matches('^https?://.*'))))
         && validImage(data);
     }
 

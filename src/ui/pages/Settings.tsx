@@ -217,11 +217,6 @@ export function PrivacySettings() {
         void refreshAnalyticsConsent(enabled);
         }} />
         </Row>
-        <div className="field" style={{ marginTop: 12 }}>
-        <label htmlFor="imgur-client-id">Imgur Client ID (optional)</label>
-        <input id="imgur-client-id" className="input" value={s.imgurClientId} onChange={(event) => s.set({ imgurClientId: event.target.value.trim() })} placeholder="Enable larger image uploads" autoComplete="off" />
-        <span className="hint muted">Without Imgur, attachments are limited to 50 KB.</span>
-        </div>
       </Section>
     </Detail>
   );

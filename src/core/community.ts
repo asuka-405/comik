@@ -507,27 +507,3 @@ export async function rateComic(comic: CommunityComic, score: number, target: Co
 export function comicReference(manga: MangaRow, sourceName: string, sourceUrl: string): CommunityComic {
   return { mangaId: manga.id, title: manga.title.slice(0, 160), sourceId: manga.sourceId, sourceName: sourceName.slice(0, 100), sourceUrl };
 }
-
-export async function uploadCommunityImage(file: File, imgurClientId: string): Promise<string> {
-  if (!file.type.startsWith("image/")) throw new Error("Choose an image file.");
-  if (imgurClientId.trim()) {
-    if (file.size > 10 * 1024 * 1024) throw new Error("Imgur uploads must be 10 MB or smaller.");
-    const body = new FormData();
-    body.set("image", file);
-    const response = await fetch("https://api.imgur.com/3/image", {
-      method: "POST",
-      headers: { Authorization: `Client-ID ${imgurClientId.trim()}` },
-      body,
-    });
-    const result = await response.json() as { success?: boolean; data?: { link?: string; error?: string } };
-    if (!response.ok || !result.success || !result.data?.link) throw new Error(result.data?.error ?? "Imgur upload failed.");
-    return result.data.link;
-  }
-  if (file.size > 50 * 1024) throw new Error("Without Imgur, images must be 50 KB or smaller.");
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read image."));
-    reader.onerror = () => reject(new Error("Could not read image."));
-    reader.readAsDataURL(file);
-  });
-}
