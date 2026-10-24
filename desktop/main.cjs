@@ -337,7 +337,8 @@ async function recoverUnconfirmedUpdate() {
 
 async function handleUpdateRequest(request, url) {
   const requestOrigin = request.headers.get("origin");
-  if (requestOrigin && requestOrigin !== url.origin) return jsonResponse({ error: "origin not allowed" }, 403);
+  const expectedOrigin = `http://${request.headers.get("host") || "localhost"}`;
+  if (requestOrigin && requestOrigin !== expectedOrigin) return jsonResponse({ error: "origin not allowed" }, 403);
   if (url.pathname === "/api/update/version" && request.method === "GET") {
     const state = await readUpdateState();
     return jsonResponse({ version: state.active || "" });
@@ -428,7 +429,7 @@ async function serveAsset(url) {
   }
   try {
     const state = await readUpdateState();
-    if (state.active && safeUpdatePath(relative)) {
+    if (safeUpdateVersion(state.active) && safeUpdatePath(relative)) {
       const overlayRoot = path.join(UPDATE_ROOT, state.active);
       const overlayFile = path.resolve(overlayRoot, relative);
       if (overlayFile.startsWith(`${overlayRoot}${path.sep}`) && await fs.stat(overlayFile).then((info) => info.isFile()).catch(() => false)) filePath = overlayFile;
@@ -524,7 +525,7 @@ async function start() {
   session.defaultSession.setUserAgent(session.defaultSession.getUserAgent().replace(/\s(Electron|comik-desktop|Comik)\/\S+/gi, ""));
   const server = createServer(async (incoming, outgoing) => {
     try {
-      const url = new URL(incoming.url || "/", "http://localhost");
+      const url = new URL(incoming.url || "/", `http://${incoming.headers.host || "localhost"}`);
       const method = incoming.method || "GET";
       let body;
       if (method !== "GET" && method !== "HEAD") {
@@ -542,7 +543,7 @@ async function start() {
         }
         body = Buffer.concat(chunks);
       }
-      const request = new Request(`http://localhost${url.pathname}${url.search}`, {
+      const request = new Request(url.toString(), {
         method,
         headers: incoming.headers,
         body,

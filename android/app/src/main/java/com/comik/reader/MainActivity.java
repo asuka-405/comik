@@ -337,7 +337,7 @@ public final class MainActivity extends Activity {
             String path = rawPath == null ? "" : rawPath.replaceFirst("^/", "");
             if (!safeUpdatePath(path)) return null;
             String version = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
-            if (version.isEmpty()) return null;
+            if (!validVersion(version)) return null;
             File root = new File(updateRoot(), version);
             File file = new File(root, path);
             if (!file.getCanonicalPath().startsWith(root.getCanonicalPath() + File.separator) || !file.isFile()) return null;

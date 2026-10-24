@@ -19,6 +19,11 @@ Each section becomes the release notes for that version on GitHub and on the rel
 - Android, Windows, and Linux can install verified incremental web-asset updates without downloading a new installer.
 - The 0.4.1-alpha follow-up is published as an OTA-only delta so the update can be exercised from this 0.4.0-alpha baseline.
 
+## 0.4.1-alpha
+
+### OTA test delta
+- The About page reports the active overlay version. Install 0.4.0-alpha first, then use Internal app updates to move to 0.4.1-alpha without downloading a new installer.
+
 ## 0.3.5-alpha
 
 ### Global search
