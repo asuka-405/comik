@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, BookmarkSimple, CaretLeft, CaretRight, Minus, Plus } from "@phosphor-icons/react";
 import { db } from "@/core/db";
+import { getSource } from "@/core/sources/registry";
 import { saveProgress, setBookmark } from "@/core/repo";
 import { readingOrder } from "@/core/progress";
 import type { ChapterRow, MangaRow } from "@/core/types";
@@ -12,6 +13,8 @@ export function NovelReader({ manga, chapter, siblings }: { manga: MangaRow; cha
   const scroller = useRef<HTMLElement>(null);
   const file = useLiveQuery(() => db.localFiles.get(chapter.id), [chapter.id]);
   const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [fontSize, setFontSize] = useState(18);
   const [bookmarked, setBookmarked] = useState(chapter.bookmark);
   const order = useMemo(() => readingOrder(siblings), [siblings]);
@@ -21,10 +24,24 @@ export function NovelReader({ manga, chapter, siblings }: { manga: MangaRow; cha
 
   useEffect(() => {
     let alive = true;
-    if (!file) { setText(""); return; }
-    file.blob.text().then((value) => { if (alive) setText(value); });
+    setLoading(true);
+    setLoadError("");
+    if (file?.kind === "text") {
+      file.blob.text().then((value) => { if (alive) setText(value); }).catch((error) => { if (alive) setLoadError((error as Error).message); }).finally(() => { if (alive) setLoading(false); });
+    } else {
+      const source = getSource(manga.sourceId);
+      if (!source?.getNovelText) { setText(""); setLoadError("This source does not provide readable chapter text."); setLoading(false); return; }
+      source.getNovelText({ url: chapter.url, name: chapter.name, dateUpload: chapter.dateUpload }, { url: manga.url, title: manga.title, kind: "novel" })
+        .then(async (value) => {
+          if (!alive) return;
+          setText(value);
+          await db.localFiles.put({ chapterId: chapter.id, blob: new Blob([value], { type: "text/plain;charset=utf-8" }), kind: "text" });
+        })
+        .catch((error) => { if (alive) setLoadError((error as Error).message || "Could not load this chapter."); })
+        .finally(() => { if (alive) setLoading(false); });
+    }
     return () => { alive = false; };
-  }, [file]);
+  }, [file, manga.id, manga.sourceId, manga.title, manga.url, chapter.id, chapter.url, chapter.name, chapter.dateUpload]);
 
   useEffect(() => {
     const node = scroller.current;
@@ -64,7 +81,7 @@ export function NovelReader({ manga, chapter, siblings }: { manga: MangaRow; cha
       </header>
       <div className="novel-reader-progress"><i style={{ width: `${percent}%` }} /></div>
       <main className="novel-reading-scroll" ref={scroller}>
-        {!file ? <div className="novel-reading-message">This novel text is not stored on this device.</div> : !text ? <div className="novel-reading-message">Loading chapter…</div> : <article className="novel-prose" style={{ fontSize }}>
+        {loading ? <div className="novel-reading-message">Loading chapter…</div> : loadError ? <div className="novel-reading-message" role="alert">{loadError}</div> : <article className="novel-prose" style={{ fontSize }}>
           <h1>{chapter.name}</h1>
           {paragraphs.map((paragraph, paragraphIndex) => <p key={paragraphIndex}>{paragraph.split("\n").map((line, index) => <span key={index}>{index > 0 && <br />}{line}</span>)}</p>)}
         </article>}

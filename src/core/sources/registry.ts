@@ -12,6 +12,9 @@ import { localSource } from "./local";
 import { createHeuristic } from "./heuristic";
 import { createHeanCms } from "./heancms";
 import { createKeyoapp } from "./keyoapp";
+import { createGutenbergSource } from "./gutenberg";
+import { createRoyalRoadSource } from "./royalRoad";
+import { createAniListAnimeSource } from "./anilist";
 import catalog from "./catalog.json";
 import type { CatalogEntry } from "./catalogTypes";
 import type { Source } from "../types";
@@ -35,6 +38,9 @@ const builtin: Source[] = [
   createCutieComics(),
   ...WT_LANGS.map(([l, n]) => createWebtoons(l, n)),
   createWebtoons("en", "English", true),
+  createGutenbergSource(),
+  createRoyalRoadSource(),
+  createAniListAnimeSource(),
   ...(catalog as CatalogEntry[]).map(fromCatalog),
   localSource,
 ];

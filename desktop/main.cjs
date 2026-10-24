@@ -339,6 +339,22 @@ async function handleUpdateRequest(request, url) {
   const requestOrigin = request.headers.get("origin");
   const expectedOrigin = `http://${request.headers.get("host") || "localhost"}`;
   if (requestOrigin && requestOrigin !== expectedOrigin) return jsonResponse({ error: "origin not allowed" }, 403);
+  if (url.pathname === "/api/update/download" && request.method === "GET") {
+    let target;
+    try { target = new URL(url.searchParams.get("url") || ""); }
+    catch { return jsonResponse({ error: "invalid update URL" }, 400); }
+    if (target.protocol !== "https:" || !isGitHubUpdateHost(target.hostname)) return jsonResponse({ error: "update URL is not a trusted GitHub host" }, 400);
+    try {
+      const response = await guardedFetch(target, { headers: { accept: request.headers.get("accept") || "application/octet-stream" } });
+      if (!response.ok) return jsonResponse({ error: `GitHub update download returned ${response.status}` }, response.status);
+      const finalUrl = new URL(response.finalUrl || response.url);
+      if (finalUrl.protocol !== "https:" || !isGitHubUpdateHost(finalUrl.hostname)) return jsonResponse({ error: "GitHub redirected the update to an untrusted host" }, 400);
+      const bytes = await readBounded(response, 160 * 1024 * 1024);
+      return new Response(bytes, { headers: { "content-type": response.headers.get("content-type") || "application/octet-stream", "cache-control": "no-store" } });
+    } catch (error) {
+      return jsonResponse({ error: error instanceof Error ? error.message : "update download failed" }, 502);
+    }
+  }
   if (url.pathname === "/api/update/version" && request.method === "GET") {
     const state = await readUpdateState();
     return jsonResponse({ version: state.active || "" });
@@ -355,6 +371,8 @@ async function handleUpdateRequest(request, url) {
 
   if (url.pathname === "/api/update/begin") {
     if (body.schema !== 1 || !safeUpdateVersion(body.version) || !Array.isArray(body.files) || !body.files.length || body.files.length > 5000) return jsonResponse({ error: "invalid update manifest" }, 400);
+    const activeVersion = (await readUpdateState()).active || app.getVersion();
+    if (body.baseVersion && body.baseVersion !== activeVersion) return jsonResponse({ error: `update requires base ${body.baseVersion}; current version is ${activeVersion}` }, 409);
     let total = 0;
     let hasEntry = false;
     const seen = new Set();

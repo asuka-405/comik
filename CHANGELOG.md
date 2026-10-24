@@ -2,6 +2,26 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.4.2-alpha
+
+### Internal updates
+- Fixed "failed to fetch" when checking for or downloading an update. Android now downloads update files through its own HTTP client and the desktop apps through their built-in proxy, and every file is still checked against its SHA-256 before it is used.
+- Updates are applied one release at a time, so 0.4.0 can move up through 0.4.x, 0.5, ... 0.9.9 and on to 1.0 and later major versions. A release that only changes web assets installs over the air. A delta that was built for a different base version is refused. A release that changes the native shell still needs a normal installer.
+
+### Web novels
+- Discover now has **Comics**, **Web novels** and **Anime** tabs.
+- New web-novel sources: **Project Gutenberg** (public-domain books, split into chapters) and **Royal Road** (creator-published fiction; it sits behind Cloudflare, so it works in the Android, Linux and Windows apps).
+- Novels read in the text reader, with progress that syncs like comic progress.
+
+### Anime
+- New **Anime** section in the library and a **AniList Anime** source in Discover, with trending, latest and search.
+- Each anime lists its episodes, tracks which ones you have watched, and links out to the official streaming services AniList lists for it. Comik does not host or scrape video, and it does not include unlicensed streaming sites.
+- Anime still airing shows the episodes already out.
+
+### Community and sync
+- Posts can reference a web novel or an anime as well as a comic, with a matching label and rating. Deploy `firestore.rules` for this to work.
+- Web novels and anime sync with your library, progress and categories on every device, in the same documents as comics.
+
 ## 0.4.0-alpha
 
 ### Light novels

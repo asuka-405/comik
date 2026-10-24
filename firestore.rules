@@ -22,8 +22,9 @@ service cloud.firestore {
         && (data.kind != 'poll' || ('pollOptions' in data && data.pollOptions is list && data.pollOptions.size() >= 2 && data.pollOptions.size() <= 8))
         && (!('comic' in data)
           || (data.comic is map
-            && data.comic.keys().hasOnly(['mangaId', 'title', 'sourceId', 'sourceName', 'sourceUrl'])
+            && data.comic.keys().hasOnly(['mangaId', 'mediaKind', 'title', 'sourceId', 'sourceName', 'sourceUrl'])
             && data.comic.mangaId is string && data.comic.mangaId.size() <= 300
+            && (!('mediaKind' in data.comic) || data.comic.mediaKind in ['comic', 'novel', 'anime'])
             && data.comic.title is string && data.comic.title.size() <= 160
             && data.comic.sourceId is string && data.comic.sourceId.size() <= 120
             && data.comic.sourceName is string && data.comic.sourceName.size() <= 100

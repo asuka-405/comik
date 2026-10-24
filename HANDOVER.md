@@ -2,6 +2,10 @@
 
 Updated: 2026-10-24 (global search, source ordering, MangaDex removal)
 
+## Shipping a release
+
+`npm run ship -- <version> -m "<commit message>"` does everything in order: version bump (package files, locks, Android `versionName` and `versionCode`), typecheck, tests, web build, OTA bundle (alpha only), Linux/Windows/Android builds, commit, push to `master` (Netlify redeploys the site), GitHub release, and a check of the three download links. Write the `## <version>` section in `CHANGELOG.md` first. Flags: `--dry-run`, `--skip-checks`, `--skip-build`, `--no-push`, `--no-release`. It stops at the first failure and always stops the Gradle daemon. Script: `scripts/ship.mjs`.
+
 ## Next Release Target: 0.4.0-alpha
 
 - Add light-novel support and dedicated light-novel sections. This is intentionally not part of the 0.3.5-alpha bug-fix release.
@@ -12,6 +16,18 @@ Updated: 2026-10-24 (global search, source ordering, MangaDex removal)
 - OTA packages must be authenticated and verified before activation, installed atomically with rollback to the bundled/current assets if activation fails.
 - Improve series migration to search all eligible sources by the exact title and alternate names, then list every possible match with exact matches ranked first.
 - Publish 0.4.0-alpha as the installable OTA-capable base, followed by 0.4.1-alpha as a separately listed OTA-only delta for cross-platform update testing.
+
+## Active 0.4.x Follow-up (2026-10-25)
+
+- Fix OTA fetch failures by downloading GitHub metadata/assets through Android's native HTTP client and Electron's same-origin Chromium proxy, then verify GitHub/manifest SHA-256 values before activation.
+- Select OTA releases sequentially and require each delta's `baseVersion` to match the active overlay. Version ordering has no 0.4.x ceiling; higher minor/major versions are eligible on the same alpha/beta/RC channel.
+- Web-novel providers in progress: Royal Road creator-published fiction and Project Gutenberg public-domain texts. Both use Comik's source proxy and the text reader.
+- Anime support in progress: AniList metadata, episode tracking, and external links to official streaming providers only. No scraped or unauthorized video streams are included.
+- Discover has separate Comics, Web novels, and Anime tabs. Media kind, source metadata, chapters, and read state use the existing library sync documents.
+- Community references carry an optional media kind (`comic`, `novel`, or `anime`); the client rules were updated and still need deployment to the Firebase project.
+- AniList's GraphQL endpoint rejects GET, so `anilist.ts` posts JSON. Airing shows have no `episodes`; `nextAiringEpisode` supplies the count. Checked through the local proxy: Gutenberg (list, search, chapters, text) and AniList (list, search, details, episodes) work; Royal Road returns the Cloudflare challenge in the browser and needs a native app to verify.
+- Streaming-site scrapers (aniwave, gogoanime and similar) were requested and deliberately not added: they serve unlicensed copies. The anime reader links to official providers from AniList instead.
+- Changelog section `0.4.2-alpha` is written. Native files changed (`MainActivity.java`, `desktop/main.cjs`), so ship it as a full installer release, not an OTA delta. Still to do before release: build the three apps, run the OTA flow from 0.4.1 to 0.4.2 on a device, deploy `firestore.rules` (adds `mediaKind`).
 
 ## Current Work
 

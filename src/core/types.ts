@@ -1,12 +1,16 @@
 /** Wire-level shapes a source returns. Mirrors the concepts Mihon sources use (SManga / SChapter / Page). */
 
 export type MangaStatus = "unknown" | "ongoing" | "completed" | "hiatus" | "cancelled";
+export type MediaKind = "comic" | "novel" | "anime";
 
 export interface SManga {
   /** Source-relative identity. Stable across sessions (usually a path or id). */
   url: string;
   title: string;
-  kind?: "comic" | "novel";
+  kind?: MediaKind;
+  externalUrl?: string;
+  episodeCount?: number;
+  externalLinks?: { site: string; url: string }[];
   /** Alternate titles supplied by the source, used for cross-source migration matching. */
   aliases?: string[];
   cover?: string;
@@ -66,6 +70,7 @@ export interface Source {
   /** Accent used for the source chip. Any CSS colour. */
   tint?: string;
   supportsLatest: boolean;
+  mediaType?: MediaKind;
   /** Referer to send when fetching this source's images. Defaults to baseUrl. */
   imageReferer?: string;
   /** Images load fine straight from the browser (no hotlink protection / CORS needed for canvas). */
@@ -79,6 +84,7 @@ export interface Source {
   getMangaDetails(manga: SManga): Promise<SManga>;
   getChapterList(manga: SManga): Promise<SChapter[]>;
   getPageList(chapter: SChapter, manga: SManga): Promise<SPage[]>;
+  getNovelText?(chapter: SChapter, manga: SManga): Promise<string>;
 }
 
 /* ---------------------------------- stored ---------------------------------- */
@@ -89,7 +95,10 @@ export interface MangaRow {
   sourceId: string;
   url: string;
   title: string;
-  kind?: "comic" | "novel";
+  kind?: MediaKind;
+  externalUrl?: string;
+  episodeCount?: number;
+  externalLinks?: { site: string; url: string }[];
   aliases?: string[];
   cover?: string;
   author?: string;

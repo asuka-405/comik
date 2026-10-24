@@ -95,6 +95,7 @@ export function Series() {
   if (safeMode && source?.isNsfw) return <div className="page"><Empty title="Hidden by Safe mode" body="This series is from a source marked as 18+. Turn off Safe mode in Settings to view it." action={<button className="btn primary" onClick={() => nav("/settings/privacy")}>Safe mode settings</button>} /></div>;
 
   const isNovel = manga.kind === "novel";
+  const isAnime = manga.kind === "anime";
   const target = resumeTarget(chapters ?? []);
   const unread = dedupeByNumber(chapters ?? []).filter((c) => !c.read).length;
   const dupeCount = (chapters?.length ?? 0) - dedupeByNumber(chapters ?? []).length;
@@ -246,7 +247,7 @@ export function Series() {
           <div className="muted" style={{ marginTop: 6, fontWeight: 600 }}>{[manga.author, manga.artist && manga.artist !== manga.author ? manga.artist : ""].filter(Boolean).join(", ") || "Unknown author"}</div>
           <div className="facts">
             {manga.status !== "unknown" && <span className="tag" style={{ background: "var(--series)", color: "#101018", textTransform: "capitalize" }}>{manga.status}</span>}
-            <span className="tag dim">{chapterCount ?? chapters?.length ?? 0} chapters</span>
+            <span className="tag dim">{chapterCount ?? chapters?.length ?? 0} {isAnime ? "episodes" : "chapters"}</span>
             {unread > 0 && <span className="tag warm">{unread} unread</span>}
             {manga.genres.slice(0, 6).map((g) => <span className="tag dim" key={g}>{g}</span>)}
           </div>
@@ -258,7 +259,7 @@ export function Series() {
               </Link>
             ) : (chapters?.length ?? 0) > 0 ? <span className="btn" style={{ pointerEvents: "none" }}><Check size={16} /> Caught up</span> : null}
             <button className="btn" onClick={toggleLibrary}>{manga.inLibrary ? <><Check size={16} /> On shelf</> : <><Plus size={16} /> Add to shelf</>}</button>
-            {manga.inLibrary && !isNovel && <button className="btn" onClick={() => { setMigrateMatches([]); setMigrateError(""); setMigrateOpen(true); }}><ArrowsLeftRight size={16} /> Migrate</button>}
+            {manga.inLibrary && !isNovel && !isAnime && <button className="btn" onClick={() => { setMigrateMatches([]); setMigrateError(""); setMigrateOpen(true); }}><ArrowsLeftRight size={16} /> Migrate</button>}
             {manga.inLibrary && !!cats?.length && <button className="btn" onClick={() => setCatSheet(true)}><Tag size={16} /> Categories</button>}
             {manga.inLibrary && <Link className="btn" to={`/community/new?comic=${encodeURIComponent(manga.id)}`}><ShareNetwork size={16} /> Share</Link>}
           </div>
@@ -268,14 +269,14 @@ export function Series() {
       {error && <div className="err" style={{ marginBottom: 14 }}>{error}</div>}
 
       <div className="topbar" style={{ marginBottom: 12 }}>
-        <div className="kicker" style={{ flex: 1 }}>Chapters</div>
+        <div className="kicker" style={{ flex: 1 }}>{isAnime ? "Episodes" : "Chapters"}</div>
         {(["unread", "bookmarked", "downloaded"] as Filt[]).map((f) => (
           <button key={f} className={`chip${filters.has(f) ? " on" : ""}`} onClick={() => { setChapterPage(0); setFilters((s) => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n; }); }} style={{ textTransform: "capitalize" }}>{f}</button>
         ))}
         {dupeCount > 0 && <button className={`chip${showDupes ? " on" : ""}`} onClick={() => { setShowDupes((v) => !v); setChapterPage(0); }} title="Other uploads of the same chapter number">{dupeCount} duplicate{dupeCount === 1 ? "" : "s"}</button>}
         <button className="icon-btn" onClick={() => { setChapterPage(0); void patchManga(manga.id, { chapterSortAsc: !asc }); }} aria-label="Reverse order" title={asc ? "Oldest first" : "Newest first"}><ArrowsDownUp size={18} /></button>
-        {!isNovel && <button className="btn sm" disabled={!next10.length} onClick={() => void download(next10)}>Download next 10</button>}
-        {!isNovel && <button className="btn sm" disabled={!next25.length} onClick={() => void download(next25)}>Download next 25</button>}
+        {!isNovel && !isAnime && <button className="btn sm" disabled={!next10.length} onClick={() => void download(next10)}>Download next 10</button>}
+        {!isNovel && !isAnime && <button className="btn sm" disabled={!next25.length} onClick={() => void download(next25)}>Download next 25</button>}
         <button className="btn sm" onClick={() => setSel(new Set(list.map((c) => c.id)))}>Select all</button>
       </div>
 
@@ -329,8 +330,8 @@ export function Series() {
             <button className="btn sm" disabled={!range.after.length} onClick={() => setRangeSide("after")}>After ({range.after.length})</button>
           </>}
           <button className="btn sm" onClick={() => { chosen.forEach((c) => void setBookmark(c.id, !c.bookmark)); setSel(new Set()); }}><BookmarkSimple size={14} /></button>
-          {!isNovel && <button className="btn sm" onClick={() => void download(chosen)}><DownloadSimple size={14} /></button>}
-          {!isNovel && chosen.some((c) => dlMap.get(c.id)?.state === "done") && <button className="btn sm danger" onClick={() => { void deleteDownloads(chosen.map((c) => c.id)); setSel(new Set()); }}><Trash size={14} /></button>}
+          {!isNovel && !isAnime && <button className="btn sm" onClick={() => void download(chosen)}><DownloadSimple size={14} /></button>}
+          {!isNovel && !isAnime && chosen.some((c) => dlMap.get(c.id)?.state === "done") && <button className="btn sm danger" onClick={() => { void deleteDownloads(chosen.map((c) => c.id)); setSel(new Set()); }}><Trash size={14} /></button>}
           <button className="btn sm ghost" onClick={() => setSel(new Set())}>Clear</button>
         </div>
       )}
@@ -351,8 +352,8 @@ export function Series() {
         <div className="dialog-actions range-actions">
           <button className="btn" onClick={() => void applyRangeRead(true)}><Check size={15} /> Mark read</button>
           <button className="btn" onClick={() => void applyRangeRead(false)}>Mark unread</button>
-          {!isNovel && <button className="btn" onClick={() => void downloadRange()}><DownloadSimple size={15} /> Download</button>}
-          {!isNovel && <button className="btn danger" disabled={!ranged.some((chapter) => dlMap.get(chapter.id)?.state === "done")} onClick={() => void deleteRangeDownloads()}><Trash size={15} /> Delete downloads</button>}
+          {!isNovel && !isAnime && <button className="btn" onClick={() => void downloadRange()}><DownloadSimple size={15} /> Download</button>}
+          {!isNovel && !isAnime && <button className="btn danger" disabled={!ranged.some((chapter) => dlMap.get(chapter.id)?.state === "done")} onClick={() => void deleteRangeDownloads()}><Trash size={15} /> Delete downloads</button>}
         </div>
       </Sheet>}
       {migrateOpen && (

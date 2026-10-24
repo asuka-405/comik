@@ -238,9 +238,9 @@ function PostView({ post, target, viewer, canPin, onTag, onAuthor }: { post: Com
           {local && <img src={coverSrc(local.sourceId, local.cover)} alt="" loading="lazy" />}
           <div>
             <strong>{post.comic.title}</strong>
-            <span>{post.comic.sourceUrl ? post.comic.sourceName : `Local comic · ${post.comic.sourceName}`}</span>
+            <span>{post.comic.sourceUrl ? `${post.comic.sourceName} · ${mediaLabel(post.comic.mediaKind)}` : `Local ${mediaLabel(post.comic.mediaKind).toLowerCase()} · ${post.comic.sourceName}`}</span>
             <div className="community-reference-links">
-              {local?.inLibrary && <Link to={`/series/${encodeURIComponent(local.id)}`}>On your shelf</Link>}
+              {local?.inLibrary && <Link to={`/series/${encodeURIComponent(local.id)}`}>In your library</Link>}
               {post.comic.sourceUrl && <a href={post.comic.sourceUrl} target="_blank" rel="noreferrer">Open at {post.comic.sourceName}</a>}
             </div>
           </div>
@@ -253,7 +253,7 @@ function PostView({ post, target, viewer, canPin, onTag, onAuthor }: { post: Com
           <span>{option}</span><span className="mono">{count}</span>
         </button>;
       })}<span className="muted">{Object.keys(votes).length} votes</span></div>}
-      {post.comic && <div className="community-rating"><span>Rating {ratingAverage ? `${ratingAverage.toFixed(1)} / 5 · ${ratings.length}` : "No ratings yet"}</span><div className="rating-buttons" aria-label="Rate this comic">{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" aria-label={`Rate ${score} out of 5`} disabled={!interact} className={(ratings.find((rating) => rating.uid === viewer.uid)?.score ?? 0) >= score ? "on" : ""} onClick={() => void rateComic(post.comic!, score, target).then(() => trackAnalytics("community_rating", { score })).catch((cause: Error) => toast(cause.message, true))}>★</button>)}</div></div>}
+      {post.comic && <div className="community-rating"><span>{mediaLabel(post.comic.mediaKind)} rating {ratingAverage ? `${ratingAverage.toFixed(1)} / 5 · ${ratings.length}` : "not rated yet"}</span><div className="rating-buttons" aria-label={`Rate this ${mediaLabel(post.comic.mediaKind).toLowerCase()}`}>{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" aria-label={`Rate ${score} out of 5`} disabled={!interact} className={(ratings.find((rating) => rating.uid === viewer.uid)?.score ?? 0) >= score ? "on" : ""} onClick={() => void rateComic(post.comic!, score, target).then(() => trackAnalytics("community_rating", { score })).catch((cause: Error) => toast(cause.message, true))}>★</button>)}</div></div>}
       <div className="community-post-actions">
         <button className={`community-action like${likes.liked ? " liked" : ""}`} disabled={!interact} aria-pressed={likes.liked} onClick={() => void setPostLike(post.id, likes.liked, target).then(() => trackAnalytics("community_like")).catch((cause: Error) => toast(cause.message, true))}><Heart size={19} weight={likes.liked ? "fill" : "regular"} /><span>{likes.count ? likes.count : "Like"}</span></button>
         <button className={`community-action${showComments ? " selected" : ""}`} onClick={() => setShowComments((value) => !value)}><ChatCircleDots size={19} /><span>{showComments ? "Hide replies" : "Reply"}</span></button>
@@ -274,3 +274,5 @@ function PostView({ post, target, viewer, canPin, onTag, onAuthor }: { post: Com
     </article>
   );
 }
+
+const mediaLabel = (kind?: "comic" | "novel" | "anime") => kind === "anime" ? "Anime" : kind === "novel" ? "Web novel" : "Comic";

@@ -14,6 +14,7 @@ import { PanelField } from "../PanelField";
 import { useSettings, type LibraryGridColumns } from "@/core/settings";
 
 const LANG_NAMES: Record<string, string> = { all: "Local", en: "English", es: "Spanish", fr: "French", "pt-br": "Portuguese", id: "Indonesian", ru: "Russian", de: "German", it: "Italian", ja: "Japanese", tr: "Turkish", th: "Thai" };
+type MediaTab = "comics" | "novels" | "anime";
 
 function useSources(): Source[] {
   const [list, setList] = useState(allSources);
@@ -35,6 +36,8 @@ export function Browse() {
   const [text, setText] = useState(q);
   const dq = useDebounced(text, 900);
   const [lang, setLang] = useState(() => localStorage.getItem("comik.lang") ?? "en");
+  const initialMedia = params.get("media");
+  const [mediaTab, setMediaTab] = useState<MediaTab>(initialMedia === "novels" || initialMedia === "anime" ? initialMedia : "comics");
   const gridColumns = useSettings((s) => s.globalSearchGridColumns);
 
   useEffect(() => {
@@ -42,9 +45,10 @@ export function Browse() {
   }, [dq, setParams]);
 
   const enabledSources = useMemo(() => sources.filter((s) => !disabledSourceIds.includes(s.id) && !(safeMode && s.isNsfw)), [sources, disabledSourceIds, safeMode]);
-  const langs = useMemo(() => [...new Set(enabledSources.map((s) => s.lang))], [enabledSources]);
+  const mediaSources = useMemo(() => enabledSources.filter((source) => mediaTab === "comics" ? source.mediaType !== "novel" && source.mediaType !== "anime" : source.mediaType === (mediaTab === "novels" ? "novel" : "anime")), [enabledSources, mediaTab]);
+  const langs = useMemo(() => [...new Set(mediaSources.map((s) => s.lang))], [mediaSources]);
   const [sq, setSq] = useState("");
-  const shown = filterSources(enabledSources.filter((s) => s.lang === lang || s.lang === "all"), sq);
+  const shown = filterSources(mediaSources.filter((s) => mediaTab !== "comics" || s.lang === lang || s.lang === "all"), sq);
   const searchable = shown.filter((s) => s.id !== "local");
 
   return (
@@ -56,6 +60,9 @@ export function Browse() {
           <h2>Pick a source, or search all of them</h2>
         </div>
       </section>
+      <div className="seg discover-media-tabs" role="tablist" aria-label="Discover media type">
+        {([["comics", "Comics"], ["novels", "Web novels"], ["anime", "Anime"]] as [MediaTab, string][]).map(([value, label]) => <button key={value} role="tab" aria-selected={mediaTab === value} className={mediaTab === value ? "on" : ""} onClick={() => { setMediaTab(value); setSq(""); }}>{label}</button>)}
+      </div>
       <ReadingNotice />
       <div className="topbar">
         <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
@@ -67,9 +74,10 @@ export function Browse() {
           {[2, 3, 4, 5, 6].map((columns) => <option key={columns} value={columns}>{columns} columns</option>)}
         </select>}
       </div>
-      <div className="chips" aria-label="Language">
+      {mediaTab === "comics" && <div className="chips" aria-label="Language">
         {langs.map((l) => <button key={l} className={`chip${l === lang ? " on" : ""}`} onClick={() => { setLang(l); localStorage.setItem("comik.lang", l); }}>{LANG_NAMES[l] ?? l}</button>)}
       </div>
+      }
 
       {q ? (
         searchable.length ? <GlobalSearch sources={searchable} q={q} /> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
@@ -89,10 +97,10 @@ export function Browse() {
               </div>
             </Link>
           ))}
-          <button className="panel source-card compact" data-hue="6" onClick={() => nav("/settings#sources")} style={{ borderStyle: "dashed" }}>
+          {mediaTab === "comics" && <button className="panel source-card compact" data-hue="6" onClick={() => nav("/settings#sources")} style={{ borderStyle: "dashed" }}>
             <div className="ico"><Plus size={20} /></div>
             <div><div className="src-name">Add a source</div><div className="muted src-sub">Madara, MangaThemesia or your own selectors</div></div>
-          </button>
+          </button>}
         </div>
         </>
       )}

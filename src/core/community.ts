@@ -1,7 +1,7 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, onSnapshot, orderBy, query, setDoc, updateDoc, where, writeBatch, type Firestore, type Unsubscribe } from "firebase/firestore";
 import { hash53 } from "./hash";
 import { loadPublicCommunityFirebase, readPublicCommunityConfig, useCommunitySession } from "./sync/firebase";
-import type { MangaRow } from "./types";
+import type { MangaRow, MediaKind } from "./types";
 
 /**
  * Communities live in the Comik Firebase project. "public" is the original shared feed that every
@@ -43,6 +43,7 @@ export interface Membership { id: string; role: Role; joinedAt: number }
 
 export interface CommunityComic {
   mangaId: string;
+  mediaKind?: MediaKind;
   title: string;
   sourceId: string;
   sourceName: string;
@@ -505,5 +506,5 @@ export async function rateComic(comic: CommunityComic, score: number, target: Co
 }
 
 export function comicReference(manga: MangaRow, sourceName: string, sourceUrl: string): CommunityComic {
-  return { mangaId: manga.id, title: manga.title.slice(0, 160), sourceId: manga.sourceId, sourceName: sourceName.slice(0, 100), sourceUrl };
+  return { mangaId: manga.id, mediaKind: manga.kind ?? "comic", title: manga.title.slice(0, 160), sourceId: manga.sourceId, sourceName: sourceName.slice(0, 100), sourceUrl };
 }

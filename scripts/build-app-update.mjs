@@ -52,6 +52,7 @@ const archive = zipSync(Object.fromEntries(updateFiles.map((file) => [file.path,
 const manifest = {
   schema: 1,
   version,
+  baseVersion: baseVersion ?? null,
   archiveSha256: createHash("sha256").update(archive).digest("hex"),
   files: updateFiles.map(({ path: filePath, size, sha256 }) => ({ path: filePath, size, sha256 })),
 };

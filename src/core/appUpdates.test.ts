@@ -6,6 +6,8 @@ describe("native app updates", () => {
     expect(compareAppVersions("0.4.0-alpha.2", "0.4.0-alpha.10")).toBeLessThan(0);
     expect(compareAppVersions("0.4.0-alpha", "0.4.0")).toBeLessThan(0);
     expect(compareAppVersions("0.4.1-alpha", "0.4.0")).toBeGreaterThan(0);
+    expect(compareAppVersions("0.9.9-alpha", "0.4.0-alpha")).toBeGreaterThan(0);
+    expect(compareAppVersions("1.0.0-alpha", "0.9.9-alpha")).toBeGreaterThan(0);
   });
 
   it("only permits app bundle paths and rejects traversal", () => {

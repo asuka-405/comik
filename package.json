@@ -1,7 +1,7 @@
 {
   "name": "comik",
   "private": true,
-  "version": "0.4.1-alpha",
+  "version": "0.4.2-alpha",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,proxy -c auto \"vite\" \"tsx watch server/index.ts\"",
@@ -9,6 +9,7 @@
     "dev:proxy": "tsx watch server/index.ts",
     "build": "tsc --noEmit && vite build",
     "build:native": "node scripts/build-native.mjs",
+    "ship": "node scripts/ship.mjs",
     "build:app-update": "node scripts/build-app-update.mjs",
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit",

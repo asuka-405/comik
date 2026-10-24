@@ -63,6 +63,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public final class MainActivity extends Activity {
@@ -76,6 +78,7 @@ public final class MainActivity extends Activity {
     private WebView webView;
     private String userAgent;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private ValueCallback<Uri[]> fileChooserCallback;
 
     @Override
@@ -230,12 +233,32 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void downloadUpdateAsset(String requestId, String rawUrl) {
+            if (requestId == null || requestId.length() > 80) return;
+            Uri current = Uri.parse(webView.getUrl() == null ? "" : webView.getUrl());
+            if (!"https".equals(current.getScheme()) || !APP_HOST.equals(current.getHost())) {
+                sendUpdateDownloadResult(requestId, null, "Update downloads are only available inside Comik.");
+                return;
+            }
+            updateExecutor.execute(() -> {
+                try {
+                    byte[] bytes = downloadGitHubAsset(rawUrl);
+                    sendUpdateDownloadResult(requestId, Base64.encodeToString(bytes, Base64.NO_WRAP), null);
+                } catch (Exception error) {
+                    sendUpdateDownloadResult(requestId, null, error.getMessage() == null ? "Update download failed" : error.getMessage());
+                }
+            });
+        }
+
+        @JavascriptInterface
         public synchronized boolean beginUpdate(String manifestJson) {
             try {
                 JSONObject manifest = new JSONObject(manifestJson);
                 String version = manifest.getString("version");
+                String baseVersion = manifest.optString("baseVersion", "");
                 JSONArray files = manifest.getJSONArray("files");
                 if (manifest.getInt("schema") != 1 || !validVersion(version) || files.length() < 1 || files.length() > 5000) return false;
+                if (!baseVersion.isEmpty() && !baseVersion.equals(activeInstalledVersion())) return false;
                 Map<String, UpdateFile> nextExpected = new HashMap<>();
                 boolean hasIndex = false;
                 long totalBytes = 0;
@@ -325,7 +348,53 @@ public final class MainActivity extends Activity {
         UpdateFile(int size, String sha256) { this.size = size; this.sha256 = sha256; }
     }
 
+    private byte[] downloadGitHubAsset(String rawUrl) throws Exception {
+        URL target = new URL(rawUrl);
+        if (!"https".equalsIgnoreCase(target.getProtocol()) || !isGitHubUpdateHost(target.getHost())) throw new IOException("Update URL is not a trusted GitHub host");
+        HttpURLConnection connection = (HttpURLConnection) target.openConnection();
+        connection.setInstanceFollowRedirects(true);
+        connection.setConnectTimeout(20000);
+        connection.setReadTimeout(45000);
+        connection.setRequestProperty("Accept", "application/vnd.github+json, application/octet-stream");
+        try {
+            int status = connection.getResponseCode();
+            URL finalUrl = connection.getURL();
+            if (status < 200 || status >= 300) throw new IOException("GitHub update download returned " + status);
+            if (!"https".equalsIgnoreCase(finalUrl.getProtocol()) || !isGitHubUpdateHost(finalUrl.getHost())) throw new IOException("GitHub redirected the update to an untrusted host");
+            if (connection.getContentLength() > 160 * 1024 * 1024) throw new IOException("Update download is too large");
+            try (InputStream input = connection.getInputStream()) { return readBounded(input, 160 * 1024 * 1024); }
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private static boolean isGitHubUpdateHost(String host) {
+        String normalized = host.toLowerCase(java.util.Locale.ROOT);
+        return normalized.equals("github.com") || normalized.equals("api.github.com")
+                || normalized.endsWith(".github.com") || normalized.endsWith(".githubusercontent.com");
+    }
+
+    private void sendUpdateDownloadResult(String requestId, String data, String error) {
+        JSONObject result = new JSONObject();
+        try {
+            result.put("requestId", requestId);
+            if (data != null) result.put("data", data);
+            if (error != null) result.put("error", error);
+        } catch (Exception ignored) { return; }
+        String script = "window.__comikAndroidUpdateResult && window.__comikAndroidUpdateResult(" + JSONObject.quote(result.toString()) + ");";
+        mainHandler.post(() -> {
+            if (webView != null && !isFinishing()) webView.evaluateJavascript(script, null);
+        });
+    }
+
     private File updateRoot() { return new File(getFilesDir(), "web-updates"); }
+
+    private String activeInstalledVersion() {
+        String active = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
+        if (!active.isEmpty()) return active;
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+        catch (Exception ignored) { return ""; }
+    }
 
     private void rollbackUnconfirmedUpdate() {
         android.content.SharedPreferences prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE);

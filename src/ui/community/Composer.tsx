@@ -135,8 +135,8 @@ function CommunityComposer({ communityId, name, onPublished }: { communityId: st
       </div>
       {kind === "poll" && <textarea className="input" value={options} onChange={(event) => setOptions(event.target.value)} maxLength={500} rows={3} placeholder="One poll option per line" aria-label="Poll options" required />}
       <div className="community-compose-tools">
-        <select className="input" value={mangaId} onChange={(event) => setMangaId(event.target.value)} aria-label="Reference a comic">
-          <option value="">Reference a comic (optional)</option>
+        <select className="input" value={mangaId} onChange={(event) => setMangaId(event.target.value)} aria-label="Reference a title">
+          <option value="">Reference a title (optional)</option>
           {library?.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
         </select>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(event) => { setPicked(event.target.files?.[0] ?? null); event.target.value = ""; }} />

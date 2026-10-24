@@ -1,5 +1,6 @@
 import { unzipSync } from "fflate";
 import { create } from "zustand";
+import { isNativeShell } from "./platform";
 
 const REPO = "asuka-405/comik";
 const MANIFEST_ASSET = "Comik-app-update.json";
@@ -8,7 +9,7 @@ const ARCHIVE_ASSET = "Comik-app-update.zip";
 interface ApiAsset { name: string; browser_download_url: string; digest?: string | null }
 interface ApiRelease { tag_name: string; prerelease: boolean; draft: boolean; assets: ApiAsset[] }
 export interface UpdateFile { path: string; size: number; sha256: string }
-export interface UpdateManifest { schema: 1; version: string; archiveSha256: string; files: UpdateFile[] }
+export interface UpdateManifest { schema: 1; version: string; baseVersion?: string | null; archiveSha256: string; files: UpdateFile[] }
 export interface UpdateCandidate { version: string; manifestUrl: string; archiveUrl: string; manifestDigest?: string; archiveDigest?: string }
 
 interface AppUpdateState {
@@ -24,6 +25,7 @@ export const useAppUpdate = create<AppUpdateState>(() => ({ activeVersion: "", c
 
 interface AndroidUpdateBridge {
   getActiveVersion(): string;
+  downloadUpdateAsset(requestId: string, url: string): void;
   beginUpdate(manifestJson: string): boolean;
   writeUpdateFile(version: string, path: string, contentBase64: string, sha256: string): boolean;
   activateUpdate(version: string): boolean;
@@ -31,7 +33,30 @@ interface AndroidUpdateBridge {
 }
 
 declare global {
-  interface Window { ComikAndroidUpdates?: AndroidUpdateBridge }
+  interface Window {
+    ComikAndroidUpdates?: AndroidUpdateBridge;
+    __comikAndroidUpdateResult?: (serialized: string) => void;
+  }
+}
+
+const androidDownloads = new Map<string, { resolve: (bytes: Uint8Array) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+let androidDownloadId = 0;
+
+if (typeof window !== "undefined") {
+  window.__comikAndroidUpdateResult = (serialized) => {
+    let result: { requestId: string; data?: string; error?: string };
+    try { result = JSON.parse(serialized) as typeof result; }
+    catch { return; }
+    const pending = androidDownloads.get(result.requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    androidDownloads.delete(result.requestId);
+    if (result.error || !result.data) { pending.reject(new Error(result.error || "Android update download failed")); return; }
+    const binary = atob(result.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+    pending.resolve(bytes);
+  };
 }
 
 function versionParts(version: string): { numbers: number[]; suffix: string } {
@@ -69,8 +94,9 @@ export function validateUpdateManifest(manifest: UpdateManifest, version: string
   return total <= 160 * 1024 * 1024 && paths.has("web/index.html");
 }
 
-export async function sha256Hex(data: BufferSource): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", data);
+export async function sha256Hex(data: Uint8Array | ArrayBuffer): Promise<string> {
+  const bytes = new Uint8Array(data);
+  const digest = await crypto.subtle.digest("SHA-256", bytes.buffer as ArrayBuffer);
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
@@ -88,16 +114,13 @@ function releaseVersion(tag: string): string {
 }
 
 export async function findAppUpdate(currentVersion: string): Promise<UpdateCandidate | null> {
-  const response = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=50`, {
-    headers: { accept: "application/vnd.github+json" }, cache: "no-store",
-  });
-  if (!response.ok) throw new Error(response.status === 403 ? "GitHub update check is rate limited" : `Update check failed (${response.status})`);
-  const releases = await response.json() as ApiRelease[];
+  const releasesBytes = await fetchUpdateBytes(`https://api.github.com/repos/${REPO}/releases?per_page=50`, "application/vnd.github+json");
+  const releases = JSON.parse(new TextDecoder().decode(releasesBytes)) as ApiRelease[];
   const channel = currentVersion.match(/-(alpha|beta|rc)(\.|$)/i)?.[1]?.toLowerCase() ?? "stable";
   const candidates = releases.filter((release) => !release.draft && (channel === "stable" ? !release.prerelease : release.prerelease))
     .map((release) => ({ release, version: releaseVersion(release.tag_name) }))
     .filter(({ version }) => (version.match(/-(alpha|beta|rc)(\.|$)/i)?.[1]?.toLowerCase() ?? "stable") === channel && compareAppVersions(version, currentVersion) > 0)
-    .sort((a, b) => compareAppVersions(b.version, a.version));
+    .sort((a, b) => compareAppVersions(a.version, b.version));
   for (const { release, version } of candidates) {
     const manifest = release.assets.find((asset) => asset.name === MANIFEST_ASSET);
     const archive = release.assets.find((asset) => asset.name === ARCHIVE_ASSET);
@@ -120,6 +143,37 @@ async function postDesktop(path: string, body: unknown): Promise<void> {
   }
 }
 
+async function fetchUpdateBytes(url: string, accept = "application/octet-stream"): Promise<Uint8Array> {
+  const android = window.ComikAndroidUpdates;
+  if (android) {
+    const requestId = `update-${++androidDownloadId}`;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        androidDownloads.delete(requestId);
+        reject(new Error("GitHub update download timed out. Try again."));
+      }, 120_000);
+      androidDownloads.set(requestId, { resolve, reject, timer });
+      try { android.downloadUpdateAsset(requestId, url); }
+      catch (error) {
+        clearTimeout(timer);
+        androidDownloads.delete(requestId);
+        reject(error instanceof Error ? error : new Error("Could not start Android update download"));
+      }
+    });
+  }
+  if (isNativeShell) {
+    const response = await fetch(`/api/update/download?url=${encodeURIComponent(url)}`, { cache: "no-store", headers: { accept } });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(detail.error || `Update download failed (${response.status})`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+  const response = await fetch(url, { cache: "no-store", headers: { accept } });
+  if (!response.ok) throw new Error(response.status === 403 ? "GitHub update download is rate limited" : `Update download failed (${response.status})`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 async function activeAppVersion(bundledVersion: string): Promise<string> {
   if (window.ComikAndroidUpdates) return window.ComikAndroidUpdates.getActiveVersion() || bundledVersion;
   try {
@@ -137,18 +191,19 @@ export function confirmActiveUpdate(): void {
   void fetch("/api/update/confirm", { method: "POST" }).catch(() => {});
 }
 
-export async function installAppUpdate(candidate: UpdateCandidate): Promise<void> {
-  const [manifestResponse, archiveResponse] = await Promise.all([fetch(candidate.manifestUrl, { cache: "no-store" }), fetch(candidate.archiveUrl, { cache: "no-store" })]);
-  if (!manifestResponse.ok || !archiveResponse.ok) throw new Error("Could not download the update files");
+export async function installAppUpdate(candidate: UpdateCandidate, activeVersion: string): Promise<void> {
+  const [manifestBytes, archiveBytes] = await Promise.all([
+    fetchUpdateBytes(candidate.manifestUrl, "application/json"),
+    fetchUpdateBytes(candidate.archiveUrl),
+  ]);
   if (!candidate.manifestDigest || !/^[a-f0-9]{64}$/i.test(candidate.manifestDigest)) throw new Error("The release does not include a trusted manifest digest");
-  const manifestBytes = new Uint8Array(await manifestResponse.arrayBuffer());
   if (manifestBytes.length > 2 * 1024 * 1024) throw new Error("The update manifest is too large");
   if (await sha256Hex(manifestBytes) !== candidate.manifestDigest) throw new Error("The update manifest failed integrity verification");
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as UpdateManifest;
   if (!validateUpdateManifest(manifest, candidate.version)) {
     throw new Error("The update manifest is invalid");
   }
-  const archiveBytes = new Uint8Array(await archiveResponse.arrayBuffer());
+  if (manifest.baseVersion && manifest.baseVersion !== activeVersion) throw new Error(`This update requires ${manifest.baseVersion}; current overlay is ${activeVersion}`);
   if (archiveBytes.length > 160 * 1024 * 1024) throw new Error("The update archive is too large");
   const archiveHash = await sha256Hex(archiveBytes);
   if (archiveHash !== manifest.archiveSha256 || (candidate.archiveDigest && archiveHash !== candidate.archiveDigest)) throw new Error("The update archive failed integrity verification");
@@ -197,7 +252,7 @@ export async function applyAppUpdate(): Promise<void> {
   if (!candidate) return;
   useAppUpdate.setState({ installing: true, error: "" });
   try {
-    await installAppUpdate(candidate);
+    await installAppUpdate(candidate, useAppUpdate.getState().activeVersion);
   } catch (error) {
     useAppUpdate.setState({ installing: false, error: (error as Error).message });
   }
