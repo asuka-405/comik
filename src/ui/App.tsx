@@ -28,20 +28,45 @@ import { WebSetup } from "./pages/WebSetup";
 import { proxyToken } from "@/core/http";
 import { Onboarding } from "./Onboarding";
 import { AccountMenu } from "./AccountMenu";
+import { BASE_COLORS, resolveTheme, themeCss } from "@/core/themes";
 
 function useTheme() {
   const theme = useSettings((s) => s.theme);
+  const userThemes = useSettings((s) => s.userThemes);
+  const customCss = useSettings((s) => s.customCss);
+  const customCssOn = useSettings((s) => s.customCssOn);
+  const [systemDark, setSystemDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
+
   useEffect(() => {
     const mq = matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-      const resolved = theme === "system" ? (mq.matches ? "dark" : "light") : theme;
-      document.documentElement.dataset.theme = resolved;
-      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "light" ? "#e6ecdf" : "#111713");
-    };
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, [theme]);
+    const on = () => setSystemDark(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  useEffect(() => {
+    const resolved = resolveTheme(theme, userThemes, systemDark);
+    document.documentElement.dataset.theme = resolved.base;
+    document.documentElement.dataset.skin = resolved.id;
+    styleElement("comik-theme").textContent = themeCss(resolved);
+    const canvas = resolved.colors.canvas ?? BASE_COLORS[resolved.base].canvas;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", canvas);
+  }, [theme, userThemes, systemDark]);
+
+  useEffect(() => {
+    styleElement("comik-custom-css").textContent = customCssOn ? customCss : "";
+  }, [customCss, customCssOn]);
+}
+
+/** One <style> per purpose, kept last in <head> so it wins over the bundled stylesheet at equal weight. */
+function styleElement(id: string): HTMLStyleElement {
+  let el = document.getElementById(id) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement("style");
+    el.id = id;
+  }
+  document.head.appendChild(el);
+  return el;
 }
 
 export function App() {

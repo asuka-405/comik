@@ -441,6 +441,32 @@ export async function linkGoogle(): Promise<void> {
   publishUser(toUser(auth.currentUser));
 }
 
+/** True when Firebase refuses a sensitive action until the person signs in again. */
+export const needsRecentLogin = (error: unknown) => (error as { code?: string })?.code === "auth/requires-recent-login";
+
+/** Sign in again with the same Google account, which Firebase requires before it will delete an account. */
+export async function reauthenticate(): Promise<void> {
+  const { auth, authMod } = await loadFirebase();
+  const user = auth.currentUser;
+  if (!user) throw new Error("You are not signed in.");
+  if (user.isAnonymous) return;
+  if (typeof window !== "undefined" && window.ComikAndroidAuth) {
+    const config = readFirebaseConfig();
+    const serverClientId = config?.googleWebClientId ?? (config?.projectId === "comik-7157c" ? DEFAULT_GOOGLE_WEB_CLIENT_ID : "");
+    await authMod.reauthenticateWithCredential(user, authMod.GoogleAuthProvider.credential(await getNativeGoogleIdToken(serverClientId)));
+  } else {
+    await authMod.reauthenticateWithPopup(user, new authMod.GoogleAuthProvider());
+  }
+}
+
+/** Remove the signed-in account from Firebase, then clear it from this device. */
+export async function deleteSignedInAccount(): Promise<void> {
+  const { auth, authMod } = await loadFirebase();
+  if (!auth.currentUser) return;
+  await authMod.deleteUser(auth.currentUser);
+  publishUser(null, { status: "off" });
+}
+
 export async function signOutSync(): Promise<void> {
   const { auth, authMod } = await loadFirebase();
   await authMod.signOut(auth);

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowClockwise, CloudCheck, SignOut, UserCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, CloudCheck, SignOut, Trash, UserCircle, Warning } from "@phosphor-icons/react";
 import { db } from "@/core/db";
-import { getFirebaseMode, readFirebaseConfig, signOutSync, useSync } from "@/core/sync/firebase";
+import { getFirebaseMode, readFirebaseConfig, reauthenticate, signOutSync, useSync } from "@/core/sync/firebase";
+import { purgeAccount, wipeAccountData, type WipeSummary } from "@/core/sync/accountData";
 import { stopSync, syncNow } from "@/core/sync/engine";
 import { toast } from "../common";
 
@@ -106,7 +107,73 @@ export function AccountPage() {
           <div className="account-local-note">Downloads, page images, imported files, and source page lists stay in this browser. Analytics are sent only when you opt in under Settings.</div>
         </section>
       </div>
+
+      {sync.user && <DangerZone signedInAs={sync.user.email || sync.user.name || "this guest account"} projectId={config?.projectId ?? ""} />}
     </div>
+  );
+}
+
+type Pending = null | "reset" | "purge";
+
+/** Reset keeps the account and empties it. Purge deletes the account too. Both need the word typed to confirm. */
+function DangerZone({ signedInAs, projectId }: { signedInAs: string; projectId: string }) {
+  const [pending, setPending] = useState<Pending>(null);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ kind: "reset" | "purge"; summary: WipeSummary } | null>(null);
+  const word = pending === "purge" ? "delete" : "reset";
+
+  const close = () => { setPending(null); setTyped(""); };
+  const run = async () => {
+    if (!pending) return;
+    setBusy(true);
+    try {
+      const summary = pending === "purge" ? await purgeAccount(reauthenticate) : await wipeAccountData();
+      setResult({ kind: pending, summary });
+      toast(pending === "purge" ? "Account deleted" : "Account reset");
+      close();
+    } catch (error) {
+      toast((error as Error).message || "That did not finish. Nothing more was changed.", true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="account-danger" aria-labelledby="danger-title">
+      <div className="kicker">Your data in {projectId || "Firebase"}</div>
+      <h2 id="danger-title">Reset or delete this account</h2>
+      <p className="muted">Both act on the cloud account ({signedInAs}). Your library on this device is not touched, and sync is switched off so it cannot upload it again by itself.</p>
+      <div className="account-danger-grid">
+        <article>
+          <h3>Reset account</h3>
+          <p>Keeps the account and signs you in as before, but deletes everything stored in it: your synced library and settings, your Community posts and ratings, and the likes, votes and comments you left on your own posts.</p>
+          <button className="btn" disabled={busy} onClick={() => { setPending("reset"); setTyped(""); }}><ArrowClockwise size={17} />Reset account</button>
+        </article>
+        <article>
+          <h3>Purge account</h3>
+          <p>Does everything a reset does, then deletes the account itself from Firebase. This cannot be undone and the account cannot be recovered. You may be asked to sign in again to confirm.</p>
+          <button className="btn danger" disabled={busy} onClick={() => { setPending("purge"); setTyped(""); }}><Trash size={17} />Purge account</button>
+        </article>
+      </div>
+      <p className="hint muted">Comments, likes and votes you left on other people's posts cannot be searched for, so they stay. Private rooms keep their own data in the project that hosts them.</p>
+
+      {pending && (
+        <div className="account-danger-confirm" role="alertdialog" aria-labelledby="confirm-title">
+          <h3 id="confirm-title"><Warning size={19} weight="fill" /> {pending === "purge" ? "Delete this account for good?" : "Erase everything in this account?"}</h3>
+          <p>Type <strong className="mono">{word}</strong> to confirm.</p>
+          <input className="input mono" value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={word} autoComplete="off" aria-label={`Type ${word} to confirm`} autoFocus />
+          <div className="account-danger-actions">
+            <button className={`btn ${pending === "purge" ? "danger" : "primary"}`} disabled={busy || typed.trim().toLowerCase() !== word} onClick={() => void run()}>{busy ? "Working…" : pending === "purge" ? "Delete account" : "Reset account"}</button>
+            <button className="btn" disabled={busy} onClick={close}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div className="account-sync-note"><CloudCheck size={18} /> {result.kind === "purge" ? "The account was deleted." : "The account was reset."} Removed {result.summary.library.toLocaleString()} synced documents, {result.summary.posts} posts and {result.summary.ratings} ratings. Sync is off.</div>
+      )}
+    </section>
   );
 }
 

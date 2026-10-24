@@ -1,8 +1,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ReaderMode } from "./types";
+import type { UserTheme } from "./themes";
 
-export type Theme = "system" | "dark" | "light";
+/** "system", a built-in preset id, or the id of one of the user's own themes. */
+export type Theme = string;
 export type FitMode = "width" | "height" | "screen" | "original";
 export type LibrarySort = "title" | "unread" | "lastRead" | "added" | "lastUpdate";
 export type LibraryDensity = "cozy" | "compact" | "list";
@@ -10,6 +12,11 @@ export type LibraryGridColumns = "auto" | 2 | 3 | 4 | 5 | 6;
 
 export interface Settings {
   theme: Theme;
+  /** Themes the user made or imported. */
+  userThemes: UserTheme[];
+  /** Stylesheet applied on top of everything, for changes the colour editor cannot make. */
+  customCss: string;
+  customCssOn: boolean;
   /** three.js backdrop + hero scenes. */
   fx: boolean;
   /** Hide content from sources marked as adult. */
@@ -68,6 +75,9 @@ export const useSettings = create<Settings>()(
   persist(
     (set) => ({
       theme: "system",
+      userThemes: [],
+      customCss: "",
+      customCssOn: true,
       fx: true,
       safeMode: true,
       publicCommunityEnabled: true,

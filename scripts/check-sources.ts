@@ -58,7 +58,7 @@ async function check(source: Source): Promise<Row> {
       if (!latest.mangas.length) return row("latest", false, "no series parsed");
     } catch (e) { return fail("latest", e); }
   }
-  const word = first.title.split(/\s+/).find((w) => w.replace(/\W/g, "").length > 3) ?? first.title;
+  const word = first.title.split(/\s+/).map((w) => w.replace(/[^\p{L}\p{N}]/gu, "")).find((w) => w.length > 3) ?? first.title;
   try {
     const found = await source.search(1, word, source.getFilterList());
     if (!found.mangas.length) return row("search", false, `no results for "${word}"`);

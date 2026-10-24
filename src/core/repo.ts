@@ -175,6 +175,32 @@ export async function setRead(ids: string[], read: boolean) {
   emitLocalChange();
 }
 
+/**
+ * History is the set of chapters with a read time. Removing an entry clears that time and leaves the
+ * chapter's read mark and page alone, so deleting history never un-reads anything.
+ */
+export async function removeFromHistory(chapterIds: string[]) {
+  const t = now();
+  await db.transaction("rw", db.chapters, async () => {
+    for (const id of chapterIds) {
+      const c = await db.chapters.get(id);
+      if (c && c.readAt) await db.chapters.put({ ...c, readAt: 0, modifiedAt: t });
+    }
+  });
+  emitLocalChange();
+}
+
+/** Clear history read at or after `since`; with no `since`, clear all of it. Returns how many entries went. */
+export async function clearHistory(since?: number): Promise<number> {
+  const ids = await historyIdsSince(since);
+  await removeFromHistory(ids);
+  return ids.length;
+}
+
+export function historyIdsSince(since = 1): Promise<string[]> {
+  return db.chapters.where("readAt").aboveOrEqual(Math.max(since, 1)).primaryKeys() as Promise<string[]>;
+}
+
 export async function setBookmark(id: string, bookmark: boolean) {
   const c = await db.chapters.get(id);
   if (!c) return;
@@ -233,4 +259,51 @@ export async function deleteCategory(id: string) {
 
 export async function setMangaCategories(mangaId: string, categoryIds: string[]) {
   await patchManga(mangaId, { categoryIds });
+}
+
+/** Swap a category with its neighbour. Orders are renumbered so gaps and duplicates cannot build up. */
+export async function moveCategory(id: string, delta: -1 | 1) {
+  const list = (await db.categories.orderBy("order").toArray()).filter((c) => !c.deleted);
+  const from = list.findIndex((c) => c.id === id);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= list.length) return;
+  [list[from], list[to]] = [list[to]!, list[from]!];
+  const t = now();
+  await db.categories.bulkPut(list.map((c, order) => (c.order === order ? c : { ...c, order, modifiedAt: t })));
+  emitLocalChange();
+}
+
+export type CategoryEdit = { add?: string[]; remove?: string[]; set?: string[] };
+
+/** Change the categories of several series at once. `set` replaces the list, `add` and `remove` adjust it. */
+export async function editCategoriesOf(mangaIds: string[], edit: CategoryEdit) {
+  const t = now();
+  await db.transaction("rw", db.manga, async () => {
+    for (const id of mangaIds) {
+      const m = await db.manga.get(id);
+      if (!m) continue;
+      const next = new Set(edit.set ?? m.categoryIds);
+      for (const c of edit.add ?? []) next.add(c);
+      for (const c of edit.remove ?? []) next.delete(c);
+      await db.manga.put({ ...m, categoryIds: [...next], modifiedAt: t });
+    }
+  });
+  emitLocalChange();
+}
+
+export async function removeFromLibrary(mangaIds: string[]) {
+  const t = now();
+  await db.transaction("rw", db.manga, async () => {
+    for (const id of mangaIds) {
+      const m = await db.manga.get(id);
+      if (m) await db.manga.put({ ...m, inLibrary: false, modifiedAt: t });
+    }
+  });
+  emitLocalChange();
+}
+
+/** Mark every chapter of the given series read or unread. */
+export async function setSeriesRead(mangaIds: string[], read: boolean) {
+  const ids = (await db.chapters.where("mangaId").anyOf(mangaIds).primaryKeys()) as string[];
+  await setRead(ids, read);
 }

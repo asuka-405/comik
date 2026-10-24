@@ -1,6 +1,9 @@
 import { db, type CustomSourceRow } from "../db";
 import { createMangaDex } from "./mangadex";
 import { createMangaKatana } from "./mangakatana";
+import { createHentai2Read } from "./hentai2read";
+import { createEHentai } from "./ehentai";
+import { createCutieComics } from "./cutiecomics";
 import { createWebtoons } from "./webtoons";
 import { createMadara } from "./madara";
 import { createThemesia } from "./themesia";
@@ -27,6 +30,9 @@ function fromCatalog(e: CatalogEntry): Source {
 const builtin: Source[] = [
   createMangaDex("en", "English"),
   createMangaKatana(),
+  createHentai2Read(),
+  createEHentai(),
+  createCutieComics(),
   ...WT_LANGS.map(([l, n]) => createWebtoons(l, n)),
   createWebtoons("en", "English", true),
   ...(catalog as CatalogEntry[]).map(fromCatalog),

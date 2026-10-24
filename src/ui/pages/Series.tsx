@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowsDownUp, BookmarkSimple, CaretLeft, CaretRight, Check, DownloadSimple, Play, Plus, Trash, ArrowsClockwise, Tag } from "@phosphor-icons/react";
+import { ArrowsDownUp, BookmarkSimple, CaretLeft, CaretRight, Check, DownloadSimple, Play, Plus, Trash, ArrowsClockwise, ShareNetwork, Tag } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { getSource } from "@/core/sources/registry";
 import { useSettings } from "@/core/settings";
@@ -137,6 +137,7 @@ export function Series() {
             ) : (chapters?.length ?? 0) > 0 ? <span className="btn" style={{ pointerEvents: "none" }}><Check size={16} /> Caught up</span> : null}
             <button className="btn" onClick={toggleLibrary}>{manga.inLibrary ? <><Check size={16} /> On shelf</> : <><Plus size={16} /> Add to shelf</>}</button>
             {manga.inLibrary && !!cats?.length && <button className="btn" onClick={() => setCatSheet(true)}><Tag size={16} /> Categories</button>}
+            {manga.inLibrary && <Link className="btn" to={`/community/new?comic=${encodeURIComponent(manga.id)}`}><ShareNetwork size={16} /> Share</Link>}
           </div>
         </div>
       </section>

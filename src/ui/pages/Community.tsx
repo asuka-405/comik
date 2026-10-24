@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, ChatCircleDots, Heart, MagnifyingGlass, PencilSimpleLine, ShareNetwork } from "@phosphor-icons/react";
+import { ArrowLeft, ChatCircleDots, EyeSlash, Fire, Heart, MagnifyingGlass, PencilSimpleLine, ShareNetwork, X } from "@phosphor-icons/react";
 import { useSettings } from "@/core/settings";
 import { db } from "@/core/db";
 import { hash53 } from "@/core/hash";
@@ -11,7 +11,7 @@ import { connectPublicCommunity, connectRoomFirebase, linkGooglePublicCommunity,
 import { addComment, comicReference, createPrivateCommunityRoom, joinPrivateCommunityRoom, publishPost, rateComic, roomCommunityTarget, setPostLike, subscribeComments, subscribePollVotes, subscribePostLikes, subscribePosts, subscribeRatings, uploadCommunityImage, votePoll, type CommunityComment, type CommunityKind, type CommunityPost, type CommunityTarget, type PostLikeState, type RatingRecord } from "@/core/community";
 import { createCommunityInvite, newCommunityRoom, parseCommunityInvite, readCommunityRooms, saveCommunityRoom, type CommunityRoom } from "@/core/communityRooms";
 import { appLink } from "@/core/platform";
-import { timeAgo, toast } from "../common";
+import { coverSrc, hueOf, timeAgo, toast } from "../common";
 
 const KINDS: [CommunityKind, string][] = [["discussion", "Discussion"], ["recommendation", "Recommendation"], ["poll", "Poll"]];
 
@@ -32,6 +32,8 @@ export function CommunityPage() {
   const [loading, setLoading] = useState(false);
   const [kindFilter, setKindFilter] = useState<"all" | CommunityKind>("all");
   const [search, setSearch] = useState("");
+  const [tag, setTag] = useState("");
+  const [author, setAuthor] = useState<{ id: string; name: string } | null>(null);
   const activeRoom = rooms.find((room) => room.id === selectedId);
   const target = useMemo<CommunityTarget>(() => activeRoom ? roomCommunityTarget(activeRoom) : {
     id: "public",
@@ -147,10 +149,29 @@ export function CommunityPage() {
   const visiblePosts = posts.filter((post) => {
     if (safeMode && post.comic && getSource(post.comic.sourceId)?.isNsfw) return false;
     if (kindFilter !== "all" && post.kind !== kindFilter) return false;
+    if (author && post.authorId !== author.id) return false;
+    if (tag && !hashtagsOf(`${post.title} ${post.body}`).includes(tag)) return false;
     if (!search.trim()) return true;
     const text = `${post.title} ${post.body} ${post.comic?.title ?? ""} ${post.authorName}`.toLowerCase();
     return text.includes(search.trim().toLowerCase());
   });
+
+  /* What the room is talking about, worked out from the posts already loaded. */
+  const buzz = useMemo(() => {
+    const shown = posts.filter((post) => !(safeMode && post.comic && getSource(post.comic.sourceId)?.isNsfw));
+    const tally = <T,>(keys: (post: CommunityPost) => T[]) => {
+      const counts = new Map<T, number>();
+      for (const post of shown) for (const key of new Set(keys(post))) counts.set(key, (counts.get(key) ?? 0) + 1);
+      return [...counts].sort((a, b) => b[1] - a[1]);
+    };
+    const comics = new Map<string, string>();
+    for (const post of shown) if (post.comic) comics.set(post.comic.mangaId, post.comic.title);
+    return {
+      tags: tally((post) => hashtagsOf(`${post.title} ${post.body}`)).slice(0, 8),
+      comics: tally((post) => (post.comic ? [post.comic.mangaId] : [])).slice(0, 5).map(([id, n]) => ({ id, title: comics.get(id)!, n })),
+      readers: tally((post) => [`${post.authorId}\u0000${post.authorName}`]).slice(0, 4).map(([key, n]) => ({ id: key.split("\u0000")[0]!, name: key.split("\u0000")[1]!, n })),
+    };
+  }, [posts, safeMode]);
 
   const startCommunity = () => {
     const connect = activeRoom ? connectRoomFirebase(activeRoom.id, activeRoom.config) : connectPublicCommunity();
@@ -209,11 +230,18 @@ export function CommunityPage() {
             </div>
             <label className="community-search"><MagnifyingGlass size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a post" aria-label="Search community posts" /></label>
           </div>
+          {(tag || author) && (
+            <div className="community-active-filters">
+              {tag && <button className="chip on" onClick={() => setTag("")}>#{tag} <X size={12} /></button>}
+              {author && <button className="chip on" onClick={() => setAuthor(null)}>Posts by {author.name} <X size={12} /></button>}
+            </div>
+          )}
+          {sync.user && !sync.user.isAnonymous && <QuickCompose name={sync.user.name || sync.user.email || "Reader"} room={selectedId} />}
           <div className="community-feed" aria-live="polite">
             {loading && <div className="chapter-loading"><span className="reader-spinner" /><span>Loading discussions</span></div>}
             {!loading && !posts.length && !error && <section className="community-empty"><span className="community-empty-mark">✳</span><h2>Start the conversation</h2><p>Your reader community is just getting started. Share a favorite, ask a question, or make a poll.</p></section>}
             {!loading && posts.length > 0 && !visiblePosts.length && <section className="community-empty"><h2>No posts match</h2><p>Try another search or post type.</p></section>}
-            {visiblePosts.map((post) => <PostView key={post.id} post={post} target={target} />)}
+            {visiblePosts.map((post) => <PostView key={post.id} post={post} target={target} onTag={setTag} onAuthor={(id, name) => setAuthor({ id, name })} />)}
           </div>
         </>
       )}
@@ -222,6 +250,9 @@ export function CommunityPage() {
         </main>
         <aside className="community-aside">
           <section className="community-aside-intro"><span className="kicker">The reading room</span><h2>Good stories get better shared.</h2><p>Keep it kind. Mark spoilers. Link the source when you recommend a series.</p></section>
+          {buzz.tags.length > 0 && <section className="community-aside-section"><h3><Fire size={14} weight="fill" /> Trending tags</h3><div className="tag-cloud">{buzz.tags.map(([name, n]) => <button key={name} className={`chip${tag === name ? " on" : ""}`} onClick={() => setTag(tag === name ? "" : name)}>#{name} <span className="mono muted">{n}</span></button>)}</div></section>}
+          {buzz.comics.length > 0 && <section className="community-aside-section"><h3>Being talked about</h3>{buzz.comics.map((comic) => <button key={comic.id} className="aside-link" data-hue={hueOf(comic.id)} onClick={() => setSearch(comic.title)}><span>{comic.title}</span><span>{comic.n}</span></button>)}</section>}
+          {buzz.readers.length > 0 && <section className="community-aside-section"><h3>Active readers</h3>{buzz.readers.map((reader) => <button key={reader.id} className="aside-link" onClick={() => setAuthor({ id: reader.id, name: reader.name })}><SocialAvatar name={reader.name} /><span>{reader.name}</span><span>{reader.n}</span></button>)}</section>}
           <section className="community-aside-section"><h3>In this room</h3><div><i className="aside-dot coral" />Discussions<span>{visiblePosts.filter((post) => post.kind === "discussion").length}</span></div><div><i className="aside-dot teal" />Recommendations<span>{visiblePosts.filter((post) => post.kind === "recommendation").length}</span></div><div><i className="aside-dot gold" />Polls<span>{visiblePosts.filter((post) => post.kind === "poll").length}</span></div></section>
           <div className="community-aside-foot">Posts and ratings are shared within the selected Firebase project.</div>
         </aside>
@@ -289,10 +320,12 @@ export function CommunityNewPostPage() {
 function CommunityComposer({ target, user, onPublished }: { target: CommunityTarget; user: { uid: string; isAnonymous: boolean; name?: string | null; email?: string | null } | null; onPublished: (post: CommunityPost) => void }) {
   const settings = useSettings();
   const library = useLiveQuery(() => db.manga.filter((item) => item.inLibrary).toArray(), [], []);
-  const [kind, setKind] = useState<CommunityKind>("discussion");
+  const [params] = useSearchParams();
+  const [kind, setKind] = useState<CommunityKind>(() => (params.get("comic") ? "recommendation" : "discussion"));
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [mangaId, setMangaId] = useState("");
+  const [mangaId, setMangaId] = useState(() => params.get("comic") ?? "");
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [options, setOptions] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -345,7 +378,11 @@ function CommunityComposer({ target, user, onPublished }: { target: CommunityTar
         {KINDS.map(([value, label]) => <button type="button" key={value} className={kind === value ? "on" : ""} onClick={() => setKind(value)}>{label}</button>)}
       </div>
       <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} placeholder={kind === "poll" ? "Poll question" : "Give your post a title"} aria-label="Post title" required />
-      <textarea className="input" value={body} onChange={(event) => setBody(event.target.value)} maxLength={5000} rows={4} placeholder="Write a discussion or recommendation" aria-label="Post text" required />
+      <textarea ref={bodyRef} className="input" value={body} onChange={(event) => setBody(event.target.value)} maxLength={5000} rows={4} placeholder="Write a discussion or recommendation. Use #tags to be found, and hide spoilers with the button below." aria-label="Post text" required />
+      <div className="community-compose-hint">
+        <button type="button" className="btn sm" onClick={() => wrapSpoiler(bodyRef.current, body, setBody)}><EyeSlash size={15} /> Spoiler</button>
+        <span className="muted">Select text, then press Spoiler to blur it until a reader taps it.</span>
+      </div>
       {kind === "poll" && <textarea className="input" value={options} onChange={(event) => setOptions(event.target.value)} maxLength={500} rows={3} placeholder="One poll option per line" aria-label="Poll options" required />}
       <div className="community-compose-tools">
         <select className="input" value={mangaId} onChange={(event) => setMangaId(event.target.value)} aria-label="Reference a comic">
@@ -361,8 +398,10 @@ function CommunityComposer({ target, user, onPublished }: { target: CommunityTar
   );
 }
 
-function PostView({ post, target }: { post: CommunityPost; target: CommunityTarget }) {
+function PostView({ post, target, onTag, onAuthor }: { post: CommunityPost; target: CommunityTarget; onTag: (tag: string) => void; onAuthor: (id: string, name: string) => void }) {
   const user = useCommunitySession((state) => state.user);
+  // The comic id is only meaningful on the poster's device, so a cover shows when it is also on this shelf.
+  const local = useLiveQuery(() => (post.comic ? db.manga.get(post.comic.mangaId) : undefined), [post.comic?.mangaId]);
   const [votes, setVotes] = useState<Record<string, number>>({});
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [comments, setComments] = useState<CommunityComment[]>([]);
@@ -428,10 +467,22 @@ function PostView({ post, target }: { post: CommunityPost; target: CommunityTarg
 
   return (
     <article id={`community-post-${post.id}`} className="community-post">
-      <header className="community-post-head"><SocialAvatar name={post.authorName} /><div className="community-post-author"><strong>{post.authorName}</strong><span>{timeAgo(post.createdAt) || new Date(post.createdAt).toLocaleDateString()}</span></div><span className={`community-kind ${post.kind}`}>{post.kind === "recommendation" ? "reader pick" : post.kind}</span></header>
+      <header className="community-post-head"><SocialAvatar name={post.authorName} /><div className="community-post-author"><button className="author-link" onClick={() => onAuthor(post.authorId, post.authorName)} title={`Posts by ${post.authorName}`}>{post.authorName}</button><span>{timeAgo(post.createdAt) || new Date(post.createdAt).toLocaleDateString()}</span></div><span className={`community-kind ${post.kind}`}>{post.kind === "recommendation" ? "reader pick" : post.kind}</span></header>
       <h2>{post.title}</h2>
-      <p>{post.body}</p>
-      {post.comic && (post.comic.sourceUrl ? <a className="community-reference" href={post.comic.sourceUrl} target="_blank" rel="noreferrer"><strong>{post.comic.title}</strong><span>Open at {post.comic.sourceName}</span></a> : <div className="community-reference"><strong>{post.comic.title}</strong><span>Local comic · {post.comic.sourceName}</span></div>)}
+      <p><RichText text={post.body} onTag={onTag} /></p>
+      {post.comic && (
+        <div className={`community-reference${local ? " with-cover" : ""}`} data-hue={hueOf(post.comic.mangaId)}>
+          {local && <img src={coverSrc(local.sourceId, local.cover)} alt="" loading="lazy" />}
+          <div>
+            <strong>{post.comic.title}</strong>
+            <span>{post.comic.sourceUrl ? post.comic.sourceName : `Local comic · ${post.comic.sourceName}`}</span>
+            <div className="community-reference-links">
+              {local?.inLibrary && <Link to={`/series/${encodeURIComponent(local.id)}`}>On your shelf</Link>}
+              {post.comic.sourceUrl && <a href={post.comic.sourceUrl} target="_blank" rel="noreferrer">Open at {post.comic.sourceName}</a>}
+            </div>
+          </div>
+        </div>
+      )}
       {post.imageUrl && <img className="community-image" src={post.imageUrl} alt="Image attached to this post" loading="lazy" />}
       {post.kind === "poll" && <div className="community-poll">{pollOptions.map((option, index) => {
         const count = Object.values(votes).filter((value) => value === index).length;
@@ -457,4 +508,58 @@ function SocialAvatar({ name }: { name: string }) {
   const colors = ["coral", "teal", "gold", "leaf", "sky"];
   const color = colors[name.charCodeAt(0) % colors.length];
   return <span className={`social-avatar ${color}`} aria-hidden="true">{name.trim().slice(0, 1).toUpperCase() || "R"}</span>;
+}
+const HASHTAG = /#([\p{L}\p{N}_]{2,30})/gu;
+
+function hashtagsOf(text: string): string[] {
+  return [...text.matchAll(HASHTAG)].map((m) => m[1]!.toLowerCase());
+}
+
+/** Wrap the selected text of a textarea in ||spoiler|| markers. */
+function wrapSpoiler(field: HTMLTextAreaElement | null, body: string, set: (value: string) => void) {
+  const start = field?.selectionStart ?? body.length;
+  const end = field?.selectionEnd ?? body.length;
+  if (start === end) return toast("Select the text to hide first.", true);
+  set(`${body.slice(0, start)}||${body.slice(start, end)}||${body.slice(end)}`);
+}
+
+/** Post text with #tags that filter the feed and ||spoilers|| hidden until tapped. Plain React text, never HTML. */
+function RichText({ text, onTag }: { text: string; onTag: (tag: string) => void }) {
+  const parts = text.split(/(\|\|[^|]+?\|\||#[\p{L}\p{N}_]{2,30})/gu);
+  return <>{parts.map((part, i) => {
+    if (part.startsWith("||") && part.endsWith("||") && part.length > 4) return <Spoiler key={i} text={part.slice(2, -2)} />;
+    if (part.startsWith("#") && part.length > 2) return <button key={i} className="hashtag" onClick={() => onTag(part.slice(1).toLowerCase())}>{part}</button>;
+    return part;
+  })}</>;
+}
+
+function Spoiler({ text }: { text: string }) {
+  const [shown, setShown] = useState(false);
+  return <span className={`spoiler${shown ? " shown" : ""}`} role="button" tabIndex={0} aria-label={shown ? "Spoiler" : "Hidden spoiler, press to reveal"} onClick={() => setShown(true)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setShown(true)}>{text}</span>;
+}
+
+/** The "what are you reading" box at the top of the feed, with one-tap shares of recent reads. */
+function QuickCompose({ name, room }: { name: string; room: string }) {
+  const recent = useLiveQuery(async () => {
+    const read = await db.chapters.where("readAt").above(0).reverse().sortBy("readAt");
+    const seen: string[] = [];
+    for (const c of read) if (!seen.includes(c.mangaId)) seen.push(c.mangaId);
+    const rows = await Promise.all(seen.slice(0, 6).map((id) => db.manga.get(id)));
+    return rows.filter((m): m is NonNullable<typeof m> => !!m && !(useSettings.getState().safeMode && getSource(m.sourceId)?.isNsfw)).slice(0, 3);
+  }, [], []);
+  const to = (extra = "") => `/community/new?room=${encodeURIComponent(room)}${extra}`;
+  return (
+    <section className="community-quick">
+      <div className="community-quick-row">
+        <SocialAvatar name={name} />
+        <Link className="community-quick-input" to={to()}>What are you reading, {name.split(" ")[0]}?</Link>
+      </div>
+      {!!recent?.length && (
+        <div className="community-quick-shares">
+          <span className="muted">Share a read</span>
+          {recent.map((m) => <Link key={m.id} className="chip" data-hue={hueOf(m.id)} to={to(`&comic=${encodeURIComponent(m.id)}`)}>{m.title}</Link>)}
+        </div>
+      )}
+    </section>
+  );
 }

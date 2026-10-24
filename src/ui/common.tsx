@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { create } from "zustand";
-import { ArrowLeft, X } from "@phosphor-icons/react";
+import { ArrowLeft, Check, X } from "@phosphor-icons/react";
 import { imageUrl, readingNeedsOwnFirebase } from "@/core/http";
 import { getSource } from "@/core/sources/registry";
 import { hash53 } from "@/core/hash";
@@ -63,17 +63,55 @@ export const bytes = (n: number) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n 
 /* -------------------------------- cover -------------------------------- */
 export interface CoverData { id: string; title: string; cover?: string; sourceId: string }
 
-export function Cover({ m, unread, inLibrary, progress, sub, to }: { m: CoverData; unread?: number; inLibrary?: boolean; progress?: number; sub?: string; to?: string }) {
+/** Multi-select hooks for a cover. While `selecting`, a click toggles it; a long press or right click starts selecting. */
+export interface CoverSelect { selecting: boolean; selected: boolean; onPick: () => void }
+
+export function useLongPress(onHold: (() => void) | undefined) {
+  const timer = useRef(0);
+  const held = useRef(false);
+  const cancel = () => window.clearTimeout(timer.current);
+  return {
+    held,
+    handlers: onHold
+      ? {
+          onPointerDown: (e: React.PointerEvent) => {
+            held.current = false;
+            if (e.pointerType === "mouse" && e.button !== 0) return;
+            cancel();
+            timer.current = window.setTimeout(() => { held.current = true; onHold(); }, 480);
+          },
+          onPointerUp: cancel,
+          onPointerLeave: cancel,
+          onPointerCancel: cancel,
+          onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); cancel(); held.current = true; onHold(); },
+        }
+      : {},
+  };
+}
+
+export function Cover({ m, unread, inLibrary, progress, sub, to, select, onHold }: { m: CoverData; unread?: number; inLibrary?: boolean; progress?: number; sub?: string; to?: string; select?: CoverSelect; onHold?: () => void }) {
   const [loaded, setLoaded] = useState(false);
   const [broken, setBroken] = useState(false);
   const src = coverSrc(m.sourceId, m.cover);
+  const press = useLongPress(onHold);
   return (
-    <Link to={to ?? `/series/${encodeURIComponent(m.id)}`} className="cover" data-hue={hueOf(m.id)} title={m.title}>
+    <Link
+      to={to ?? `/series/${encodeURIComponent(m.id)}`}
+      className={`cover${select?.selecting ? " selecting" : ""}${select?.selected ? " picked" : ""}`}
+      data-hue={hueOf(m.id)}
+      title={m.title}
+      {...press.handlers}
+      onClick={(e) => {
+        if (press.held.current) { e.preventDefault(); press.held.current = false; return; }
+        if (select?.selecting) { e.preventDefault(); select.onPick(); }
+      }}
+    >
       <div className="art">
         {(!src || broken) && <div className="fallback">{m.title}</div>}
-        {src && !broken && <img src={src} alt="" loading="lazy" className={loaded ? "loaded" : ""} onLoad={() => setLoaded(true)} onError={() => setBroken(true)} />}
+        {src && !broken && <img src={src} alt="" loading="lazy" draggable={false} className={loaded ? "loaded" : ""} onLoad={() => setLoaded(true)} onError={() => setBroken(true)} />}
         <div className="tags">{!!unread && unread > 0 && <span className="tag">{unread > 999 ? "999+" : unread}</span>}</div>
         {inLibrary && <span className="inlib">IN SHELF</span>}
+        {select?.selecting && <span className={`pick${select.selected ? " on" : ""}`} aria-hidden="true">{select.selected && <Check size={14} weight="bold" />}</span>}
         {progress !== undefined && progress > 0 && (
           <div className="bar"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
         )}
@@ -115,6 +153,35 @@ export function Sheet({ title, onClose, children, center }: { title?: string; on
         {children}
       </div>
     </div>
+  );
+}
+
+/** In-app replacements for prompt() and confirm(), which Electron and the Android WebView do not provide. */
+export function TextDialog({ title, label, initial = "", action, onSubmit, onClose }: { title: string; label: string; initial?: string; action: string; onSubmit: (value: string) => void; onClose: () => void }) {
+  const [value, setValue] = useState(initial);
+  const ok = value.trim().length > 0;
+  return (
+    <Sheet title={title} onClose={onClose} center>
+      <form onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit(value.trim()); }}>
+        <div className="field"><label className="label" htmlFor="text-dialog">{label}</label><input id="text-dialog" className="input" autoFocus maxLength={40} value={value} onChange={(e) => setValue(e.target.value)} /></div>
+        <div className="dialog-actions">
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn primary" disabled={!ok}>{action}</button>
+        </div>
+      </form>
+    </Sheet>
+  );
+}
+
+export function ConfirmDialog({ title, body, action, danger, onConfirm, onClose }: { title: string; body: string; action: string; danger?: boolean; onConfirm: () => void; onClose: () => void }) {
+  return (
+    <Sheet title={title} onClose={onClose} center>
+      <p className="muted" style={{ marginBottom: 16 }}>{body}</p>
+      <div className="dialog-actions">
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className={`btn${danger ? " danger" : " primary"}`} autoFocus onClick={onConfirm}>{action}</button>
+      </div>
+    </Sheet>
   );
 }
 

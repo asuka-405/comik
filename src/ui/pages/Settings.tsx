@@ -3,7 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { BookOpenText, Books, CaretLeft, CaretRight, CloudArrowUp, Compass, DownloadSimple, Info, Palette, ShieldCheck, type Icon } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/core/db";
-import { useSettings, type FitMode, type LibraryDensity, type LibrarySort, type Theme } from "@/core/settings";
+import { useSettings, type FitMode, type LibraryDensity, type LibrarySort } from "@/core/settings";
 import { proxyBase } from "@/core/http";
 import { isNativeShell } from "@/core/platform";
 import { addCustomSource, allSources, isCustom, onSourcesChange, removeCustomSource } from "@/core/sources/registry";
@@ -17,6 +17,8 @@ import type { CustomSourceRow } from "@/core/db";
 import { refreshAnalyticsConsent } from "@/core/analytics";
 import { useWalkthrough } from "@/core/onboarding";
 import { TachiyomiImport } from "../components/TachiyomiImport";
+import { CustomCssEditor, ThemeStudio } from "../components/ThemeStudio";
+import { PRESETS } from "@/core/themes";
 import RULES from "../../../firestore.rules?raw";
 
 declare const __APP_VERSION__: string;
@@ -30,7 +32,7 @@ function Section({ id, title, children, hue = 0 }: { id?: string; title: string;
 interface Category { slug: string; title: string; summary: (s: ReturnType<typeof useSettings.getState>) => string; icon: Icon; hue: number }
 
 const CATEGORIES: Category[] = [
-  { slug: "appearance", title: "Appearance", icon: Palette, hue: 0, summary: (s) => `${s.theme[0]!.toUpperCase()}${s.theme.slice(1)} theme, 3D backdrop ${s.fx ? "on" : "off"}` },
+  { slug: "appearance", title: "Appearance", icon: Palette, hue: 0, summary: (s) => `${s.theme === "system" ? "System" : PRESETS.find((p) => p.id === s.theme)?.name ?? s.userThemes.find((t) => t.id === s.theme)?.name ?? "Custom"} theme, 3D backdrop ${s.fx ? "on" : "off"}` },
   { slug: "library", title: "Library", icon: Books, hue: 2, summary: (s) => `${s.autoUpdateHours ? `Updates every ${s.autoUpdateHours >= 24 ? `${s.autoUpdateHours / 24} day${s.autoUpdateHours > 24 ? "s" : ""}` : `${s.autoUpdateHours} hours`}` : "Updates off"}, ${s.libraryDensity === "list" ? "list" : `${s.libraryDensity} grid`}` },
   { slug: "reader", title: "Reader", icon: BookOpenText, hue: 4, summary: (s) => `${s.readerMode === "auto" ? "Auto mode" : s.readerMode.replace("paged-", "").replace("rtl", "right to left").replace("ltr", "left to right")}, ${s.fit} fit` },
   { slug: "downloads", title: "Downloads and storage", icon: DownloadSimple, hue: 6, summary: (s) => `${s.downloadConcurrency} at a time, backup and restore` },
@@ -95,12 +97,16 @@ function Detail({ title, intro, children }: { title: string; intro?: string; chi
 export function AppearanceSettings() {
   const s = useSettings();
   return (
-    <Detail title="Appearance" intro="Theme and motion.">
-      <Section title="Display" hue={0}>
-        <Row title="Theme">
-        <div className="seg">{(["system", "dark", "light"] as Theme[]).map((t) => <button key={t} className={s.theme === t ? "on" : ""} onClick={() => s.set({ theme: t })} style={{ textTransform: "capitalize" }}>{t}</button>)}</div>
-        </Row>
+    <Detail title="Appearance" intro="Themes, your own colours, and CSS for anything else.">
+      <Section title="Theme" hue={0}>
+        <ThemeStudio />
+      </Section>
+      <Section title="Motion" hue={0}>
         <Row title="3D panel backdrop" hint="Turn off to save battery. Reduced-motion users get a still frame."><Toggle label="3D backdrop" on={s.fx} onChange={(v) => s.set({ fx: v })} /></Row>
+      </Section>
+      <Section title="Custom CSS" hue={2}>
+        <Row title="Use custom CSS" hint="Switch off to see the app without it"><Toggle label="Use custom CSS" on={s.customCssOn} onChange={(v) => s.set({ customCssOn: v })} /></Row>
+        <CustomCssEditor />
       </Section>
     </Detail>
   );

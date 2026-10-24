@@ -2,6 +2,49 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.3.2-beta
+
+### Shelf
+- **Select several series at once.** Press the select button, or long-press (right-click on desktop) any series. A bar offers All or None, Tabs, Move to, Read and Remove.
+  - **Tabs** ticks series into or out of tabs; a dash means only some of the selection is in that tab.
+  - **Move to** puts the selection in exactly one tab, or in none.
+  - **Read** marks every chapter of the selection read. **Remove** takes them off the shelf and keeps their progress.
+- **Manage tabs** lists every tab with its count, and lets you rename, reorder and delete each one. Deleting a tab keeps its series on the shelf.
+- **Adding and deleting a tab works on the desktop and Android apps.** They used the browser's `prompt()` and `confirm()`, which Electron and the Android WebView do not show, so those buttons did nothing. They are now in-app dialogs.
+
+### Timeline
+- **History can be edited.** Remove one entry, or a whole run of chapters, with the bin button, and clear history for the last hour, 24 hours, 7 days, 30 days or all of it. Chapters stay marked as read.
+- **Neighbouring chapters of the same comic are clubbed** in both Updates and History into one row such as "Ch. 12 to 15, 4 chapters", which opens to show each chapter.
+
+### Community
+- **Hashtags, spoilers and profiles.** `#tags` in a post filter the feed when tapped, `||text||` is hidden until tapped, and tapping a name shows that reader's posts.
+- **Quick compose box** at the top of the feed with one-tap "Share a read" chips for what you read recently, and a Share button on every series on your shelf.
+- **Posts show covers** for comics that are also on your shelf, with a link to the series.
+- **Side panel** with trending tags, the comics people mention most and the most active readers, worked out from the posts loaded.
+
+### Themes
+- **Eleven new themes**: Midnight, Pure black, Nord, Dracula, Neon city, Deep forest, Ocean, Sakura, Paper and Snow.
+- **Your own themes.** Make a theme from any other: fourteen colours, corner roundness and font. Duplicate, delete, copy to share, paste or import a theme file.
+- **Custom CSS** applied over the whole app, with a switch to turn it off. CSS cannot run code but can load content from the web, so only use CSS from people you trust.
+- Themes and custom CSS sync with your other settings.
+
+### Account
+- **Reset account** keeps your Firebase account and deletes everything stored in it: the synced library and settings, your Community posts and ratings, and the likes, votes and comments you left on your own posts.
+- **Purge account** does the same and then deletes the account itself. Firebase may ask you to sign in again to confirm.
+- Both are on the Account page, ask you to type a word to confirm, and switch sync off so your device cannot upload the library again by itself. Nothing on the device is deleted. Comments, likes and votes you left on other people's posts cannot be searched for, so they stay.
+
+### Sources
+- **New, checked end to end:** Hentai2Read (rebuilt for its new site), E-Hentai (drawn categories only: doujinshi, manga, artist CG and game CG) and Cutie Comics. All three are 18+, so Safe mode hides them.
+- **Where the dead sites went.** Akai Comic and Oppai Stream have no working address (Oppai Stream shows a maintenance page). CulturedWorks answers with an invalid certificate. Free Comic Online, ManyToon and Manhwahentai.me still resolve, but their domains now belong to someone else: an advertising redirect, a webcam site and an AI image generator. manytoon.pro is a mirror of Manhwa18.cc, which Comik already has.
+- **Not built, and why:**
+  - Comic Asura, Drake Scans and InfinityScans load their pages with scripts after the page opens, from endpoints that need the running page.
+  - Doujin.io scrambles its images and needs a login.
+  - MurimScan has five titles and builds its chapter lists with a script.
+  - Comic Fury is a webcomic host with a different structure.
+  - DeviantArt needs an approved app key.
+  - Luscious mixes comics with explicit photos of real people.
+  - izneo is a paid store with DRM.
+
 ## 0.3.1-beta
 
 ### Cloudflare checks
