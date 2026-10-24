@@ -19,7 +19,11 @@ import { Series } from "./pages/Series";
 import { Timeline } from "./pages/Timeline";
 import { AboutSettings, AppearanceSettings, DownloadsSettings, FirebaseSettings, LibrarySettings, PrivacySettings, ProxySettings, ReaderSettingsPage, SettingsIndex, SettingsLayout } from "./pages/Settings";
 import { SourceSettingsPage } from "./pages/SourceSettings";
-import { CommunityNewPostPage, CommunityPage } from "./pages/Community";
+import { CommunityDirectory } from "./community/Directory";
+import { CommunityHome } from "./community/CommunityHome";
+import { ChannelPage } from "./community/Chat";
+import { CommunitySettings } from "./community/Settings";
+import { CommunityNewPostPage } from "./community/Composer";
 import { AccountPage } from "./pages/Account";
 import { LoginPage } from "./pages/Login";
 import { SourceStudioPage } from "./components/SourceStudio";
@@ -153,8 +157,11 @@ export function App() {
             <Route path="/browse/:sourceId" element={<SourceView />} />
             <Route path="/series/:id" element={<Series />} />
             <Route path="/timeline" element={<Timeline />} />
-            <Route path="/community" element={<CommunityPage />} />
+            <Route path="/community" element={<CommunityDirectory />} />
             <Route path="/community/new" element={<CommunityNewPostPage />} />
+            <Route path="/community/:cid" element={<CommunityHome />} />
+            <Route path="/community/:cid/chat/:chid" element={<ChannelPage />} />
+            <Route path="/community/:cid/settings" element={<CommunitySettings />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/settings" element={<SettingsLayout />}>

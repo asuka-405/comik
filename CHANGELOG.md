@@ -2,6 +2,19 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.3.3-beta
+
+### Community
+- **Communities, public and private.** The Community tab opens a directory that lists every community, with search and filters for Joined, Public and Private. Create your own, join a public one with a tap, or join a private one with its invite code or link.
+- **Each community has its own page** with a feed, channels and a member list, and a pinned strip of the latest announcements.
+- **Channels.** Every community gets an announcements channel and a general chat, and admins can add more chat rooms or announcement channels. Chat is live, with day dividers and grouped messages.
+- **Roles: owner, admin, moderator, member.** Moderators delete posts, replies and messages, pin posts, post announcements and remove or ban members. Admins also edit settings and channels and manage moderators. The owner can hand the community to someone else or delete it.
+- **A settings page per community** with About (rules and what each role can do), General, Channels, Members and roles with bans, Invite (link, code and a button to replace the code), and Leave or Delete.
+- **Delete and leave.** You can delete your own posts (moderators can delete anyone's in their community), leave any community you do not own, and delete a community you own. Deleting a community removes its posts, channels, messages and memberships.
+- **Fixed the "not authorized" error when posting.** A Google account linked to an anonymous one kept its old login token, which the security rules rejected. The token is now renewed after sign-in, and a refused write is retried once with a fresh token. If a refusal remains, the message says what to check.
+- **Fixed the post form overflowing on small screens.**
+- Old private rooms (invite-only rooms stored per device) are replaced by private communities. Links shaped like `/community?room=<id>&post=<id>` still open the right place for the shared feed.
+
 ## 0.3.2-beta
 
 ### Shelf

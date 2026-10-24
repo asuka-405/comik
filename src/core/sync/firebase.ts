@@ -145,18 +145,6 @@ export const useCommunitySession = create<CommunitySessionStore>((set) => ({
   patch: (p) => set(p),
 }));
 
-interface RoomSessionStore {
-  sessions: Record<string, CommunitySessionState>;
-  patch: (roomId: string, p: Partial<CommunitySessionState>) => void;
-}
-
-export const useRoomSessions = create<RoomSessionStore>((set) => ({
-  sessions: {},
-  patch: (roomId, patch) => set((state) => ({
-    sessions: { ...state.sessions, [roomId]: { ...(state.sessions[roomId] ?? { status: "off", user: null }), ...patch } },
-  })),
-}));
-
 function parseConfig(raw: string | undefined): ComikFirebaseOptions | null {
   try {
     if (!raw) return null;
@@ -317,6 +305,8 @@ export async function connectPublicCommunity(): Promise<SyncUser> {
     const { auth, authMod } = await loadPublicCommunityFirebase();
     await auth.authStateReady();
     if (!auth.currentUser) await authMod.signInAnonymously(auth);
+    // A login restored from an earlier session may carry an out-of-date token; renew it so the rules see the real sign-in.
+    if (!auth.currentUser!.isAnonymous) await auth.currentUser!.getIdToken(true).catch(() => {});
     const user = toUser(auth.currentUser)!;
     useCommunitySession.getState().patch({ status: "ready", user });
     return user;
@@ -351,6 +341,8 @@ export async function linkGooglePublicCommunity(): Promise<void> {
     if (idToken) await authMod.signInWithCredential(auth, authMod.GoogleAuthProvider.credential(idToken));
     else await authMod.signInWithPopup(auth, provider);
   }
+  // A just-linked account can keep its "anonymous" token, which the security rules reject. Renew it now.
+  await auth.currentUser?.getIdToken(true);
   useCommunitySession.getState().patch({ status: "ready", user: toUser(auth.currentUser), error: undefined });
 }
 
@@ -358,50 +350,6 @@ export async function signOutPublicCommunity(): Promise<void> {
   const { auth, authMod } = await loadPublicCommunityFirebase();
   await authMod.signOut(auth);
   useCommunitySession.getState().patch({ status: "off", user: null, error: undefined });
-}
-
-function roomAppName(roomId: string, config: ComikFirebaseOptions) {
-  return `comik-room-${roomId}-${config.projectId}`;
-}
-
-export async function connectRoomFirebase(roomId: string, config: ComikFirebaseOptions): Promise<SyncUser> {
-  useRoomSessions.getState().patch(roomId, { status: "connecting", error: undefined });
-  try {
-    const { auth, authMod } = await loadFirebaseForConfig(config, roomAppName(roomId, config));
-    await auth.authStateReady();
-    if (!auth.currentUser) await authMod.signInAnonymously(auth);
-    const user = toUser(auth.currentUser)!;
-    useRoomSessions.getState().patch(roomId, { status: "ready", user });
-    return user;
-  } catch (error) {
-    useRoomSessions.getState().patch(roomId, { status: "error", error: (error as Error).message });
-    throw error;
-  }
-}
-
-export async function linkGoogleRoom(roomId: string, config: ComikFirebaseOptions): Promise<void> {
-  const { auth, authMod } = await loadFirebaseForConfig(config, roomAppName(roomId, config));
-  const serverClientId = config.googleWebClientId
-    ?? (config.projectId === "comik-7157c" ? DEFAULT_GOOGLE_WEB_CLIENT_ID : "");
-  let credential: import("firebase/auth").OAuthCredential;
-  if (typeof window !== "undefined" && window.ComikAndroidAuth) {
-    credential = authMod.GoogleAuthProvider.credential(await getNativeGoogleIdToken(serverClientId));
-  } else {
-    const provider = new authMod.GoogleAuthProvider();
-    const result = await authMod.signInWithPopup(auth, provider);
-    useRoomSessions.getState().patch(roomId, { status: "ready", user: toUser(result.user) });
-    return;
-  }
-  const current = auth.currentUser;
-  try {
-    if (current?.isAnonymous) await authMod.linkWithCredential(current, credential);
-    else await authMod.signInWithCredential(auth, credential);
-  } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (code !== "auth/credential-already-in-use" && code !== "auth/email-already-in-use") throw error;
-    await authMod.signInWithCredential(auth, credential);
-  }
-  useRoomSessions.getState().patch(roomId, { status: "ready", user: toUser(auth.currentUser), error: undefined });
 }
 
 /** Upgrade the anonymous account to Google without losing its data. Falls back to plain sign-in if that Google account already exists. */

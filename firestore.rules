@@ -5,14 +5,6 @@ service cloud.firestore {
     function communityUser() {
       return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
-    function roomMember(roomId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid));
-    }
-    function roomOwner(roomId) {
-      return roomMember(roomId)
-        && get(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)).data.role == 'owner';
-    }
     function validImage(data) {
       return !('imageUrl' in data)
         || (data.imageUrl is string
@@ -20,7 +12,7 @@ service cloud.firestore {
             || (data.imageUrl.matches('^data:image/') && data.imageUrl.size() <= 70000)));
     }
     function validPost(data) {
-      return data.keys().hasOnly(['kind', 'title', 'body', 'authorId', 'authorName', 'createdAt', 'comic', 'pollOptions', 'imageUrl'])
+      return data.keys().hasOnly(['kind', 'title', 'body', 'authorId', 'authorName', 'createdAt', 'comic', 'pollOptions', 'imageUrl', 'pinned'])
         && data.authorId == request.auth.uid
         && data.authorName is string && data.authorName.size() <= 60
         && data.createdAt is int
@@ -67,7 +59,7 @@ service cloud.firestore {
           && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
           && request.resource.data.createdAt is int
           && request.resource.data.body is string && request.resource.data.body.size() <= 2000;
-        allow delete: if communityUser() && resource.data.authorId == request.auth.uid;
+        allow delete: if communityUser() && (resource.data.authorId == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
       }
 
       match /votes/{voteId} {
@@ -80,7 +72,7 @@ service cloud.firestore {
           && request.resource.data.optionIndex >= 0 && request.resource.data.optionIndex < 8
           && request.resource.data.optionIndex < get(/databases/$(database)/documents/communityPosts/$(postId)).data.pollOptions.size()
           && request.resource.data.updatedAt is int;
-        allow delete: if communityUser() && voteId == request.auth.uid;
+        allow delete: if communityUser() && (voteId == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
       }
 
       match /likes/{uid} {
@@ -90,7 +82,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.createdAt is int;
-        allow delete: if communityUser() && uid == request.auth.uid;
+        allow delete: if communityUser() && (uid == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
       }
     }
 
@@ -109,85 +101,197 @@ service cloud.firestore {
       allow delete: if communityUser() && resource.data.uid == request.auth.uid;
     }
 
-    match /rooms/{roomId} {
-      allow get: if signedIn();
-      allow list: if false;
+    // ---- Communities -------------------------------------------------------------------------
+    // communities/{id}                 the community: name, description, visibility, owner, member count
+    // communities/{id}/members/{uid}   one document per member, with a role: owner, admin, mod or member
+    // communities/{id}/bans/{uid}      people removed and barred from rejoining
+    // communities/{id}/private/invite  the invite code that private communities require to join
+    // communities/{id}/channels/{id}   chat rooms and announcement channels, each with messages/
+    // communities/{id}/posts/{id}      the main feed, with comments/, likes/ and votes/
+    function cdoc(cid) { return /databases/$(database)/documents/communities/$(cid); }
+    function mdoc(cid, uid) { return /databases/$(database)/documents/communities/$(cid)/members/$(uid); }
+    function isMember(cid) { return signedIn() && exists(mdoc(cid, request.auth.uid)); }
+    function roleOf(cid) { return get(mdoc(cid, request.auth.uid)).data.role; }
+    function isStaff(cid) { return isMember(cid) && roleOf(cid) in ['owner', 'admin', 'mod']; }
+    function isAdmin(cid) { return isMember(cid) && roleOf(cid) in ['owner', 'admin']; }
+    function isOwner(cid) { return signedIn() && get(cdoc(cid)).data.ownerId == request.auth.uid; }
+    function isPublic(cid) { return get(cdoc(cid)).data.visibility == 'public'; }
+    function canRead(cid) { return isMember(cid) || isPublic(cid); }
+    function isPostAuthor(cid, postId) {
+      return signedIn() && get(/databases/$(database)/documents/communities/$(cid)/posts/$(postId)).data.authorId == request.auth.uid;
+    }
+    function validComment(data) {
+      return data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt'])
+        && data.authorId == request.auth.uid
+        && data.authorName is string && data.authorName.size() <= 60
+        && data.createdAt is int
+        && data.body is string && data.body.size() > 0 && data.body.size() <= 2000;
+    }
+    function validCommunity(data) {
+      return data.name is string && data.name.size() >= 2 && data.name.size() <= 60
+        && data.description is string && data.description.size() <= 500
+        && data.rules is string && data.rules.size() <= 1500
+        && data.visibility in ['public', 'private']
+        && data.accent is string && data.accent.matches('^#[0-9a-fA-F]{6}$');
+    }
+
+    match /communities/{cid} {
+      allow read: if true;
       allow create: if communityUser()
-        && request.resource.data.keys().hasOnly(['id', 'name', 'ownerId', 'visibility', 'createdAt'])
-        && request.resource.data.id == roomId
+        && request.resource.data.keys().hasOnly(['id', 'name', 'description', 'rules', 'visibility', 'accent', 'ownerId', 'ownerName', 'createdAt', 'memberCount'])
+        && request.resource.data.id == cid
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.name is string && request.resource.data.name.size() <= 80
-        && request.resource.data.visibility == 'invite'
-        && request.resource.data.createdAt is int;
-      allow update, delete: if roomOwner(roomId);
+        && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 60
+        && request.resource.data.createdAt is int
+        && request.resource.data.memberCount == 1
+        && validCommunity(request.resource.data);
+      allow update: if communityUser() && (
+          // owner: every setting, and handing the community to someone else
+          (isOwner(cid)
+            && request.resource.data.keys().hasOnly(['id', 'name', 'description', 'rules', 'visibility', 'accent', 'ownerId', 'ownerName', 'createdAt', 'memberCount'])
+            && request.resource.data.id == cid && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.memberCount is int && request.resource.data.memberCount >= 0
+            && validCommunity(request.resource.data))
+          // admin: text settings, not visibility or ownership
+          || (isAdmin(cid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'description', 'rules', 'accent', 'memberCount'])
+            && request.resource.data.memberCount is int && request.resource.data.memberCount >= 0
+            && validCommunity(request.resource.data))
+          // moderators keep the member count right after removing someone
+          || (isStaff(cid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount'])
+            && request.resource.data.memberCount is int && request.resource.data.memberCount >= 0)
+          // joining and leaving move the count by one, in the same batch as the member document
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount'])
+            && request.resource.data.memberCount is int
+            && ((!exists(mdoc(cid, request.auth.uid)) && existsAfter(mdoc(cid, request.auth.uid))
+                  && request.resource.data.memberCount == resource.data.memberCount + 1)
+              || (exists(mdoc(cid, request.auth.uid)) && !existsAfter(mdoc(cid, request.auth.uid))
+                  && request.resource.data.memberCount == resource.data.memberCount - 1)))
+        );
+      allow delete: if communityUser() && resource.data.ownerId == request.auth.uid;
+
+      match /private/{doc} {
+        allow read: if isStaff(cid);
+        allow create, update: if communityUser() && doc == 'invite' && isAdmin(cid)
+          && request.resource.data.keys().hasOnly(['code'])
+          && request.resource.data.code is string && request.resource.data.code.size() >= 8 && request.resource.data.code.size() <= 64;
+        allow delete: if isOwner(cid);
+      }
 
       match /members/{uid} {
-        allow read: if roomMember(roomId) || (signedIn() && uid == request.auth.uid);
-        allow create: if communityUser()
-          && uid == request.auth.uid
+        allow read: if canRead(cid);
+        allow create: if communityUser() && uid == request.auth.uid
           && request.resource.data.uid == request.auth.uid
+          && request.resource.data.name is string && request.resource.data.name.size() <= 60
           && request.resource.data.joinedAt is int
           && ((request.resource.data.role == 'owner'
-              && request.resource.data.keys().hasOnly(['uid', 'role', 'joinedAt'])
-              && get(/databases/$(database)/documents/rooms/$(roomId)).data.ownerId == request.auth.uid)
+              && request.resource.data.keys().hasOnly(['uid', 'name', 'role', 'joinedAt'])
+              && getAfter(cdoc(cid)).data.ownerId == request.auth.uid
+              && !exists(cdoc(cid)))
             || (request.resource.data.role == 'member'
-              && request.resource.data.keys().hasOnly(['uid', 'role', 'inviteCode', 'joinedAt'])
-              && request.resource.data.inviteCode == roomId
-              && get(/databases/$(database)/documents/rooms/$(roomId)).data.visibility == 'invite'));
-        allow update, delete: if roomOwner(roomId);
+              && request.resource.data.keys().hasOnly(['uid', 'name', 'role', 'joinedAt', 'inviteCode'])
+              && !exists(/databases/$(database)/documents/communities/$(cid)/bans/$(request.auth.uid))
+              && (isPublic(cid)
+                || ('inviteCode' in request.resource.data
+                  && request.resource.data.inviteCode == get(/databases/$(database)/documents/communities/$(cid)/private/invite).data.code))));
+        allow update: if communityUser() && (
+            // anyone may refresh their own display name
+            (uid == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+              && request.resource.data.name is string && request.resource.data.name.size() <= 60)
+            // the owner sets any role; admins move people between member and mod
+            || (isOwner(cid) && request.resource.data.role in ['owner', 'admin', 'mod', 'member']
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']))
+            || (isAdmin(cid) && resource.data.role in ['member', 'mod'] && request.resource.data.role in ['member', 'mod']
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']))
+          );
+        allow delete: if communityUser() && (
+            (uid == request.auth.uid && resource.data.role != 'owner')
+            || isOwner(cid)
+            || (isAdmin(cid) && resource.data.role in ['member', 'mod'])
+            || (isStaff(cid) && resource.data.role == 'member')
+          );
+      }
+
+      match /bans/{uid} {
+        allow read: if isStaff(cid);
+        allow create, update: if communityUser() && isStaff(cid)
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'by', 'createdAt'])
+          && request.resource.data.uid == uid
+          && request.resource.data.name is string && request.resource.data.name.size() <= 60
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.createdAt is int;
+        allow delete: if communityUser() && (isStaff(cid) || isOwner(cid));
+      }
+
+      match /channels/{chid} {
+        allow read: if canRead(cid);
+        allow create, update: if communityUser() && isAdmin(cid)
+          && request.resource.data.keys().hasOnly(['id', 'name', 'description', 'kind', 'createdAt', 'createdBy'])
+          && request.resource.data.id == chid
+          && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 40
+          && request.resource.data.description is string && request.resource.data.description.size() <= 200
+          && request.resource.data.kind in ['chat', 'announcements']
+          && request.resource.data.createdAt is int
+          && request.resource.data.createdBy is string;
+        allow delete: if communityUser() && isAdmin(cid);
+
+        match /messages/{mid} {
+          allow read: if canRead(cid);
+          // announcement channels are written by staff only, chat channels by any member
+          allow create: if communityUser() && isMember(cid)
+            && validComment(request.resource.data)
+            && (get(/databases/$(database)/documents/communities/$(cid)/channels/$(chid)).data.kind == 'chat' || isStaff(cid));
+          allow delete: if communityUser() && (resource.data.authorId == request.auth.uid || isStaff(cid));
+        }
       }
 
       match /posts/{postId} {
-        allow read: if roomMember(roomId);
-        allow create: if communityUser() && roomMember(roomId) && validPost(request.resource.data);
-        allow update: if communityUser() && roomMember(roomId)
-          && resource.data.authorId == request.auth.uid && validPost(request.resource.data);
-        allow delete: if communityUser() && roomMember(roomId) && resource.data.authorId == request.auth.uid;
+        allow read: if canRead(cid);
+        allow create: if communityUser() && isMember(cid) && validPost(request.resource.data)
+          && !('pinned' in request.resource.data);
+        allow update: if communityUser() && isMember(cid) && (
+            (resource.data.authorId == request.auth.uid && validPost(request.resource.data)
+              && request.resource.data.get('pinned', false) == resource.data.get('pinned', false))
+            || (isStaff(cid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned'])
+              && request.resource.data.pinned is bool)
+          );
+        allow delete: if communityUser() && isMember(cid) && (resource.data.authorId == request.auth.uid || isStaff(cid));
 
         match /comments/{commentId} {
-          allow read: if roomMember(roomId);
-          allow create: if communityUser() && roomMember(roomId)
-            && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt'])
-            && request.resource.data.authorId == request.auth.uid
-            && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
-            && request.resource.data.createdAt is int
-            && request.resource.data.body is string && request.resource.data.body.size() <= 2000;
-          allow update: if communityUser() && roomMember(roomId)
-            && resource.data.authorId == request.auth.uid
-            && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt'])
-            && request.resource.data.authorId == request.auth.uid
-            && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
-            && request.resource.data.createdAt is int
-            && request.resource.data.body is string && request.resource.data.body.size() <= 2000;
-          allow delete: if communityUser() && roomMember(roomId) && resource.data.authorId == request.auth.uid;
+          allow read: if canRead(cid);
+          allow create: if communityUser() && isMember(cid) && validComment(request.resource.data);
+          allow update: if communityUser() && isMember(cid) && resource.data.authorId == request.auth.uid && validComment(request.resource.data);
+          allow delete: if communityUser() && isMember(cid) && (resource.data.authorId == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
         }
 
         match /votes/{voteId} {
-          allow read: if roomMember(roomId);
-          allow create, update: if communityUser() && roomMember(roomId)
+          allow read: if canRead(cid);
+          allow create, update: if communityUser() && isMember(cid)
             && request.resource.data.keys().hasOnly(['uid', 'optionIndex', 'updatedAt'])
             && voteId == request.auth.uid && request.resource.data.uid == request.auth.uid
             && request.resource.data.optionIndex is int
             && request.resource.data.optionIndex >= 0 && request.resource.data.optionIndex < 8
-            && request.resource.data.optionIndex < get(/databases/$(database)/documents/rooms/$(roomId)/posts/$(postId)).data.pollOptions.size()
+            && request.resource.data.optionIndex < get(/databases/$(database)/documents/communities/$(cid)/posts/$(postId)).data.pollOptions.size()
             && request.resource.data.updatedAt is int;
-          allow delete: if communityUser() && roomMember(roomId) && voteId == request.auth.uid;
+          allow delete: if communityUser() && (voteId == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
         }
 
         match /likes/{uid} {
-          allow read: if roomMember(roomId);
-          allow create, update: if communityUser() && roomMember(roomId)
+          allow read: if canRead(cid);
+          allow create, update: if communityUser() && isMember(cid)
             && uid == request.auth.uid
             && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
             && request.resource.data.uid == request.auth.uid
             && request.resource.data.createdAt is int;
-          allow delete: if communityUser() && roomMember(roomId) && uid == request.auth.uid;
+          allow delete: if communityUser() && (uid == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
         }
       }
 
       match /ratings/{ratingId} {
-        allow read: if roomMember(roomId);
-        allow create, update: if communityUser() && roomMember(roomId)
+        allow read: if canRead(cid);
+        allow create, update: if communityUser() && isMember(cid)
           && request.resource.data.keys().hasOnly(['comicKey', 'comicTitle', 'sourceId', 'uid', 'score', 'updatedAt'])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.comicKey is string
@@ -196,7 +300,7 @@ service cloud.firestore {
           && request.resource.data.sourceId is string && request.resource.data.sourceId.size() <= 120
           && request.resource.data.score is int && request.resource.data.score >= 1 && request.resource.data.score <= 5
           && request.resource.data.updatedAt is int;
-        allow delete: if communityUser() && roomMember(roomId) && resource.data.uid == request.auth.uid;
+        allow delete: if communityUser() && (isOwner(cid) || (isMember(cid) && (resource.data.uid == request.auth.uid || isStaff(cid))));
       }
     }
   }

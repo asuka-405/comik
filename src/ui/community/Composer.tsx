@@ -1,0 +1,139 @@
+import { useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useLiveQuery } from "dexie-react-hooks";
+import { ArrowLeft, EyeSlash } from "@phosphor-icons/react";
+import { useSettings } from "@/core/settings";
+import { db } from "@/core/db";
+import { trackAnalytics } from "@/core/analytics";
+import { getSource } from "@/core/sources/registry";
+import { comicReference, communityTarget, publishPost, PUBLIC_ID, uploadCommunityImage, type CommunityKind } from "@/core/community";
+import { toast } from "../common";
+import { wrapSpoiler } from "./Feed";
+import { PUBLIC_COMMUNITY, SocialAvatar, useCommunity, useCommunityUser, useDirectory } from "./shared";
+
+const KINDS: [CommunityKind, string][] = [["discussion", "Discussion"], ["recommendation", "Recommendation"], ["poll", "Poll"]];
+
+export function CommunityNewPostPage() {
+  const [params, setParams] = useSearchParams();
+  const nav = useNavigate();
+  const who = useCommunityUser();
+  const { communities, joined } = useDirectory(who.user?.uid);
+  const chosen = params.get("c") ?? params.get("room") ?? localStorage.getItem("comik.community.active") ?? PUBLIC_ID;
+  const live = useCommunity(chosen, who.user?.uid);
+  const builtIn = chosen === PUBLIC_ID;
+  const member = builtIn ? who.signedIn : !!live.member;
+  const mine = useMemo(() => (communities ?? []).filter((c) => joined.has(c.id) || c.ownerId === who.user?.uid), [communities, joined, who.user?.uid]);
+  const choose = (id: string) => {
+    localStorage.setItem("comik.community.active", id);
+    const next = new URLSearchParams(params);
+    next.set("c", id);
+    next.delete("room");
+    setParams(next, { replace: true });
+  };
+
+  return (
+    <div className="page community-new-page">
+      <Link className="community-back" to={builtIn ? "/community/public" : `/community/${chosen}`}><ArrowLeft size={17} />Back to community</Link>
+      <header className="community-new-heading"><div className="kicker">The reading room</div><h1>Start a conversation</h1><p>Share a thought, put a question to readers, or give someone their next favorite series.</p></header>
+      {!who.configured ? (
+        <section className="community-gate"><h2>Set up Firebase first</h2><p>This build has no Firebase project for community posts.</p><Link className="btn primary" to="/settings/firebase">Open Firebase settings</Link></section>
+      ) : !who.enabled ? (
+        <section className="community-gate"><h2>Communities are off</h2><p>Turn the public community on in Settings to post.</p><Link className="btn" to="/settings/privacy">Community settings</Link></section>
+      ) : (
+        <>
+          {who.error && <div className="err" role="alert">{who.error}</div>}
+          <label className="community-target"><span className="label">Post in</span>
+            <select className="input" value={chosen} onChange={(e) => choose(e.target.value)} aria-label="Community to post in">
+              <option value={PUBLIC_ID}>{PUBLIC_COMMUNITY.name}</option>
+              {mine.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {!builtIn && !mine.some((c) => c.id === chosen) && live.community && <option value={chosen}>{live.community.name}</option>}
+            </select>
+          </label>
+          {!who.signedIn ? (
+            <section className="community-gate"><h2>Sign in to post</h2><p>Posts are tied to a Google account so replies and edits stay yours.</p><button className="btn primary" onClick={who.signIn}>Sign in with Google</button></section>
+          ) : !builtIn && live.community === undefined ? (
+            <div className="chapter-loading"><span className="reader-spinner" /><span>Opening community</span></div>
+          ) : !builtIn && !member ? (
+            <section className="community-gate"><h2>Join {live.community?.name ?? "this community"} first</h2><p>Only members can post. Open the community to join it.</p><Link className="btn primary" to={`/community/${chosen}`}>Open community</Link></section>
+          ) : (
+            <CommunityComposer communityId={chosen} name={who.name} onPublished={() => nav(builtIn ? "/community/public" : `/community/${chosen}`, { replace: true })} />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CommunityComposer({ communityId, name, onPublished }: { communityId: string; name: string; onPublished: () => void }) {
+  const settings = useSettings();
+  const library = useLiveQuery(() => db.manga.filter((item) => item.inLibrary).toArray(), [], []);
+  const [params] = useSearchParams();
+  const [kind, setKind] = useState<CommunityKind>(() => (params.get("comic") ? "recommendation" : "discussion"));
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [mangaId, setMangaId] = useState(() => params.get("comic") ?? "");
+  const [options, setOptions] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const selectedManga = library?.find((item) => item.id === mangaId);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const pollOptions = options.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 8);
+    if (kind === "poll" && pollOptions.length < 2) return toast("A poll needs at least two options.", true);
+    setBusy(true);
+    try {
+      const source = selectedManga ? getSource(selectedManga.sourceId) : undefined;
+      let sourceUrl = "";
+      if (selectedManga && source) {
+        try {
+          const url = new URL(selectedManga.url, source.baseUrl);
+          if (url.protocol === "https:" || url.protocol === "http:") sourceUrl = url.toString();
+        } catch { /* Local imports have no external source URL. */ }
+      }
+      const comic = selectedManga && source ? comicReference(selectedManga, source.name, sourceUrl) : undefined;
+      const imageUrl = image ? await uploadCommunityImage(image, settings.imgurClientId) : undefined;
+      await publishPost({
+        kind,
+        title: title.trim().slice(0, 160),
+        body: body.trim().slice(0, 5000),
+        ...(comic ? { comic } : {}),
+        ...(kind === "poll" ? { pollOptions } : {}),
+        ...(imageUrl ? { imageUrl } : {}),
+      }, communityTarget(communityId));
+      void trackAnalytics("community_post", { kind });
+      toast("Post published");
+      onPublished();
+    } catch (cause) {
+      toast((cause as Error).message, true);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="community-compose" onSubmit={(event) => void submit(event)}>
+      <div className="community-compose-head"><SocialAvatar name={name} /><div><strong>Posting as {name}</strong><span>Share a thought with the community</span></div></div>
+      <div className="seg" role="tablist" aria-label="Post type">
+        {KINDS.map(([value, label]) => <button type="button" key={value} role="tab" aria-selected={kind === value} className={kind === value ? "on" : ""} onClick={() => setKind(value)}>{label}</button>)}
+      </div>
+      <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} placeholder={kind === "poll" ? "Poll question" : "Give your post a title"} aria-label="Post title" required />
+      <textarea ref={bodyRef} className="input" value={body} onChange={(event) => setBody(event.target.value)} maxLength={5000} rows={5} placeholder="Write a discussion or recommendation. Use #tags to be found, and hide spoilers with the button below." aria-label="Post text" required />
+      <div className="community-compose-hint">
+        <button type="button" className="btn sm" onClick={() => wrapSpoiler(bodyRef.current, body, setBody)}><EyeSlash size={15} /> Spoiler</button>
+        <span className="muted">Select text, then press Spoiler to blur it until a reader taps it.</span>
+      </div>
+      {kind === "poll" && <textarea className="input" value={options} onChange={(event) => setOptions(event.target.value)} maxLength={500} rows={3} placeholder="One poll option per line" aria-label="Poll options" required />}
+      <div className="community-compose-tools">
+        <select className="input" value={mangaId} onChange={(event) => setMangaId(event.target.value)} aria-label="Reference a comic">
+          <option value="">Reference a comic (optional)</option>
+          {library?.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+        </select>
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(event) => setImage(event.target.files?.[0] ?? null)} />
+        <button className="btn attach" type="button" onClick={() => fileRef.current?.click()}>{image ? `${image.name} · ${(image.size / 1024).toFixed(1)} KB` : "Attach image"}</button>
+        <button className="btn primary" type="submit" disabled={busy}>{busy ? "Publishing" : "Post"}</button>
+      </div>
+    </form>
+  );
+}

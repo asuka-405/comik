@@ -8,18 +8,17 @@ Comik uses Firebase for three things, and a Cloud Function for a fourth. Which p
 |---|---|---|---|
 | Sign in (anonymous or Google) | yes | yes | yes |
 | Library and progress sync | yes | yes | yes |
-| Public Community | yes | yes | yes |
-| Private Community rooms | yes | yes | yes |
+| Communities (public and private) | yes | yes | yes, still hosted on Comik's project |
 | Read comics in the app | **no** | yes, from your device | yes, through your proxy |
 | Where comic requests come from | nowhere | your device's connection | your Firebase project |
 | Where your data is stored | Comik's project | Comik's project | **your project; Comik stores nothing** |
 
-- **Comik Firebase** is project `comik-7157c`. Everyone gets it with no setup. It stores sign-in accounts, your synced library under `users/{uid}` (readable only by you, enforced by `firestore.rules`) and the public Community.
-- **Your Firebase** is a project you create. It does everything above for you alone, plus, on the web, the comic proxy. Private Community rooms can be created on either project.
+- **Comik Firebase** is project `comik-7157c`. Everyone gets it with no setup. It stores sign-in accounts, your synced library under `users/{uid}` (readable only by you, enforced by `firestore.rules`) and every Community: the shared feed plus all public and private communities, with their channels, roles and messages.
+- **Your Firebase** is a project you create. It does everything above for you alone, plus, on the web, the comic proxy. Communities always live in Comik's project, so everyone can find and join the same ones; your own project holds your sync, your proxy and your account.
 
 ### Why bring your own, beyond reading on the web
 
-With your own Firebase, **your data is stored with you and Comik holds nothing**. Your account, your synced library and progress, your posts and any private rooms you create live in your Google Cloud project, under your control. You can export, inspect or delete them from the Firebase console, set your own access rules, and shut it all down by deleting the project. Comik's project then has no copy of anything about you. With Comik's Firebase the data lives in Comik's project, protected by security rules that let only you read your library, but stored on our side.
+With your own Firebase, **your data is stored with you and Comik holds nothing**. Your account, your synced library and progress live in your Google Cloud project, under your control. You can export, inspect or delete them from the Firebase console, set your own access rules, and shut it all down by deleting the project. Comik's project then has no copy of anything about you. With Comik's Firebase the data lives in Comik's project, protected by security rules that let only you read your library, but stored on our side.
 
 ## Why it works this way
 
