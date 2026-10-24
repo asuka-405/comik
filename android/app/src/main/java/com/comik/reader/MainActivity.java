@@ -42,15 +42,21 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import android.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Iterator;
@@ -65,6 +71,7 @@ public final class MainActivity extends Activity {
     private static final int MAX_HTML_BYTES = 12 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 40 * 1024 * 1024;
     private static final int MAX_REDIRECTS = 5;
+    private static final String UPDATE_PREFS = "comik.webUpdates";
 
     private WebView webView;
     private String userAgent;
@@ -74,6 +81,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        rollbackUnconfirmedUpdate();
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this))
@@ -87,6 +95,7 @@ public final class MainActivity extends Activity {
         webView.getSettings().setAllowContentAccess(true);
         webView.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         webView.addJavascriptInterface(new GoogleAuthBridge(), "ComikAndroidAuth");
+        webView.addJavascriptInterface(new UpdateBridge(), "ComikAndroidUpdates");
         // The window draws edge to edge, so the status and navigation bars sit on top of whatever is
         // underneath. WebView ignores its own padding for page content, which let the page's top bar
         // slide under the status bar. Pad a parent instead and the page starts below the bars.
@@ -183,6 +192,8 @@ public final class MainActivity extends Activity {
             }
             if ("/api/fetch".equals(uri.getPath())) return fetchSource(request, uri);
             if ("/api/img".equals(uri.getPath())) return fetchImage(uri);
+            WebResourceResponse updated = updatedAsset(uri.getPath());
+            if (updated != null) return updated;
             return assetLoader.shouldInterceptRequest(uri);
         }
 
@@ -206,6 +217,195 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public void requestGoogleIdToken(String requestId, String serverClientId) {
             mainHandler.post(() -> startGoogleIdTokenRequest(requestId, serverClientId));
+        }
+    }
+
+    private final class UpdateBridge {
+        private String stagingVersion;
+        private final Map<String, UpdateFile> expected = new ConcurrentHashMap<>();
+
+        @JavascriptInterface
+        public String getActiveVersion() {
+            return getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
+        }
+
+        @JavascriptInterface
+        public synchronized boolean beginUpdate(String manifestJson) {
+            try {
+                JSONObject manifest = new JSONObject(manifestJson);
+                String version = manifest.getString("version");
+                JSONArray files = manifest.getJSONArray("files");
+                if (manifest.getInt("schema") != 1 || !validVersion(version) || files.length() < 1 || files.length() > 5000) return false;
+                Map<String, UpdateFile> nextExpected = new HashMap<>();
+                boolean hasIndex = false;
+                long totalBytes = 0;
+                for (int index = 0; index < files.length(); index++) {
+                    JSONObject item = files.getJSONObject(index);
+                    String path = item.getString("path");
+                    String hash = item.getString("sha256").toLowerCase();
+                    int size = item.getInt("size");
+                    if (!safeUpdatePath(path) || !hash.matches("[a-f0-9]{64}") || size < 0 || size > 24 * 1024 * 1024 || nextExpected.containsKey(path)) return false;
+                    totalBytes += size;
+                    if (totalBytes > 160L * 1024 * 1024) return false;
+                    nextExpected.put(path, new UpdateFile(size, hash));
+                    if ("web/index.html".equals(path)) hasIndex = true;
+                }
+                if (!hasIndex) return false;
+                File staging = new File(updateRoot(), version + ".staging");
+                deleteTree(staging);
+                if (!staging.mkdirs()) return false;
+                String active = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
+                if (!active.isEmpty() && validVersion(active)) {
+                    File activeRoot = new File(updateRoot(), active);
+                    if (activeRoot.isDirectory()) copyTree(activeRoot, staging);
+                }
+                expected.clear();
+                expected.putAll(nextExpected);
+                stagingVersion = version;
+                return true;
+            } catch (Exception error) {
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public synchronized boolean writeUpdateFile(String version, String path, String contentBase64, String sha256) {
+            try {
+                if (!version.equals(stagingVersion) || !safeUpdatePath(path)) return false;
+                UpdateFile item = expected.get(path);
+                if (item == null || !item.sha256.equalsIgnoreCase(sha256)) return false;
+                byte[] bytes = Base64.decode(contentBase64, Base64.DEFAULT);
+                if (bytes.length != item.size || !item.sha256.equalsIgnoreCase(sha256(bytes))) return false;
+                File root = new File(updateRoot(), version + ".staging");
+                File target = new File(root, path);
+                if (!target.getCanonicalPath().startsWith(root.getCanonicalPath() + File.separator)) return false;
+                File parent = target.getParentFile();
+                if (parent == null || (!parent.exists() && !parent.mkdirs())) return false;
+                try (FileOutputStream output = new FileOutputStream(target)) { output.write(bytes); }
+                return true;
+            } catch (Exception error) {
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public synchronized boolean activateUpdate(String version) {
+            try {
+                if (!version.equals(stagingVersion) || expected.isEmpty()) return false;
+                File root = new File(updateRoot(), version + ".staging");
+                for (Map.Entry<String, UpdateFile> entry : expected.entrySet()) {
+                    File file = new File(root, entry.getKey());
+                    if (!file.isFile() || file.length() != entry.getValue().size || !entry.getValue().sha256.equalsIgnoreCase(sha256(file))) return false;
+                }
+                File installed = new File(updateRoot(), version);
+                deleteTree(installed);
+                if (!root.renameTo(installed)) return false;
+                android.content.SharedPreferences prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE);
+                String previous = prefs.getString("active", "");
+                if (!prefs.edit().putString("previous", previous).putString("active", version)
+                    .putString("pending", version).commit()) return false;
+                expected.clear();
+                stagingVersion = null;
+                return true;
+            } catch (Exception error) {
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean confirmUpdate() {
+            getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).edit().remove("pending").remove("previous").apply();
+            return true;
+        }
+    }
+
+    private static final class UpdateFile {
+        final int size;
+        final String sha256;
+        UpdateFile(int size, String sha256) { this.size = size; this.sha256 = sha256; }
+    }
+
+    private File updateRoot() { return new File(getFilesDir(), "web-updates"); }
+
+    private void rollbackUnconfirmedUpdate() {
+        android.content.SharedPreferences prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE);
+        if (prefs.contains("pending")) prefs.edit().putString("active", prefs.getString("previous", "")).remove("pending").remove("previous").apply();
+    }
+
+    private WebResourceResponse updatedAsset(String rawPath) {
+        try {
+            String path = rawPath == null ? "" : rawPath.replaceFirst("^/", "");
+            if (!safeUpdatePath(path)) return null;
+            String version = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
+            if (version.isEmpty()) return null;
+            File root = new File(updateRoot(), version);
+            File file = new File(root, path);
+            if (!file.getCanonicalPath().startsWith(root.getCanonicalPath() + File.separator) || !file.isFile()) return null;
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Cache-Control", path.endsWith("index.html") ? "no-cache" : "public, max-age=31536000, immutable");
+            return new WebResourceResponse(updateMime(path), "UTF-8", 200, "OK", headers, new FileInputStream(file));
+        } catch (Exception error) { return null; }
+    }
+
+    private static boolean validVersion(String version) { return version.matches("[0-9]+\\.[0-9]+\\.[0-9]+-(alpha|beta|rc)(\\.[0-9A-Za-z.-]+)?"); }
+
+    private static boolean safeUpdatePath(String path) {
+        if (!path.matches("^(assets|web|releases)/[A-Za-z0-9._/-]+$")) return false;
+        for (String part : path.split("/")) if (part.isEmpty() || ".".equals(part) || "..".equals(part)) return false;
+        return true;
+    }
+
+    private static String updateMime(String path) {
+        String name = path.toLowerCase();
+        if (name.endsWith(".html")) return "text/html";
+        if (name.endsWith(".js")) return "text/javascript";
+        if (name.endsWith(".css")) return "text/css";
+        if (name.endsWith(".json")) return "application/json";
+        if (name.endsWith(".svg")) return "image/svg+xml";
+        if (name.endsWith(".woff2")) return "font/woff2";
+        if (name.endsWith(".woff")) return "font/woff";
+        if (name.endsWith(".ttf")) return "font/ttf";
+        if (name.endsWith(".otf")) return "font/otf";
+        return "application/octet-stream";
+    }
+
+    private static String sha256(byte[] bytes) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder result = new StringBuilder();
+        for (byte value : digest) result.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
+        return result.toString();
+    }
+
+    private static String sha256(File file) throws Exception {
+        try (InputStream input = new FileInputStream(file); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            return sha256(output.toByteArray());
+        }
+    }
+
+    private static void deleteTree(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) for (File child : children) deleteTree(child);
+        }
+        if (file.exists()) file.delete();
+    }
+
+    private static void copyTree(File source, File target) throws IOException {
+        if (source.isDirectory()) {
+            if (!target.exists() && !target.mkdirs()) throw new IOException("cannot create update staging directory");
+            File[] children = source.listFiles();
+            if (children != null) for (File child : children) copyTree(child, new File(target, child.getName()));
+            return;
+        }
+        File parent = target.getParentFile();
+        if (parent == null || (!parent.exists() && !parent.mkdirs())) throw new IOException("cannot create update staging directory");
+        try (InputStream input = new FileInputStream(source); FileOutputStream output = new FileOutputStream(target)) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
         }
     }
 

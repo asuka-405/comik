@@ -21,11 +21,18 @@ const prerelease = /-(alpha|beta|rc)\b/i.test(version);
 const title = `Comik ${version.replace(/\.0(?=-)/, "").replace("-", " ")}`;
 const stage = path.join(root, "release", "upload", version);
 
-const FILES = [
+const PLATFORM_FILES = [
   ["android/app/build/outputs/apk/debug/app-debug.apk", "Comik-android.apk"],
   [`release/Comik-${version}.AppImage`, "Comik-linux-x64.AppImage"],
   [`release/Comik-${version}-win-x64.zip`, "Comik-windows-x64.zip"],
 ];
+const otaOnly = process.argv.includes("--ota-only");
+const otaRoot = path.join(root, "release", "app-updates", version);
+const OTA_FILES = ["Comik-app-update.json", "Comik-app-update.zip"];
+const otaFiles = OTA_FILES.map((name) => [path.join("release", "app-updates", version, name), name]);
+const hasOta = OTA_FILES.every((name) => existsSync(path.join(otaRoot, name)));
+if (otaOnly && !hasOta) throw new Error(`Missing OTA bundle for ${version}; run npm run build:app-update first.`);
+const filesToPublish = otaOnly ? otaFiles : [...PLATFORM_FILES, ...(hasOta ? otaFiles : [])];
 
 function notesFor(version) {
   const changelog = readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
@@ -39,7 +46,7 @@ function notesFor(version) {
 mkdirSync(stage, { recursive: true });
 
 const sums = [];
-for (const [from, name] of FILES) {
+for (const [from, name] of filesToPublish) {
   const source = path.join(root, from);
   if (!existsSync(source)) throw new Error(`Missing ${from}. Build it first (see HANDOVER.md).`);
   copyFileSync(source, path.join(stage, name));
@@ -55,7 +62,7 @@ writeFileSync(notesFile, notes + "\n");
 console.log(`\nTag ${tag}, notes ${notes.split("\n").length} lines, staged in release/upload/${version}/`);
 
 if (process.argv.includes("--publish")) {
-  const files = [...FILES.map(([, name]) => path.join(stage, name)), path.join(stage, "SHA256SUMS.txt")];
+  const files = [...filesToPublish.map(([, name]) => path.join(stage, name)), path.join(stage, "SHA256SUMS.txt")];
   const result = spawnSync("gh", ["release", "create", tag, ...files, ...(prerelease ? ["--prerelease"] : []), "--title", title, "--notes-file", notesFile], { stdio: "inherit" });
   process.exit(result.status ?? 1);
 }

@@ -6,6 +6,9 @@ export interface SManga {
   /** Source-relative identity. Stable across sessions (usually a path or id). */
   url: string;
   title: string;
+  kind?: "comic" | "novel";
+  /** Alternate titles supplied by the source, used for cross-source migration matching. */
+  aliases?: string[];
   cover?: string;
   author?: string;
   artist?: string;
@@ -86,6 +89,8 @@ export interface MangaRow {
   sourceId: string;
   url: string;
   title: string;
+  kind?: "comic" | "novel";
+  aliases?: string[];
   cover?: string;
   author?: string;
   artist?: string;

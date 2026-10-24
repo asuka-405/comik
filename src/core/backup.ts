@@ -14,6 +14,7 @@ export interface Backup {
   chapters: ChapterRow[];
   categories: CategoryRow[];
   customSources: CustomSourceRow[];
+  novelTexts?: { chapterId: string; text: string }[];
   settings: Record<string, unknown>;
 }
 
@@ -21,8 +22,10 @@ export async function createBackup(): Promise<Backup> {
   const manga = await db.manga.filter((m) => m.inLibrary || m.modifiedAt > 0).toArray();
   const ids = new Set(manga.map((m) => m.id));
   const chapters = (await db.chapters.toArray()).filter((c) => ids.has(c.mangaId) && (c.read || c.bookmark || c.lastPage > 0 || true));
+  const chapterIds = new Set(chapters.map((chapter) => chapter.id));
+  const novelTexts = await Promise.all((await db.localFiles.toArray()).filter((file) => file.kind === "text" && chapterIds.has(file.chapterId)).map(async (file) => ({ chapterId: file.chapterId, text: await file.blob.text() })));
   const { set: _set, ...settings } = useSettings.getState();
-  return { app: "comik", version: 1, createdAt: Date.now(), manga, chapters, categories: await db.categories.toArray(), customSources: await db.customSources.toArray(), settings };
+  return { app: "comik", version: 1, createdAt: Date.now(), manga, chapters, categories: await db.categories.toArray(), customSources: await db.customSources.toArray(), novelTexts, settings };
 }
 
 export function downloadBackup(b: Backup) {
@@ -42,11 +45,12 @@ export async function restoreBackupData(data: Backup): Promise<{ manga: number; 
   if (data.app !== "comik" || !Array.isArray(data.manga)) throw new Error("Not a Comik backup file");
   const localManga = new Map((await db.manga.toArray()).map((m) => [m.id, m]));
   const localCh = new Map((await db.chapters.toArray()).map((c) => [c.id, c]));
-  await db.transaction("rw", db.manga, db.chapters, db.categories, db.customSources, async () => {
+  await db.transaction("rw", db.manga, db.chapters, db.categories, db.customSources, db.localFiles, async () => {
     await db.manga.bulkPut(data.manga.filter((m) => !localManga.has(m.id) || m.modifiedAt >= localManga.get(m.id)!.modifiedAt));
     await db.chapters.bulkPut(data.chapters.filter((c) => !localCh.has(c.id) || c.modifiedAt >= localCh.get(c.id)!.modifiedAt));
     await db.categories.bulkPut(data.categories ?? []);
     await db.customSources.bulkPut(data.customSources ?? []);
+    await db.localFiles.bulkPut((data.novelTexts ?? []).map(({ chapterId, text }) => ({ chapterId, kind: "text" as const, blob: new Blob([text], { type: "text/plain;charset=utf-8" }) })));
   });
   if (data.settings) useSettings.setState(data.settings as never);
   await loadCustomSources();

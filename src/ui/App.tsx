@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookBookmark, ChatCircleText, Clock, Compass, MagnifyingGlass } from "@phosphor-icons/react";
+import { BookBookmark, BookOpenText, ChatCircleText, Clock, Compass, MagnifyingGlass } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { useSettings } from "@/core/settings";
+import { isNativeShell } from "@/core/platform";
+import { checkForAppUpdate, confirmActiveUpdate } from "@/core/appUpdates";
 import { trackAnalytics } from "@/core/analytics";
 import { loadCustomSources } from "@/core/sources/registry";
 import { maybeAutoUpdate } from "@/core/updater";
@@ -13,6 +15,7 @@ import { Backdrop } from "./Backdrop";
 import { Toasts } from "./common";
 import { Palette } from "./Palette";
 import { Shelf } from "./pages/Shelf";
+import { Novels } from "./pages/Novels";
 import { Browse } from "./pages/Browse";
 import { SourceView } from "./pages/SourceView";
 import { Series } from "./pages/Series";
@@ -33,6 +36,9 @@ import { proxyToken } from "@/core/http";
 import { Onboarding } from "./Onboarding";
 import { AccountMenu } from "./AccountMenu";
 import { BASE_COLORS, resolveTheme, themeCss } from "@/core/themes";
+
+declare const __APP_VERSION__: string;
+const APP_VERSION = __APP_VERSION__;
 
 function useTheme() {
   const theme = useSettings((s) => s.theme);
@@ -84,6 +90,10 @@ export function App() {
   useEffect(() => {
     void loadCustomSources();
     void maybeAutoUpdate();
+    if (isNativeShell) {
+      confirmActiveUpdate();
+      void checkForAppUpdate(APP_VERSION);
+    }
     if (readFirebaseConfig() && localStorage.getItem("comik.sync.enabled") === "1") void startSync();
   }, []);
 
@@ -134,6 +144,7 @@ export function App() {
         <nav className="rail" aria-label="Main">
           <div className="logo" aria-hidden="true"><BookBookmark size={24} weight="fill" /></div>
           <NavLink to="/" end className="nav-btn" aria-label="Shelf"><BookBookmark size={24} /><span className="tip">Shelf</span></NavLink>
+          <NavLink to="/novels" className="nav-btn" aria-label="Novels"><BookOpenText size={24} /><span className="tip">Novels</span></NavLink>
           <NavLink to="/browse" className="nav-btn" aria-label="Discover"><Compass size={24} /><span className="tip">Discover</span></NavLink>
           <NavLink to="/timeline" className="nav-btn" aria-label="Timeline"><Clock size={24} />{!!newCount && <span className="dot">{newCount > 99 ? "99+" : newCount}</span>}<span className="tip">Timeline</span></NavLink>
           <NavLink to="/community" className="nav-btn" aria-label="Community"><ChatCircleText size={24} /><span className="tip">Community</span></NavLink>
@@ -153,6 +164,7 @@ export function App() {
           </div>
           <Routes>
             <Route path="/" element={<Shelf onSearch={() => setPalette(true)} />} />
+            <Route path="/novels" element={<Novels />} />
             <Route path="/browse" element={<Browse />} />
             <Route path="/browse/:sourceId" element={<SourceView />} />
             <Route path="/series/:id" element={<Series />} />

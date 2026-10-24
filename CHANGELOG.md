@@ -2,6 +2,23 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.4.0-alpha
+
+### Light novels
+- Added a separate Novels section with local EPUB and TXT import, EPUB spine chapter ordering, and a text-first reader with chapter navigation, font sizing, bookmarks, and scroll progress.
+- Imported novel text is included in Comik backups and remains local to the device unless included in a backup.
+
+### Chapter actions
+- Select a chapter and apply read/unread, download, or delete-download actions to every chapter before or after it.
+- Download the next 10 or 25 unread chapters after the selected chapter, or after the latest read chapter when nothing is selected.
+
+### Migration
+- Search all safe, enabled sources by the comic's canonical and alternate titles, then show deduplicated candidates ranked by exact-name match.
+
+### Internal updates
+- Android, Windows, and Linux can install verified incremental web-asset updates without downloading a new installer.
+- The 0.4.1-alpha follow-up is published as an OTA-only delta so the update can be exercised from this 0.4.0-alpha baseline.
+
 ## 0.3.5-alpha
 
 ### Global search

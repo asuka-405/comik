@@ -4,7 +4,7 @@ import { ArrowRight, ArrowSquareOut, AndroidLogo, Check, Copy, DownloadSimple, L
 import "./styles.css";
 import "./landing.css";
 import "./releases.css";
-import { downloadsFor, fallbackUrl, fetchReleases, formatBytes, PLATFORMS, REPO_URL, type Platform, type Release } from "./core/releases";
+import { classifyAsset, downloadsFor, fallbackUrl, fetchReleases, formatBytes, PLATFORMS, REPO_URL, type Platform, type Release } from "./core/releases";
 import { parseMarkdown, type Inline } from "./core/markdown";
 
 const ICONS: Record<Platform, React.ReactNode> = {
@@ -116,6 +116,7 @@ function ReleasesPage() {
   const alpha = releases?.filter((r) => r.prerelease) ?? [];
   const latest = stable[0];
   const latestAlpha = alpha[0];
+  const latestAlphaInstall = alpha.find((release) => PLATFORMS.every((platform) => release.assets.some((asset) => classifyAsset(asset.name) === platform.platform)));
   const older = stable.filter((r) => r !== latest);
   const olderAlpha = alpha.filter((r) => r !== latestAlpha);
   const loading = !releases && !error;
@@ -195,7 +196,8 @@ function ReleasesPage() {
               <div><span className="landing-kicker">Latest alpha</span><h3>{latestAlpha.name}</h3><p>{formatDate(latestAlpha.publishedAt)}</p></div>
               <a className="landing-text-link" href={latestAlpha.url} target="_blank" rel="noreferrer">GitHub release <ArrowSquareOut size={16} /></a>
             </div>
-            <Downloads release={latestAlpha} offline={!!error} />
+            {latestAlphaInstall && latestAlphaInstall !== latestAlpha && <div className="alpha-base-install"><h3>Install base · {latestAlphaInstall.name}</h3><p>Install this alpha build first. Later alpha releases can arrive through Internal app updates.</p><Downloads release={latestAlphaInstall} offline={!!error} /></div>}
+            {latestAlphaInstall === latestAlpha && <Downloads release={latestAlpha} offline={!!error} />}
             <div className="alpha-notes"><Notes body={latestAlpha.body} /></div>
             {!!olderAlpha.length && <div className="rel-history alpha-history">
               {olderAlpha.map((release) => (

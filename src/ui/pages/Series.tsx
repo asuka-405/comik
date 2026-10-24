@@ -7,20 +7,26 @@ import { allSources, getSource } from "@/core/sources/registry";
 import { useSettings } from "@/core/settings";
 import { findDuplicates, markPreviousRead, migrateManga, setBookmark, setInLibrary, setMangaCategories, setRead, patchManga, syncChapters, upsertManga } from "@/core/repo";
 import { refreshManga } from "@/core/updater";
-import { resumeTarget, readingOrder, dedupeByNumber } from "@/core/progress";
+import { ChallengeError, silenceChallenges } from "@/core/http";
+import { resumeTarget, readingOrder, dedupeByNumber, chaptersAround, nextUnreadChapters } from "@/core/progress";
+import { migrationMatchRank, migrationQueries } from "@/core/migrationSearch";
 import { formatChapterNumber, missingBetween } from "@/core/chapterRecognition";
 import { deleteDownloads, enqueueDownloads } from "@/core/downloads";
-import type { ChapterRow, SManga } from "@/core/types";
+import type { ChapterRow, SManga, Source } from "@/core/types";
 import { Empty, FloatBack, ReadingNotice, Sheet, coverSrc, hueOf, timeAgo, toast } from "../common";
 import { dominantColor } from "../color";
 
 type Filt = "unread" | "bookmarked" | "downloaded";
 const CHAPTERS_PER_PAGE = 50;
+const MIGRATION_SEARCH_PARALLEL = 4;
+
+interface MigrationMatch { source: Source; manga: SManga; rank: number; matchedQuery: string }
 
 export function Series() {
   const id = decodeURIComponent(useParams().id ?? "");
   const nav = useNavigate();
   const safeMode = useSettings((s) => s.safeMode);
+  const disabledSourceIds = useSettings((s) => s.disabledSourceIds);
   const manga = useLiveQuery(() => db.manga.get(id), [id]);
   const chapters = useLiveQuery(() => db.chapters.where("mangaId").equals(id).toArray(), [id], [] as ChapterRow[]);
   const chapterCount = useLiveQuery(() => db.chapters.where("mangaId").equals(id).count(), [id]);
@@ -32,14 +38,15 @@ export function Series() {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<Set<Filt>>(new Set());
   const [catSheet, setCatSheet] = useState(false);
+  const [rangeSide, setRangeSide] = useState<"before" | "after" | null>(null);
   const [showDupes, setShowDupes] = useState(false);
   const [chapterPage, setChapterPage] = useState(0);
   const [migrateOpen, setMigrateOpen] = useState(false);
-  const [migrateSourceId, setMigrateSourceId] = useState("");
-  const [migrateQuery, setMigrateQuery] = useState("");
-  const [migrateMatches, setMigrateMatches] = useState<SManga[]>([]);
+  const [migrateMatches, setMigrateMatches] = useState<MigrationMatch[]>([]);
   const [migrateBusy, setMigrateBusy] = useState(false);
   const [migrateError, setMigrateError] = useState("");
+  const [migrateProgress, setMigrateProgress] = useState({ done: 0, total: 0, term: "" });
+  const [migrateBlocked, setMigrateBlocked] = useState(0);
 
   useEffect(() => setChapterPage(0), [id]);
 
@@ -87,11 +94,17 @@ export function Series() {
   if (!manga) return <div className="page"><Empty title="Series not found" body="Open it from Discover again." action={<button className="btn primary" onClick={() => nav("/browse")}>Discover</button>} /></div>;
   if (safeMode && source?.isNsfw) return <div className="page"><Empty title="Hidden by Safe mode" body="This series is from a source marked as 18+. Turn off Safe mode in Settings to view it." action={<button className="btn primary" onClick={() => nav("/settings/privacy")}>Safe mode settings</button>} /></div>;
 
+  const isNovel = manga.kind === "novel";
   const target = resumeTarget(chapters ?? []);
   const unread = dedupeByNumber(chapters ?? []).filter((c) => !c.read).length;
   const dupeCount = (chapters?.length ?? 0) - dedupeByNumber(chapters ?? []).length;
   const toggleSel = (cid: string) => setSel((s) => { const n = new Set(s); n.has(cid) ? n.delete(cid) : n.add(cid); return n; });
   const chosen = (chapters ?? []).filter((c) => sel.has(c.id));
+  const rangeAnchor = sel.size === 1 ? chosen[0] : undefined;
+  const range = rangeAnchor ? chaptersAround(chapters ?? [], rangeAnchor.id) : { before: [], after: [] };
+  const ranged = rangeSide ? range[rangeSide] : [];
+  const next10 = nextUnreadChapters(chapters ?? [], rangeAnchor?.id, 10);
+  const next25 = nextUnreadChapters(chapters ?? [], rangeAnchor?.id, 25);
 
   const toggleLibrary = async () => {
     if (manga.inLibrary) {
@@ -111,26 +124,91 @@ export function Series() {
     setSel(new Set());
   };
 
+  const applyRangeRead = async (read: boolean) => {
+    await setRead(ranged.map((chapter) => chapter.id), read);
+    toast(`Marked ${ranged.length} chapters ${read ? "read" : "unread"}`);
+    setRangeSide(null);
+  };
+
+  const deleteRangeDownloads = async () => {
+    await deleteDownloads(ranged.map((chapter) => chapter.id));
+    toast(`Deleted downloads for ${ranged.length} chapters`);
+    setRangeSide(null);
+  };
+
+  const downloadRange = async () => {
+    await download(ranged);
+    setRangeSide(null);
+  };
+
   const searchMigrationTarget = async (event: React.FormEvent) => {
     event.preventDefault();
-    const destination = getSource(migrateSourceId);
-    if (!destination || !migrateQuery.trim()) return;
+    if (!manga) return;
+    const sources = allSources().filter((candidate) => candidate.id !== manga.sourceId && candidate.id !== "local"
+      && !disabledSourceIds.includes(candidate.id) && !(safeMode && candidate.isNsfw));
+    let queries = migrationQueries(manga);
+    if (!queries.length) return;
     setMigrateBusy(true);
     setMigrateError("");
     setMigrateMatches([]);
-    try {
-      const page = await destination.search(1, migrateQuery.trim(), destination.getFilterList());
-      setMigrateMatches(page.mangas);
-    } catch (cause) {
-      setMigrateError((cause as Error).message || "Could not search that source.");
-    } finally {
-      setMigrateBusy(false);
+    setMigrateProgress({ done: 0, total: sources.length, term: manga.title });
+    setMigrateBlocked(0);
+    const found = new Map<string, MigrationMatch>();
+    const blocked = new Set<string>();
+    const failures: string[] = [];
+    const queue = [...sources];
+    const originalSource = getSource(manga.sourceId);
+    if (originalSource) {
+      const releaseChallenge = silenceChallenges(originalSource.baseUrl);
+      try {
+        const details = await originalSource.getMangaDetails({ url: manga.url, title: manga.title });
+        queries = migrationQueries({ ...manga, ...details });
+        await upsertManga(manga.sourceId, details);
+      } catch (cause) {
+        if (cause instanceof ChallengeError) blocked.add(originalSource.id);
+      } finally {
+        releaseChallenge();
+      }
     }
+    let done = 0;
+    const worker = async () => {
+      while (queue.length) {
+        const candidateSource = queue.shift()!;
+        let hadChallenge = false;
+        for (const query of queries) {
+          for (let pageNumber = 1; pageNumber <= 3; pageNumber++) {
+            const releaseChallenge = silenceChallenges(candidateSource.baseUrl);
+            try {
+              const page = await candidateSource.search(pageNumber, query, candidateSource.getFilterList());
+              for (const result of page.mangas) {
+                const key = `${candidateSource.id}::${result.url}`;
+                const rank = migrationMatchRank(result, queries, query);
+                const previous = found.get(key);
+                if (!previous || rank < previous.rank) found.set(key, { source: candidateSource, manga: result, rank, matchedQuery: query });
+              }
+              if (!page.hasNext) break;
+            } catch (cause) {
+              if (cause instanceof ChallengeError) hadChallenge = true;
+              else failures.push(`${candidateSource.name}: ${(cause as Error).message}`);
+              break;
+            } finally {
+              releaseChallenge();
+            }
+          }
+        }
+        if (hadChallenge) blocked.add(candidateSource.id);
+        done++;
+        setMigrateProgress({ done, total: sources.length, term: queries[0]! });
+        setMigrateBlocked(blocked.size);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(MIGRATION_SEARCH_PARALLEL, sources.length) }, worker));
+    setMigrateMatches([...found.values()].sort((a, b) => a.rank - b.rank || a.source.name.localeCompare(b.source.name) || a.manga.title.localeCompare(b.manga.title)));
+    if (!found.size && failures.length && !blocked.size) setMigrateError(failures[0]!);
+    setMigrateBusy(false);
   };
 
-  const migrateTo = async (match: SManga) => {
-    const destination = getSource(migrateSourceId);
-    if (!destination) return;
+  const migrateTo = async ({ source: destination, manga: match }: MigrationMatch) => {
     setMigrateBusy(true);
     setMigrateError("");
     try {
@@ -158,7 +236,7 @@ export function Series() {
       <div className="topbar">
         <span className="kicker">{source?.name ?? manga.sourceId}</span>
         <div className="spacer" />
-        <button className="icon-btn" onClick={refresh} aria-label="Refresh" title="Refresh"><ArrowsClockwise size={18} className={loading ? "spin" : ""} /></button>
+        {!isNovel && <button className="icon-btn" onClick={refresh} aria-label="Refresh" title="Refresh"><ArrowsClockwise size={18} className={loading ? "spin" : ""} /></button>}
       </div>
 
       <section className="series-hero">
@@ -180,7 +258,7 @@ export function Series() {
               </Link>
             ) : (chapters?.length ?? 0) > 0 ? <span className="btn" style={{ pointerEvents: "none" }}><Check size={16} /> Caught up</span> : null}
             <button className="btn" onClick={toggleLibrary}>{manga.inLibrary ? <><Check size={16} /> On shelf</> : <><Plus size={16} /> Add to shelf</>}</button>
-            {manga.inLibrary && <button className="btn" onClick={() => { setMigrateSourceId(""); setMigrateQuery(manga.title); setMigrateMatches([]); setMigrateError(""); setMigrateOpen(true); }}><ArrowsLeftRight size={16} /> Migrate</button>}
+            {manga.inLibrary && !isNovel && <button className="btn" onClick={() => { setMigrateMatches([]); setMigrateError(""); setMigrateOpen(true); }}><ArrowsLeftRight size={16} /> Migrate</button>}
             {manga.inLibrary && !!cats?.length && <button className="btn" onClick={() => setCatSheet(true)}><Tag size={16} /> Categories</button>}
             {manga.inLibrary && <Link className="btn" to={`/community/new?comic=${encodeURIComponent(manga.id)}`}><ShareNetwork size={16} /> Share</Link>}
           </div>
@@ -196,6 +274,8 @@ export function Series() {
         ))}
         {dupeCount > 0 && <button className={`chip${showDupes ? " on" : ""}`} onClick={() => { setShowDupes((v) => !v); setChapterPage(0); }} title="Other uploads of the same chapter number">{dupeCount} duplicate{dupeCount === 1 ? "" : "s"}</button>}
         <button className="icon-btn" onClick={() => { setChapterPage(0); void patchManga(manga.id, { chapterSortAsc: !asc }); }} aria-label="Reverse order" title={asc ? "Oldest first" : "Newest first"}><ArrowsDownUp size={18} /></button>
+        {!isNovel && <button className="btn sm" disabled={!next10.length} onClick={() => void download(next10)}>Download next 10</button>}
+        {!isNovel && <button className="btn sm" disabled={!next25.length} onClick={() => void download(next25)}>Download next 25</button>}
         <button className="btn sm" onClick={() => setSel(new Set(list.map((c) => c.id)))}>Select all</button>
       </div>
 
@@ -244,9 +324,13 @@ export function Series() {
           <button className="btn sm" onClick={() => { void setRead([...sel], true); setSel(new Set()); }}><Check size={14} /> Read</button>
           <button className="btn sm" onClick={() => { void setRead([...sel], false); setSel(new Set()); }}>Unread</button>
           {sel.size === 1 && <button className="btn sm" onClick={() => { void markPreviousRead(manga.id, chosen[0]!.number); setSel(new Set()); toast("Earlier chapters marked read"); }}>Read all before</button>}
+          {sel.size === 1 && <>
+            <button className="btn sm" disabled={!range.before.length} onClick={() => setRangeSide("before")}>Before ({range.before.length})</button>
+            <button className="btn sm" disabled={!range.after.length} onClick={() => setRangeSide("after")}>After ({range.after.length})</button>
+          </>}
           <button className="btn sm" onClick={() => { chosen.forEach((c) => void setBookmark(c.id, !c.bookmark)); setSel(new Set()); }}><BookmarkSimple size={14} /></button>
-          <button className="btn sm" onClick={() => void download(chosen)}><DownloadSimple size={14} /></button>
-          {chosen.some((c) => dlMap.get(c.id)?.state === "done") && <button className="btn sm danger" onClick={() => { void deleteDownloads(chosen.map((c) => c.id)); setSel(new Set()); }}><Trash size={14} /></button>}
+          {!isNovel && <button className="btn sm" onClick={() => void download(chosen)}><DownloadSimple size={14} /></button>}
+          {!isNovel && chosen.some((c) => dlMap.get(c.id)?.state === "done") && <button className="btn sm danger" onClick={() => { void deleteDownloads(chosen.map((c) => c.id)); setSel(new Set()); }}><Trash size={14} /></button>}
           <button className="btn sm ghost" onClick={() => setSel(new Set())}>Clear</button>
         </div>
       )}
@@ -262,29 +346,33 @@ export function Series() {
           </div>
         </Sheet>
       )}
+      {rangeSide && <Sheet title={`Chapters ${rangeSide} ${formatChapterNumber(rangeAnchor!.number)}`} onClose={() => setRangeSide(null)} center>
+        <p className="muted">Apply an action to the {ranged.length} chapters {rangeSide} the selected chapter, in reading order.</p>
+        <div className="dialog-actions range-actions">
+          <button className="btn" onClick={() => void applyRangeRead(true)}><Check size={15} /> Mark read</button>
+          <button className="btn" onClick={() => void applyRangeRead(false)}>Mark unread</button>
+          {!isNovel && <button className="btn" onClick={() => void downloadRange()}><DownloadSimple size={15} /> Download</button>}
+          {!isNovel && <button className="btn danger" disabled={!ranged.some((chapter) => dlMap.get(chapter.id)?.state === "done")} onClick={() => void deleteRangeDownloads()}><Trash size={15} /> Delete downloads</button>}
+        </div>
+      </Sheet>}
       {migrateOpen && (
         <Sheet title="Migrate series" onClose={() => !migrateBusy && setMigrateOpen(false)} center>
-          <p className="muted" style={{ marginBottom: 14 }}>Choose the matching series on another source. Shelf tabs and reader settings move over; read state follows matching chapter numbers. The old source record stays off your shelf.</p>
+          <p className="muted" style={{ marginBottom: 14 }}>Search every enabled source for “{manga.title}” and its alternate titles. Shelf tabs and reader settings move over; read state follows matching chapter numbers. The old source record stays off your shelf.</p>
           <form onSubmit={(event) => void searchMigrationTarget(event)}>
-            <div className="field"><label className="label" htmlFor="migrate-source">Destination source</label>
-              <select id="migrate-source" className="input" value={migrateSourceId} onChange={(event) => { setMigrateSourceId(event.target.value); setMigrateMatches([]); }}>
-                <option value="">Choose a source</option>
-                {allSources().filter((item) => item.id !== manga.sourceId && item.id !== "local" && !(safeMode && item.isNsfw)).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </div>
-            <div className="field"><label className="label" htmlFor="migrate-query">Search destination</label>
-              <input id="migrate-query" className="input" value={migrateQuery} onChange={(event) => setMigrateQuery(event.target.value)} placeholder="Series title" />
-            </div>
-            <div className="dialog-actions"><button className="btn primary" type="submit" disabled={!migrateSourceId || !migrateQuery.trim() || migrateBusy}>{migrateBusy ? "Working…" : "Search"}</button></div>
+            <div className="dialog-actions"><button className="btn primary" type="submit" disabled={migrateBusy}>{migrateBusy ? "Searching…" : "Search all sources"}</button></div>
           </form>
+          {migrateBusy && <div className="migration-progress" role="status"><span>Searching {migrateProgress.done} of {migrateProgress.total} sources</span><progress max={migrateProgress.total || 1} value={migrateProgress.done} /></div>}
           {migrateError && <div className="err" role="alert">{migrateError}</div>}
+          {!!migrateBlocked && <p className="muted" role="status">{migrateBlocked} protected source{migrateBlocked === 1 ? " was" : "s were"} skipped because it requested a browser check.</p>}
           {migrateMatches.length > 0 && <ul className="migrate-results">
-            {migrateMatches.map((match) => <li key={match.url}>
-              <span>{match.title}</span>
+            {migrateMatches.map((match) => <li key={`${match.source.id}::${match.manga.url}`}>
+              {match.manga.cover && <img src={match.manga.cover} alt="" loading="lazy" />}
+              <span><strong>{match.manga.title}</strong><small>{match.source.name} · {match.rank === 0 ? "Exact title" : match.rank === 1 ? "Exact alternate title" : `Matched “${match.matchedQuery}”`}</small></span>
               <button className="btn sm" disabled={migrateBusy} onClick={() => void migrateTo(match)}>Move here</button>
             </li>)}
           </ul>}
-          {!migrateBusy && !migrateMatches.length && !migrateError && <p className="muted" style={{ marginTop: 12 }}>Search results will appear here.</p>}
+          {!migrateBusy && !migrateMatches.length && !migrateError && <p className="muted" style={{ marginTop: 12 }}>Search all sources to see possible matches.</p>}
+          {!migrateBusy && !migrateMatches.length && !!migrateBlocked && <p className="muted">Some sources could not be searched because they require a browser check.</p>}
         </Sheet>
       )}
     </div>

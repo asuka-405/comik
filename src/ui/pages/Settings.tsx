@@ -10,6 +10,7 @@ import { addCustomSource, allSources, isCustom, onSourcesChange, removeCustomSou
 import { importLocal } from "@/core/sources/local";
 import { createBackup, downloadBackup, restoreBackup } from "@/core/backup";
 import { storageUsage } from "@/core/downloads";
+import { applyAppUpdate, checkForAppUpdate, useAppUpdate } from "@/core/appUpdates";
 import { getFirebaseMode, parseFirebaseConfig, readCustomFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
 import { resetPushCursor, startSync, stopSync, syncNow } from "@/core/sync/engine";
 import { Row, Toggle, bytes, timeAgo, toast } from "../common";
@@ -223,10 +224,18 @@ export function PrivacySettings() {
 }
 
 export function AboutSettings() {
+  const update = useAppUpdate();
   return (
     <Detail title="About" intro="Comik is a local-first reader for web comics.">
-      <Section title={`Comik ${APP_VERSION}`} hue={0}>
+      <Section title={`Comik ${update.activeVersion || APP_VERSION}`} hue={0}>
         <Row title="Release notes and downloads"><a className="btn sm" href="/releases/" target="_blank" rel="noreferrer">Open releases</a></Row>
+        {isNativeShell && <Row title="Internal app updates" hint={update.candidate ? `Version ${update.candidate.version} is ready. This updates the app without a new installer.` : update.checkedAt ? "The app is up to date." : "Check for an incremental app update."}>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <button className="btn sm" disabled={update.checking || update.installing} onClick={() => void checkForAppUpdate(APP_VERSION)}>{update.checking ? "Checking…" : "Check"}</button>
+            {update.candidate && <button className="btn sm primary" disabled={update.installing} onClick={() => void applyAppUpdate()}>{update.installing ? "Installing…" : `Install ${update.candidate.version}`}</button>}
+          </div>
+          {update.error && <span className="err" role="alert">{update.error}</span>}
+        </Row>}
         <Row title="Firebase setup guide" hint="What each Firebase does and how to bring your own"><Link className="btn sm" to="/setup">Open guide</Link></Row>
         <Row title="Walkthrough" hint="The first-run tour and the Safe mode and analytics choices"><button className="btn sm" onClick={() => useWalkthrough.getState().show()}>Replay</button></Row>
         <Row title="Source code"><a className="btn sm" href="https://github.com/asuka-405/comik" target="_blank" rel="noreferrer">GitHub</a></Row>

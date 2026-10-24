@@ -34,7 +34,7 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
     return { entries: manga.map<Entry>((m) => ({ m, chapters: by.get(m.id) ?? [], s: statsOf(by.get(m.id) ?? []) })), cats };
   }, []);
 
-  const safeEntries = useMemo(() => (data?.entries ?? []).filter((entry) => !st.safeMode || !getSource(entry.m.sourceId)?.isNsfw), [data, st.safeMode]);
+  const safeEntries = useMemo(() => (data?.entries ?? []).filter((entry) => entry.m.kind !== "novel" && (!st.safeMode || !getSource(entry.m.sourceId)?.isNsfw)), [data, st.safeMode]);
 
   const view = useMemo(() => {
     if (!data) return [];

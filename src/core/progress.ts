@@ -22,6 +22,21 @@ export function readingOrder(chapters: ChapterRow[]): ChapterRow[] {
   return [...chapters].sort((a, b) => (a.number !== b.number ? a.number - b.number : b.sourceOrder - a.sourceOrder));
 }
 
+export function chaptersAround(chapters: ChapterRow[], anchorId: string): { before: ChapterRow[]; after: ChapterRow[] } {
+  const ordered = readingOrder(chapters);
+  const index = ordered.findIndex((chapter) => chapter.id === anchorId);
+  if (index < 0) return { before: [], after: [] };
+  return { before: ordered.slice(0, index), after: ordered.slice(index + 1) };
+}
+
+export function nextUnreadChapters(chapters: ChapterRow[], anchorId: string | undefined, count: 10 | 25): ChapterRow[] {
+  const ordered = readingOrder(chapters);
+  const anchor = anchorId
+    ? ordered.findIndex((chapter) => chapter.id === anchorId)
+    : ordered.reduce((last, chapter, index) => chapter.read ? index : last, -1);
+  return ordered.slice(anchor + 1).filter((chapter) => !chapter.read).slice(0, count);
+}
+
 /**
  * What "Continue" should open: the chapter you stopped halfway through most recently,
  * otherwise the first unread chapter after the furthest one you finished, otherwise the first unread.

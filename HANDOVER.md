@@ -8,6 +8,10 @@ Updated: 2026-10-24 (global search, source ordering, MangaDex removal)
 - In the chapter list, select an anchor chapter and mark every chapter before or after it read or unread, delete those chapters' downloads, or download them.
 - Add download-next-10 and download-next-25 actions, starting after the selected chapter or, when none is selected, after the latest read chapter.
 - Keep these chapter actions in 0.4.0-alpha, not the 0.3.5-alpha bug-fix release.
+- Add an internal incremental updater for Android, Windows, and Linux that can update the shared web app assets without downloading a new APK or desktop installer. Native shell code and permission changes still require a regular platform release.
+- OTA packages must be authenticated and verified before activation, installed atomically with rollback to the bundled/current assets if activation fails.
+- Improve series migration to search all eligible sources by the exact title and alternate names, then list every possible match with exact matches ranked first.
+- Publish 0.4.0-alpha as the installable OTA-capable base, followed by 0.4.1-alpha as a separately listed OTA-only delta for cross-platform update testing.
 
 ## Current Work
 

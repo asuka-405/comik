@@ -10,7 +10,10 @@ const DIST_ROOT = app.isPackaged
   : path.resolve(__dirname, "../dist");
 const HTML_LIMIT = 12 * 1024 * 1024;
 const IMAGE_LIMIT = 40 * 1024 * 1024;
+const UPDATE_FILE_LIMIT = 24 * 1024 * 1024;
+const UPDATE_REQUEST_LIMIT = 36 * 1024 * 1024;
 const APP_PORT = 41739;
+const UPDATE_ROOT = path.join(app.getPath("userData"), "web-updates");
 
 const MIME = {
   ".avif": "image/avif",
@@ -300,6 +303,118 @@ async function fetchImage(target, referer) {
   });
 }
 
+function safeUpdateVersion(version) {
+  return typeof version === "string" && /^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)(\.[0-9A-Za-z.-]+)?$/.test(version);
+}
+
+function safeUpdatePath(relative) {
+  return typeof relative === "string" && /^(assets|web|releases)\/[A-Za-z0-9._/-]+$/.test(relative)
+    && !relative.split("/").some((part) => !part || part === "." || part === "..");
+}
+
+function sha256(bytes) {
+  return require("node:crypto").createHash("sha256").update(bytes).digest("hex");
+}
+
+const updateStatePath = () => path.join(UPDATE_ROOT, "active.json");
+
+async function readUpdateState() {
+  try { return JSON.parse(await fs.readFile(updateStatePath(), "utf8")); }
+  catch { return { active: "", previous: "", pending: false }; }
+}
+
+async function writeUpdateState(state) {
+  await fs.mkdir(UPDATE_ROOT, { recursive: true });
+  const temp = `${updateStatePath()}.tmp`;
+  await fs.writeFile(temp, JSON.stringify(state));
+  await fs.rename(temp, updateStatePath());
+}
+
+async function recoverUnconfirmedUpdate() {
+  const state = await readUpdateState();
+  if (state.pending) await writeUpdateState({ active: state.previous || "", previous: "", pending: false });
+}
+
+async function handleUpdateRequest(request, url) {
+  const requestOrigin = request.headers.get("origin");
+  if (requestOrigin && requestOrigin !== url.origin) return jsonResponse({ error: "origin not allowed" }, 403);
+  if (url.pathname === "/api/update/version" && request.method === "GET") {
+    const state = await readUpdateState();
+    return jsonResponse({ version: state.active || "" });
+  }
+  if (url.pathname === "/api/update/confirm" && request.method === "POST") {
+    const state = await readUpdateState();
+    await writeUpdateState({ active: state.active || "", previous: "", pending: false });
+    return jsonResponse({ ok: true });
+  }
+  if (request.method !== "POST") return jsonResponse({ error: "POST required" }, 405);
+  let body;
+  try { body = await request.json(); }
+  catch { return jsonResponse({ error: "invalid JSON" }, 400); }
+
+  if (url.pathname === "/api/update/begin") {
+    if (body.schema !== 1 || !safeUpdateVersion(body.version) || !Array.isArray(body.files) || !body.files.length || body.files.length > 5000) return jsonResponse({ error: "invalid update manifest" }, 400);
+    let total = 0;
+    let hasEntry = false;
+    const seen = new Set();
+    for (const item of body.files) {
+      if (!safeUpdatePath(item.path) || !Number.isSafeInteger(item.size) || item.size < 0 || item.size > UPDATE_FILE_LIMIT || !/^[a-f0-9]{64}$/i.test(item.sha256) || seen.has(item.path)) return jsonResponse({ error: "invalid update file entry" }, 400);
+      seen.add(item.path);
+      total += item.size;
+      if (item.path === "web/index.html") hasEntry = true;
+    }
+    if (!hasEntry || total > 160 * 1024 * 1024) return jsonResponse({ error: "update size or entry is invalid" }, 400);
+    const directory = path.join(UPDATE_ROOT, `${body.version}.staging`);
+    await fs.rm(directory, { recursive: true, force: true });
+    await fs.mkdir(directory, { recursive: true });
+    const active = (await readUpdateState()).active;
+    if (active && safeUpdateVersion(active)) {
+      const activeDirectory = path.join(UPDATE_ROOT, active);
+      await fs.cp(activeDirectory, directory, { recursive: true, force: true }).catch(() => {});
+    }
+    await fs.writeFile(path.join(directory, "manifest.json"), JSON.stringify(body));
+    return jsonResponse({ ok: true });
+  }
+
+  if (url.pathname === "/api/update/file") {
+    if (!safeUpdateVersion(body.version) || !safeUpdatePath(body.path) || typeof body.content !== "string") return jsonResponse({ error: "invalid update file" }, 400);
+    const directory = path.join(UPDATE_ROOT, `${body.version}.staging`);
+    let manifest;
+    try { manifest = JSON.parse(await fs.readFile(path.join(directory, "manifest.json"), "utf8")); }
+    catch { return jsonResponse({ error: "update was not prepared" }, 409); }
+    const entry = manifest.files.find((item) => item.path === body.path);
+    if (!entry || entry.sha256 !== body.sha256 || body.content.length > Math.ceil(UPDATE_FILE_LIMIT * 4 / 3) + 16) return jsonResponse({ error: "file is not in manifest" }, 400);
+    const bytes = Buffer.from(body.content, "base64");
+    if (bytes.length !== entry.size || sha256(bytes) !== entry.sha256) return jsonResponse({ error: "file integrity check failed" }, 400);
+    const filePath = path.resolve(directory, body.path);
+    if (!filePath.startsWith(`${directory}${path.sep}`)) return jsonResponse({ error: "invalid file path" }, 400);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, bytes);
+    return jsonResponse({ ok: true });
+  }
+
+  if (url.pathname === "/api/update/activate") {
+    if (!safeUpdateVersion(body.version)) return jsonResponse({ error: "invalid version" }, 400);
+    const directory = path.join(UPDATE_ROOT, `${body.version}.staging`);
+    let manifest;
+    try { manifest = JSON.parse(await fs.readFile(path.join(directory, "manifest.json"), "utf8")); }
+    catch { return jsonResponse({ error: "update was not prepared" }, 409); }
+    for (const item of manifest.files) {
+      const filePath = path.join(directory, item.path);
+      const bytes = await fs.readFile(filePath).catch(() => null);
+      if (!bytes || bytes.length !== item.size || sha256(bytes) !== item.sha256) return jsonResponse({ error: `missing or invalid update file: ${item.path}` }, 409);
+    }
+    const installed = path.join(UPDATE_ROOT, body.version);
+    await fs.rm(installed, { recursive: true, force: true });
+    await fs.rename(directory, installed);
+    const previous = (await readUpdateState()).active || "";
+    await writeUpdateState({ active: body.version, previous, pending: true });
+    return jsonResponse({ ok: true });
+  }
+
+  return jsonResponse({ error: "not found" }, 404);
+}
+
 async function serveAsset(url) {
   let relative;
   try {
@@ -312,6 +427,12 @@ async function serveAsset(url) {
     return new Response("forbidden", { status: 403 });
   }
   try {
+    const state = await readUpdateState();
+    if (state.active && safeUpdatePath(relative)) {
+      const overlayRoot = path.join(UPDATE_ROOT, state.active);
+      const overlayFile = path.resolve(overlayRoot, relative);
+      if (overlayFile.startsWith(`${overlayRoot}${path.sep}`) && await fs.stat(overlayFile).then((info) => info.isFile()).catch(() => false)) filePath = overlayFile;
+    }
     const info = await fs.stat(filePath);
     if (info.isDirectory()) filePath = path.join(filePath, "index.html");
     const body = await fs.readFile(filePath);
@@ -331,6 +452,8 @@ async function serveAsset(url) {
 
 async function handleAppRequest(request, url) {
   if (url.pathname === "/api/health") return jsonResponse({ ok: true, name: "comik-desktop" });
+
+  if (url.pathname.startsWith("/api/update/")) return handleUpdateRequest(request, url);
 
   if (url.pathname === "/api/fetch" || url.pathname === "/api/img") {
     const rawTarget = url.searchParams.get("url");
@@ -396,6 +519,7 @@ async function listen(server) {
 }
 
 async function start() {
+  await recoverUnconfirmedUpdate();
   // Chromium's own agent string, without the Electron and app tokens that sites treat as a bot.
   session.defaultSession.setUserAgent(session.defaultSession.getUserAgent().replace(/\s(Electron|comik-desktop|Comik)\/\S+/gi, ""));
   const server = createServer(async (incoming, outgoing) => {
@@ -405,7 +529,17 @@ async function start() {
       let body;
       if (method !== "GET" && method !== "HEAD") {
         const chunks = [];
-        for await (const chunk of incoming) chunks.push(chunk);
+        let total = 0;
+        for await (const chunk of incoming) {
+          total += chunk.length;
+          if (total > UPDATE_REQUEST_LIMIT) {
+            const response = jsonResponse({ error: "request too large" }, 413);
+            outgoing.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+            outgoing.end(Buffer.from(await response.arrayBuffer()));
+            return;
+          }
+          chunks.push(chunk);
+        }
         body = Buffer.concat(chunks);
       }
       const request = new Request(`http://localhost${url.pathname}${url.search}`, {

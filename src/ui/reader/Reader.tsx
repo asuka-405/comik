@@ -13,6 +13,7 @@ import { deleteDownloads } from "@/core/downloads";
 import type { ChapterRow, MangaRow, ReaderMode } from "@/core/types";
 import { processImage, looksLikeStrip, type Piece } from "./imageProcessing";
 import { ReaderSettings } from "./ReaderSettings";
+import { NovelReader } from "./NovelReader";
 
 type Mode = Exclude<ReaderMode, "auto">;
 const STRIP_GENRES = /webtoon|long strip|manhwa|manhua|full color|web comic/i;
@@ -30,6 +31,7 @@ export function Reader() {
   if (chapter === undefined || (chapter && manga === undefined)) return <div className="reader"><div className="interstitial"><div className="skel" style={{ width: 200, height: 14 }} /></div></div>;
   if (!chapter || !manga) return <div className="reader"><div className="interstitial"><h2>Chapter not found</h2><button className="btn" onClick={() => nav("/")}>Back</button></div></div>;
   if (safeMode && getSource(manga.sourceId)?.isNsfw) return <div className="reader"><div className="interstitial"><h2>Hidden by Safe mode</h2><p>This series is from a source marked as 18+.</p><button className="btn" onClick={() => nav("/settings/privacy")}>Safe mode settings</button></div></div>;
+  if (manga.kind === "novel") return <NovelReader key={chapter.id} manga={manga} chapter={chapter} siblings={siblings ?? []} />;
   return <ReaderBody key={chapter.id} chapter={chapter} manga={manga} siblings={siblings ?? []} />;
 }
 

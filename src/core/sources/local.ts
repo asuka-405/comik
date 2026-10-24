@@ -67,13 +67,13 @@ export const localSource: Source = {
 
   async getPopular() {
     const rows = await db.manga.where("sourceId").equals(LOCAL_ID).toArray();
-    return { mangas: rows.map((m): SManga => ({ url: m.url, title: m.title, cover: m.cover })), hasNext: false };
+    return { mangas: rows.map((m): SManga => ({ url: m.url, title: m.title, cover: m.cover, kind: m.kind })), hasNext: false };
   },
   getLatest: async () => ({ mangas: [], hasNext: false }),
   async search(_p, query) {
     const rows = await db.manga.where("sourceId").equals(LOCAL_ID).toArray();
     const q = query.toLowerCase();
-    return { mangas: rows.filter((m) => m.title.toLowerCase().includes(q)).map((m) => ({ url: m.url, title: m.title, cover: m.cover })), hasNext: false };
+    return { mangas: rows.filter((m) => m.title.toLowerCase().includes(q)).map((m) => ({ url: m.url, title: m.title, cover: m.cover, kind: m.kind })), hasNext: false };
   },
   getFilterList: () => [],
   async getMangaDetails(m) {

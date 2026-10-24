@@ -40,6 +40,7 @@ export interface LocalMangaFile {
   /** `${chapterId}` of an imported archive */
   chapterId: string;
   blob: Blob;
+  kind?: "text";
 }
 
 export interface AccountArchiveRow {

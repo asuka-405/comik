@@ -71,6 +71,7 @@ export function createHeanCms(cfg: HeanConfig): Source {
         title: series.title || manga.title,
         cover: series.thumbnail || manga.cover,
         author: series.author || series.studio || undefined,
+        aliases: (series.alternative_names ?? "").split(/[,;|\n]/).map((name) => name.trim()).filter(Boolean),
         description: [plainText(series.description), series.alternative_names ? `Alternative titles: ${series.alternative_names}` : ""].filter(Boolean).join("\n\n") || undefined,
         genres: (series.tags ?? []).map((t) => t.name),
         status: STATUS[(series.status ?? "").toLowerCase()] ?? "unknown",

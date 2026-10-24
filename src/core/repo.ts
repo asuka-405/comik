@@ -16,6 +16,8 @@ export async function upsertManga(sourceId: string, s: SManga): Promise<MangaRow
     sourceId,
     url: s.url,
     title: s.title || existing?.title || "Untitled",
+    kind: s.kind ?? existing?.kind,
+    aliases: s.aliases?.length ? s.aliases : existing?.aliases,
     cover: s.cover || existing?.cover,
     author: s.author ?? existing?.author,
     artist: s.artist ?? existing?.artist,
