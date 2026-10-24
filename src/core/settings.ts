@@ -35,6 +35,7 @@ export interface Settings {
   librarySortAsc: boolean;
   libraryDensity: LibraryDensity;
   libraryGridColumns: LibraryGridColumns;
+  globalSearchGridColumns: LibraryGridColumns;
   libraryUnreadBadge: boolean;
   libraryOnlyUnread: boolean;
   autoUpdateHours: number; // 0 = off
@@ -88,6 +89,7 @@ export const useSettings = create<Settings>()(
       librarySortAsc: false,
       libraryDensity: "cozy",
       libraryGridColumns: "auto",
+      globalSearchGridColumns: "auto",
       libraryUnreadBadge: true,
       libraryOnlyUnread: false,
       autoUpdateHours: 12,

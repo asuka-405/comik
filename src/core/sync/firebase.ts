@@ -417,6 +417,8 @@ export async function deleteSignedInAccount(): Promise<void> {
 
 export async function signOutSync(): Promise<void> {
   const { auth, authMod } = await loadFirebase();
+  const uid = useSync.getState().user?.uid;
+  if (uid) localStorage.setItem("comik.sync.previousUid", uid);
   await authMod.signOut(auth);
   publishUser(null, { status: "off" });
 }

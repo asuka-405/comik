@@ -10,7 +10,7 @@ import { addCustomSource, allSources, isCustom, onSourcesChange, removeCustomSou
 import { importLocal } from "@/core/sources/local";
 import { createBackup, downloadBackup, restoreBackup } from "@/core/backup";
 import { storageUsage } from "@/core/downloads";
-import { getFirebaseMode, linkGoogle, parseFirebaseConfig, readCustomFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
+import { getFirebaseMode, parseFirebaseConfig, readCustomFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
 import { resetPushCursor, startSync, stopSync, syncNow } from "@/core/sync/engine";
 import { Row, Toggle, bytes, timeAgo, toast } from "../common";
 import type { CustomSourceRow } from "@/core/db";
@@ -349,7 +349,7 @@ function SyncSection() {
           {enabled && sync.user && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               <button className="btn sm" onClick={() => { resetPushCursor(); syncNow(); toast("Uploading everything"); }} disabled={sync.syncing}>{sync.syncing ? "Syncing" : "Sync now"}</button>
-              {sync.user.isAnonymous && <button className="btn sm primary" onClick={() => linkGoogle().then(() => toast("Google account linked")).catch((e: Error) => toast(e.message, true))}>Link Google</button>}
+              {sync.user.isAnonymous && <Link className="btn sm primary" to="/login">Link Google</Link>}
               {!sync.user.isAnonymous && <button className="btn sm" onClick={() => void signOutSync().then(turnOff)}>Sign out</button>}
             </div>
           )}

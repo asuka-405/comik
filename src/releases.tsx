@@ -113,8 +113,11 @@ function ReleasesPage() {
   }, []);
 
   const stable = releases?.filter((r) => !r.prerelease) ?? [];
-  const latest = stable[0] ?? releases?.[0];
-  const older = (releases ?? []).filter((r) => r !== latest);
+  const alpha = releases?.filter((r) => r.prerelease) ?? [];
+  const latest = stable[0];
+  const latestAlpha = alpha[0];
+  const older = stable.filter((r) => r !== latest);
+  const olderAlpha = alpha.filter((r) => r !== latestAlpha);
   const loading = !releases && !error;
 
   return (
@@ -124,6 +127,7 @@ function ReleasesPage() {
         <nav aria-label="Main navigation">
           <a href="#features">Features</a>
           <a href="#notes">Release notes</a>
+          <a href="#alpha">Alpha</a>
           <a href="#history">History</a>
           <a className="landing-nav-cta" href="/web/">Open reader <ArrowRight size={16} /></a>
         </nav>
@@ -135,8 +139,8 @@ function ReleasesPage() {
           <h1>Get Comik on<br /><em>every screen.</em></h1>
           <p className="rel-lede">
             {loading && "Checking the latest release…"}
-            {latest && <>Latest: <strong>{latest.name}</strong> · {formatDate(latest.publishedAt)}{latest.prerelease && " · pre-release"}</>}
-            {releases && !latest && "The first release is on its way. The web reader is live in the meantime."}
+            {latest && <>Latest main release: <strong>{latest.name}</strong> · {formatDate(latest.publishedAt)}</>}
+            {releases && !latest && "No main release is published yet. The web reader is live in the meantime."}
             {error && "Could not reach GitHub, so these links go to the newest published files."}
           </p>
           <Downloads release={latest} offline={!!error} />
@@ -179,14 +183,39 @@ function ReleasesPage() {
           </div>
         </section>
 
+        <section className="rel-section alpha-stream" id="alpha">
+          <div className="landing-section-heading">
+            <h2>Alpha stream.</h2>
+            <p>Early builds for testing. Alpha releases stay separate from the main Comik release stream.</p>
+          </div>
+          {loading && <p className="rel-empty">Loading alpha releases…</p>}
+          {!loading && !latestAlpha && <p className="rel-empty">No alpha build is published yet.</p>}
+          {latestAlpha && <>
+            <div className="alpha-current-head">
+              <div><span className="landing-kicker">Latest alpha</span><h3>{latestAlpha.name}</h3><p>{formatDate(latestAlpha.publishedAt)}</p></div>
+              <a className="landing-text-link" href={latestAlpha.url} target="_blank" rel="noreferrer">GitHub release <ArrowSquareOut size={16} /></a>
+            </div>
+            <Downloads release={latestAlpha} offline={!!error} />
+            <div className="alpha-notes"><Notes body={latestAlpha.body} /></div>
+            {!!olderAlpha.length && <div className="rel-history alpha-history">
+              {olderAlpha.map((release) => (
+                <article key={release.tag} className="rel-row">
+                  <button aria-expanded={open === release.tag} onClick={() => setOpen(open === release.tag ? null : release.tag)}><strong>{release.name}</strong><em>alpha</em><span>{formatDate(release.publishedAt)}</span></button>
+                  {open === release.tag && <div className="rel-row-body"><Notes body={release.body} /><ul className="rel-files">{release.assets.map((asset) => <li key={asset.name}><a href={asset.url}><DownloadSimple size={15} /> {asset.name}</a><small>{formatBytes(asset.size)}</small></li>)}</ul></div>}
+                </article>
+              ))}
+            </div>}
+          </>}
+        </section>
+
         <section className="rel-section" id="history">
           <div className="landing-section-heading">
-            <h2>Every release.</h2>
+            <h2>Main releases.</h2>
             <p>Older builds stay available if a newer one does not suit you.</p>
           </div>
           <div className="rel-history">
-            {releases && !releases.length && <p className="rel-empty">Nothing published yet.</p>}
-            {latest && !older.length && releases && <p className="rel-empty">{latest.name} is the only release so far.</p>}
+            {releases && !stable.length && <p className="rel-empty">No main releases published yet.</p>}
+            {latest && !older.length && releases && <p className="rel-empty">{latest.name} is the only main release so far.</p>}
             {older.map((release) => (
               <article key={release.tag} className="rel-row">
                 <button aria-expanded={open === release.tag} onClick={() => setOpen(open === release.tag ? null : release.tag)}>

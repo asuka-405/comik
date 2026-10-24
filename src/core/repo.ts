@@ -59,6 +59,64 @@ export async function setInLibrary(id: string, value: boolean, categoryIds?: str
   emitLocalChange();
 }
 
+/** Move a shelf entry to another source while retaining the original record for unmatched chapters. */
+export async function migrateManga(fromId: string, toId: string): Promise<number> {
+  if (fromId === toId) throw new Error("Choose a different destination series.");
+  const [from, to] = await Promise.all([db.manga.get(fromId), db.manga.get(toId)]);
+  if (!from || !to) throw new Error("The source or destination series is no longer available.");
+
+  const [fromChapters, toChapters] = await Promise.all([
+    db.chapters.where("mangaId").equals(fromId).toArray(),
+    db.chapters.where("mangaId").equals(toId).toArray(),
+  ]);
+  const byNumber = new Map<number, ChapterRow[]>();
+  for (const chapter of fromChapters) {
+    if (chapter.number < 0) continue;
+    const matches = byNumber.get(chapter.number) ?? [];
+    matches.push(chapter);
+    byNumber.set(chapter.number, matches);
+  }
+
+  const timestamp = now();
+  let transferred = 0;
+  const migratedChapters = toChapters.map((chapter) => {
+    const candidates = byNumber.get(chapter.number);
+    if (!candidates?.length) return chapter;
+    const prior = candidates.reduce((best, item) => item.modifiedAt > best.modifiedAt ? item : best);
+    if (!prior.read && !prior.bookmark && prior.lastPage <= 0 && !prior.readAt) return chapter;
+    transferred++;
+    return {
+      ...chapter,
+      read: chapter.read || prior.read,
+      bookmark: chapter.bookmark || prior.bookmark,
+      lastPage: Math.max(chapter.lastPage, prior.lastPage),
+      pageCount: Math.max(chapter.pageCount, prior.pageCount),
+      readAt: Math.max(chapter.readAt, prior.readAt),
+      modifiedAt: timestamp,
+    };
+  });
+  const migrated = {
+    ...to,
+    inLibrary: true,
+    addedAt: from.addedAt || to.addedAt || timestamp,
+    categoryIds: [...new Set([...to.categoryIds, ...from.categoryIds])],
+    accent: from.accent ?? to.accent,
+    readerMode: from.readerMode ?? to.readerMode,
+    chapterSort: from.chapterSort ?? to.chapterSort,
+    chapterSortAsc: from.chapterSortAsc ?? to.chapterSortAsc,
+    chapterFilter: from.chapterFilter ?? to.chapterFilter,
+    modifiedAt: timestamp,
+  };
+  const archivedSource = { ...from, inLibrary: false, modifiedAt: timestamp };
+
+  await db.transaction("rw", db.manga, db.chapters, async () => {
+    await db.manga.bulkPut([migrated, archivedSource]);
+    await db.chapters.bulkPut(migratedChapters);
+  });
+  emitLocalChange();
+  return transferred;
+}
+
 /** Same title in the library from another source. Used to warn before adding a duplicate. */
 export async function findDuplicates(title: string, exceptId?: string): Promise<MangaRow[]> {
   const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");

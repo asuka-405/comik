@@ -9,16 +9,17 @@
  * Notes come from the matching section of CHANGELOG.md.
  */
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const version = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version;
 const tag = `v${version}`;
+const prerelease = /-(alpha|beta|rc)\b/i.test(version);
 // "0.1.0-alpha" reads better as "0.1 alpha" in a title.
 const title = `Comik ${version.replace(/\.0(?=-)/, "").replace("-", " ")}`;
-const stage = path.join(root, "release", "upload");
+const stage = path.join(root, "release", "upload", version);
 
 const FILES = [
   ["android/app/build/outputs/apk/debug/app-debug.apk", "Comik-android.apk"],
@@ -35,7 +36,6 @@ function notesFor(version) {
   return (end < 0 ? rest : rest.slice(0, end)).trim();
 }
 
-rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 
 const sums = [];
@@ -52,11 +52,11 @@ writeFileSync(path.join(stage, "SHA256SUMS.txt"), sums.join("\n") + "\n");
 const notes = notesFor(version);
 const notesFile = path.join(stage, "NOTES.md");
 writeFileSync(notesFile, notes + "\n");
-console.log(`\nTag ${tag}, notes ${notes.split("\n").length} lines, staged in release/upload/`);
+console.log(`\nTag ${tag}, notes ${notes.split("\n").length} lines, staged in release/upload/${version}/`);
 
 if (process.argv.includes("--publish")) {
   const files = [...FILES.map(([, name]) => path.join(stage, name)), path.join(stage, "SHA256SUMS.txt")];
-  const result = spawnSync("gh", ["release", "create", tag, ...files, "--title", title, "--notes-file", notesFile], { stdio: "inherit" });
+  const result = spawnSync("gh", ["release", "create", tag, ...files, ...(prerelease ? ["--prerelease"] : []), "--title", title, "--notes-file", notesFile], { stdio: "inherit" });
   process.exit(result.status ?? 1);
 }
 console.log("Dry run only. Add --publish to create the GitHub release.");

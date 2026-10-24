@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowsDownUp, BookmarkSimple, CaretLeft, CaretRight, Check, DownloadSimple, Play, Plus, Trash, ArrowsClockwise, ShareNetwork, Tag } from "@phosphor-icons/react";
+import { ArrowsDownUp, ArrowsLeftRight, BookmarkSimple, CaretLeft, CaretRight, Check, DownloadSimple, Play, Plus, Trash, ArrowsClockwise, ShareNetwork, Tag } from "@phosphor-icons/react";
 import { db } from "@/core/db";
-import { getSource } from "@/core/sources/registry";
+import { allSources, getSource } from "@/core/sources/registry";
 import { useSettings } from "@/core/settings";
-import { findDuplicates, markPreviousRead, setBookmark, setInLibrary, setMangaCategories, setRead, patchManga } from "@/core/repo";
+import { findDuplicates, markPreviousRead, migrateManga, setBookmark, setInLibrary, setMangaCategories, setRead, patchManga, syncChapters, upsertManga } from "@/core/repo";
 import { refreshManga } from "@/core/updater";
 import { resumeTarget, readingOrder, dedupeByNumber } from "@/core/progress";
 import { formatChapterNumber, missingBetween } from "@/core/chapterRecognition";
 import { deleteDownloads, enqueueDownloads } from "@/core/downloads";
-import type { ChapterRow } from "@/core/types";
+import type { ChapterRow, SManga } from "@/core/types";
 import { Empty, FloatBack, ReadingNotice, Sheet, coverSrc, hueOf, timeAgo, toast } from "../common";
 import { dominantColor } from "../color";
 
@@ -34,6 +34,12 @@ export function Series() {
   const [catSheet, setCatSheet] = useState(false);
   const [showDupes, setShowDupes] = useState(false);
   const [chapterPage, setChapterPage] = useState(0);
+  const [migrateOpen, setMigrateOpen] = useState(false);
+  const [migrateSourceId, setMigrateSourceId] = useState("");
+  const [migrateQuery, setMigrateQuery] = useState("");
+  const [migrateMatches, setMigrateMatches] = useState<SManga[]>([]);
+  const [migrateBusy, setMigrateBusy] = useState(false);
+  const [migrateError, setMigrateError] = useState("");
 
   useEffect(() => setChapterPage(0), [id]);
 
@@ -105,6 +111,44 @@ export function Series() {
     setSel(new Set());
   };
 
+  const searchMigrationTarget = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const destination = getSource(migrateSourceId);
+    if (!destination || !migrateQuery.trim()) return;
+    setMigrateBusy(true);
+    setMigrateError("");
+    setMigrateMatches([]);
+    try {
+      const page = await destination.search(1, migrateQuery.trim(), destination.getFilterList());
+      setMigrateMatches(page.mangas);
+    } catch (cause) {
+      setMigrateError((cause as Error).message || "Could not search that source.");
+    } finally {
+      setMigrateBusy(false);
+    }
+  };
+
+  const migrateTo = async (match: SManga) => {
+    const destination = getSource(migrateSourceId);
+    if (!destination) return;
+    setMigrateBusy(true);
+    setMigrateError("");
+    try {
+      const details = await destination.getMangaDetails(match).catch(() => match);
+      const target = await upsertManga(destination.id, details);
+      const remoteChapters = await destination.getChapterList(details);
+      await syncChapters(target, remoteChapters);
+      const transferred = await migrateManga(manga.id, target.id);
+      toast(`Moved to ${destination.name}; transferred progress for ${transferred} chapters`);
+      setMigrateOpen(false);
+      nav(`/series/${encodeURIComponent(target.id)}`, { replace: true });
+    } catch (cause) {
+      setMigrateError((cause as Error).message || "Could not migrate this series.");
+    } finally {
+      setMigrateBusy(false);
+    }
+  };
+
   let prev: ChapterRow | undefined;
   return (
     <>
@@ -136,6 +180,7 @@ export function Series() {
               </Link>
             ) : (chapters?.length ?? 0) > 0 ? <span className="btn" style={{ pointerEvents: "none" }}><Check size={16} /> Caught up</span> : null}
             <button className="btn" onClick={toggleLibrary}>{manga.inLibrary ? <><Check size={16} /> On shelf</> : <><Plus size={16} /> Add to shelf</>}</button>
+            {manga.inLibrary && <button className="btn" onClick={() => { setMigrateSourceId(""); setMigrateQuery(manga.title); setMigrateMatches([]); setMigrateError(""); setMigrateOpen(true); }}><ArrowsLeftRight size={16} /> Migrate</button>}
             {manga.inLibrary && !!cats?.length && <button className="btn" onClick={() => setCatSheet(true)}><Tag size={16} /> Categories</button>}
             {manga.inLibrary && <Link className="btn" to={`/community/new?comic=${encodeURIComponent(manga.id)}`}><ShareNetwork size={16} /> Share</Link>}
           </div>
@@ -215,6 +260,31 @@ export function Series() {
               return <button key={c.id} className={`chip${on ? " on" : ""}`} data-hue={hueOf(c.id)} onClick={() => void setMangaCategories(manga.id, on ? manga.categoryIds.filter((x) => x !== c.id) : [...manga.categoryIds, c.id])}>{on && <Check size={13} weight="bold" />}{c.name}</button>;
             })}
           </div>
+        </Sheet>
+      )}
+      {migrateOpen && (
+        <Sheet title="Migrate series" onClose={() => !migrateBusy && setMigrateOpen(false)} center>
+          <p className="muted" style={{ marginBottom: 14 }}>Choose the matching series on another source. Shelf tabs and reader settings move over; read state follows matching chapter numbers. The old source record stays off your shelf.</p>
+          <form onSubmit={(event) => void searchMigrationTarget(event)}>
+            <div className="field"><label className="label" htmlFor="migrate-source">Destination source</label>
+              <select id="migrate-source" className="input" value={migrateSourceId} onChange={(event) => { setMigrateSourceId(event.target.value); setMigrateMatches([]); }}>
+                <option value="">Choose a source</option>
+                {allSources().filter((item) => item.id !== manga.sourceId && item.id !== "local" && !(safeMode && item.isNsfw)).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </div>
+            <div className="field"><label className="label" htmlFor="migrate-query">Search destination</label>
+              <input id="migrate-query" className="input" value={migrateQuery} onChange={(event) => setMigrateQuery(event.target.value)} placeholder="Series title" />
+            </div>
+            <div className="dialog-actions"><button className="btn primary" type="submit" disabled={!migrateSourceId || !migrateQuery.trim() || migrateBusy}>{migrateBusy ? "Working…" : "Search"}</button></div>
+          </form>
+          {migrateError && <div className="err" role="alert">{migrateError}</div>}
+          {migrateMatches.length > 0 && <ul className="migrate-results">
+            {migrateMatches.map((match) => <li key={match.url}>
+              <span>{match.title}</span>
+              <button className="btn sm" disabled={migrateBusy} onClick={() => void migrateTo(match)}>Move here</button>
+            </li>)}
+          </ul>}
+          {!migrateBusy && !migrateMatches.length && !migrateError && <p className="muted" style={{ marginTop: 12 }}>Search results will appear here.</p>}
         </Sheet>
       )}
     </div>

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowClockwise, CloudCheck, SignOut, Trash, UserCircle, Warning } from "@phosphor-icons/react";
 import { db } from "@/core/db";
+import { restoreAccountArchive } from "@/core/backup";
 import { getFirebaseMode, readFirebaseConfig, reauthenticate, signOutSync, useSync } from "@/core/sync/firebase";
 import { purgeAccount, wipeAccountData, type WipeSummary } from "@/core/sync/accountData";
 import { stopSync, syncNow } from "@/core/sync/engine";
@@ -24,6 +25,7 @@ export function AccountPage() {
     ]);
     return { series, chapters, read, bookmarked, categories, downloads };
   }, [], { series: 0, chapters: 0, read: 0, bookmarked: 0, categories: 0, downloads: 0 });
+  const archives = useLiveQuery(() => db.accountArchives.orderBy("createdAt").reverse().toArray(), [], []);
 
   const disconnect = async () => {
     setBusy(true);
@@ -107,6 +109,20 @@ export function AccountPage() {
           <div className="account-local-note">Downloads, page images, imported files, and source page lists stay in this browser. Analytics are sent only when you opt in under Settings.</div>
         </section>
       </div>
+
+      {!!archives?.length && <section className="account-archives">
+        <div><div className="kicker">Saved on this device</div><h2>Local data archives</h2><p className="muted">Restore an archive to combine its library and progress with the current data.</p></div>
+        <ul>{archives.map((archive) => <li key={archive.id}>
+          <span><strong>{new Date(archive.createdAt).toLocaleString()}</strong><small>{archive.backup.manga.length} series · {archive.backup.chapters.length} chapters{archive.previousUid ? ` · previous account ${archive.previousUid.slice(0, 8)}` : ""}</small></span>
+          <button className="btn sm" disabled={busy} onClick={async () => {
+            setBusy(true);
+            try { const result = await restoreAccountArchive(archive.id); toast(`Restored ${result.manga} series and ${result.chapters} chapters`); }
+            catch (error) { toast((error as Error).message, true); }
+            finally { setBusy(false); }
+          }}>Restore</button>
+          <button className="icon-btn" disabled={busy} aria-label="Delete local archive" title="Delete archive" onClick={() => void db.accountArchives.delete(archive.id)}><Trash size={16} /></button>
+        </li>)}</ul>
+      </section>}
 
       {sync.user && <DangerZone signedInAs={sync.user.email || sync.user.name || "this guest account"} projectId={config?.projectId ?? ""} />}
     </div>

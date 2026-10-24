@@ -2,6 +2,20 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.3.5-alpha
+
+### Global search
+- Search waits for typing to pause, remembers results when returning from a series, and offers adjustable columns that adapt to narrow screens.
+- Long-press or right-click to select multiple results and add them to a category.
+
+### Library
+- Migrate a series to another source while preserving its shelf categories, reader preferences, and matching chapter progress. The original record stays available off the shelf.
+
+### Accounts and sync
+- Choose how to handle local and cloud data when signing in with a different account: combine, archive local and show cloud, keep local without sync, replace local from cloud, or replace cloud from local.
+- Parked local archives include series, chapter state, categories, preferences, offline downloads, and imported files, and can be restored from Account.
+- Personal library data syncs across devices; public Community posts and ratings remain shared and attached to their original account.
+
 ## 0.3.4-beta
 
 ### Community

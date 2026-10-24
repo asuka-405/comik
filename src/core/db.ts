@@ -1,4 +1,5 @@
 import Dexie, { type Table } from "dexie";
+import type { Backup } from "./backup";
 import type { CategoryRow, ChapterRow, MangaRow } from "./types";
 
 export interface PageCacheRow {
@@ -41,6 +42,17 @@ export interface LocalMangaFile {
   blob: Blob;
 }
 
+export interface AccountArchiveRow {
+  id: string;
+  createdAt: number;
+  previousUid: string | null;
+  backup: Backup;
+  downloads: DownloadRow[];
+  pageCache: PageCacheRow[];
+  pageBlobs: PageBlobRow[];
+  localFiles: LocalMangaFile[];
+}
+
 class ComikDB extends Dexie {
   manga!: Table<MangaRow, string>;
   chapters!: Table<ChapterRow, string>;
@@ -51,6 +63,7 @@ class ComikDB extends Dexie {
   customSources!: Table<CustomSourceRow, string>;
   localFiles!: Table<LocalMangaFile, string>;
   pendingStates!: Table<PendingStates, string>;
+  accountArchives!: Table<AccountArchiveRow, string>;
 
   constructor() {
     super("comik");
@@ -65,6 +78,7 @@ class ComikDB extends Dexie {
       localFiles: "chapterId",
       pendingStates: "mangaId",
     });
+    this.version(2).stores({ accountArchives: "id, createdAt" });
   }
 }
 

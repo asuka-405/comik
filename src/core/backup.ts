@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, type AccountArchiveRow } from "./db";
 import { useSettings } from "./settings";
 import { loadCustomSources } from "./sources/registry";
 import { emitLocalChange } from "./bus";
@@ -35,6 +35,11 @@ export function downloadBackup(b: Backup) {
 export async function restoreBackup(file: File): Promise<{ manga: number; chapters: number }> {
   const data = JSON.parse(await file.text()) as Backup;
   if (data.app !== "comik" || !Array.isArray(data.manga)) throw new Error("Not a Comik backup file");
+  return restoreBackupData(data);
+}
+
+export async function restoreBackupData(data: Backup): Promise<{ manga: number; chapters: number }> {
+  if (data.app !== "comik" || !Array.isArray(data.manga)) throw new Error("Not a Comik backup file");
   const localManga = new Map((await db.manga.toArray()).map((m) => [m.id, m]));
   const localCh = new Map((await db.chapters.toArray()).map((c) => [c.id, c]));
   await db.transaction("rw", db.manga, db.chapters, db.categories, db.customSources, async () => {
@@ -47,4 +52,38 @@ export async function restoreBackup(file: File): Promise<{ manga: number; chapte
   await loadCustomSources();
   emitLocalChange();
   return { manga: data.manga.length, chapters: data.chapters.length };
+}
+
+export async function archiveLocalData(previousUid: string | null): Promise<AccountArchiveRow> {
+  const backup = await createBackup();
+  backup.manga = await db.manga.toArray();
+  const ids = new Set(backup.manga.map((manga) => manga.id));
+  backup.chapters = (await db.chapters.toArray()).filter((chapter) => ids.has(chapter.mangaId));
+  const row: AccountArchiveRow = {
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    previousUid,
+    backup,
+    downloads: await db.downloads.toArray(),
+    pageCache: await db.pageCache.toArray(),
+    pageBlobs: await db.pageBlobs.toArray(),
+    localFiles: await db.localFiles.toArray(),
+  };
+  await db.accountArchives.put(row);
+  return row;
+}
+
+export async function restoreAccountArchive(id: string): Promise<{ manga: number; chapters: number }> {
+  const archive = await db.accountArchives.get(id);
+  if (!archive) throw new Error("This local archive is no longer available.");
+  const restored = await restoreBackupData(archive.backup);
+  await db.transaction("rw", db.downloads, db.pageCache, db.pageBlobs, db.localFiles, async () => {
+    await Promise.all([
+      db.downloads.bulkPut(archive.downloads),
+      db.pageCache.bulkPut(archive.pageCache),
+      db.pageBlobs.bulkPut(archive.pageBlobs),
+      db.localFiles.bulkPut(archive.localFiles),
+    ]);
+  });
+  return restored;
 }

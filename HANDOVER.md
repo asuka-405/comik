@@ -2,6 +2,13 @@
 
 Updated: 2026-10-24 (global search, source ordering, MangaDex removal)
 
+## Next Release Target: 0.4.0-alpha
+
+- Add light-novel support and dedicated light-novel sections. This is intentionally not part of the 0.3.5-alpha bug-fix release.
+- In the chapter list, select an anchor chapter and mark every chapter before or after it read or unread, delete those chapters' downloads, or download them.
+- Add download-next-10 and download-next-25 actions, starting after the selected chapter or, when none is selected, after the latest read chapter.
+- Keep these chapter actions in 0.4.0-alpha, not the 0.3.5-alpha bug-fix release.
+
 ## Current Work
 
 Comik has a dedicated Source Studio at `/source-studio`, linked from Settings > Sources and proxy. The studio is intended for sources the user owns or is authorized to access; it does not disguise requests or bypass site protections.

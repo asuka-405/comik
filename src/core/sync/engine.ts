@@ -1,5 +1,6 @@
 import { db, type ChapterState } from "../db";
 import { onLocalChange } from "../bus";
+import { archiveLocalData } from "../backup";
 import { hash53 } from "../hash";
 import { useSettings } from "../settings";
 import type { CategoryRow, ChapterRow, MangaRow } from "../types";
@@ -19,12 +20,13 @@ import { ensureSignedIn, loadFirebase, useSync, watchAuth } from "./firebase";
 
 const LS_PUSHED = "comik.sync.pushedAt";
 const SYNCED_SETTINGS: (keyof ReturnType<typeof useSettings.getState>)[] = [
-  "theme", "userThemes", "customCss", "customCssOn", "librarySort", "librarySortAsc", "libraryDensity", "libraryUnreadBadge", "readerMode", "fit", "webtoonGap", "webtoonSidePadding",
+  "theme", "userThemes", "customCss", "customCssOn", "librarySort", "librarySortAsc", "libraryDensity", "libraryGridColumns", "globalSearchGridColumns", "libraryUnreadBadge", "readerMode", "fit", "webtoonGap", "webtoonSidePadding",
   "doublePages", "smartSpreads", "cropBorders", "splitTall", "preload", "tapZones", "invertTaps", "showPageNumber", "brightness", "grayscale",
   "invert", "sepia", "autoNextChapter", "skipReadChapters", "updateSkipCompleted", "autoUpdateHours",
 ];
 
 type SeriesDoc = Omit<MangaRow, "id"> & { id: string; chapters: Record<string, ChapterState> };
+export type AccountSyncChoice = "combine" | "park-local" | "cloud" | "local";
 
 const seriesKey = (id: string) => hash53(id);
 const strip = <T extends object>(o: T): T => JSON.parse(JSON.stringify(o)) as T; // Firestore rejects undefined
@@ -75,6 +77,72 @@ function applySettings(values: Record<string, unknown>, modifiedAt: number) {
     useSettings.setState(values);
     applyingRemote = false;
   }
+}
+
+async function clearLocalSyncData() {
+  await db.transaction("rw", db.manga, db.chapters, db.categories, db.pendingStates, async () => {
+    await Promise.all([db.manga.clear(), db.chapters.clear(), db.categories.clear(), db.pendingStates.clear()]);
+  });
+  await db.transaction("rw", db.downloads, db.pageCache, db.pageBlobs, db.localFiles, async () => {
+    await Promise.all([db.downloads.clear(), db.pageCache.clear(), db.pageBlobs.clear(), db.localFiles.clear()]);
+  });
+}
+
+async function deleteCloudDocuments(uid: string, name: "series" | "meta") {
+  const { fs, fsMod } = await loadFirebase();
+  const snapshot = await fsMod.getDocs(fsMod.collection(fs, "users", uid, name));
+  for (let offset = 0; offset < snapshot.docs.length; offset += 400) {
+    const batch = fsMod.writeBatch(fs);
+    for (const item of snapshot.docs.slice(offset, offset + 400)) batch.delete(item.ref);
+    await batch.commit();
+  }
+}
+
+async function prepareAccountSync(uid: string, choice: AccountSyncChoice, previousUid: string | null) {
+  const { fs, fsMod } = await loadFirebase();
+  if (choice === "park-local") await archiveLocalData(previousUid);
+  if (choice === "local") {
+    await deleteCloudDocuments(uid, "series");
+    await deleteCloudDocuments(uid, "meta");
+    const timestamp = Date.now();
+    const localManga = await db.manga.filter((manga) => manga.inLibrary).toArray();
+    const ids = new Set(localManga.map((manga) => manga.id));
+    const localChapters = (await db.chapters.toArray()).filter((chapter) => ids.has(chapter.mangaId));
+    const localCategories = await db.categories.toArray();
+    await db.transaction("rw", db.manga, db.chapters, db.categories, async () => {
+      await db.manga.bulkPut(localManga.map((manga) => ({ ...manga, modifiedAt: timestamp })));
+      await db.chapters.bulkPut(localChapters.map((chapter) => ({ ...chapter, modifiedAt: timestamp })));
+      await db.categories.bulkPut(localCategories.map((category) => ({ ...category, modifiedAt: timestamp })));
+    });
+    localStorage.setItem("comik.settings.at", String(timestamp));
+    resetPushCursor();
+    return;
+  }
+
+  const [series, meta] = await Promise.all([
+    fsMod.getDocs(fsMod.collection(fs, "users", uid, "series")),
+    fsMod.getDocs(fsMod.collection(fs, "users", uid, "meta")),
+  ]);
+  if (choice === "cloud" || choice === "park-local") {
+    await clearLocalSyncData();
+    localStorage.setItem("comik.settings.at", "0");
+    const defaults = useSettings.getInitialState();
+    const values = Object.fromEntries(SYNCED_SETTINGS.map((key) => [key, defaults[key]]));
+    applyingRemote = true;
+    useSettings.setState(values);
+    applyingRemote = false;
+  }
+  for (const item of series.docs) await applySeries(item.data() as SeriesDoc);
+  for (const item of meta.docs) {
+    const data = item.data();
+    if (item.id === "categories") {
+      if (choice === "cloud" || choice === "park-local") await db.categories.clear();
+      await applyCategories((data.items ?? []) as CategoryRow[]);
+    }
+    if (item.id === "settings") applySettings(data.values ?? {}, data.modifiedAt ?? 0);
+  }
+  if (!Number(localStorage.getItem("comik.settings.at") ?? 0)) localStorage.setItem("comik.settings.at", String(Date.now()));
+  resetPushCursor();
 }
 
 /* ---------------------------------- push ---------------------------------- */
@@ -151,12 +219,13 @@ function schedulePush(uid: string, delay = 2500) {
 
 /* --------------------------------- lifecycle -------------------------------- */
 
-export async function startSync(): Promise<void> {
+export async function startSync(choice: AccountSyncChoice = "combine", previousUid: string | null = null): Promise<void> {
   stopSync();
   const store = useSync.getState();
   store.patch({ status: "connecting", error: undefined });
   try {
     const user = await ensureSignedIn();
+    await prepareAccountSync(user.uid, choice, previousUid);
     const { fs, fsMod } = await loadFirebase();
     const base = (...p: string[]) => fsMod.collection(fs, "users", user.uid, ...p as [string]);
 
