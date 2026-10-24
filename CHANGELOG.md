@@ -2,7 +2,7 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
-## 0.2.0-beta
+## 0.2.1-beta
 
 Sign-in, sync and Community now work for everyone through Comik's Firebase, and reading comics in the browser moves to your own Firebase. Still a beta: some sources may stop working as their sites change.
 
@@ -23,6 +23,7 @@ Sign-in, sync and Community now work for everyone through Comik's Firebase, and 
 - Builds are made on a developer machine and published to GitHub Releases. The release workflow in GitHub Actions is gone.
 
 ### Fixes
+- Posting to the public community no longer asks for an invite link.
 - Android: the top search bar no longer slides under the status bar. The page now starts below the system bars and keeps inputs above the keyboard.
 - Anonymous usage analytics now actually reach Firebase when you opt in (the client was looking up the wrong app).
 - Settings links such as the Firebase section now scroll to the right place.

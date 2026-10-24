@@ -111,7 +111,7 @@ In the webtoon reader, after the first screen the browser-automation tab stopped
 - **Before this reaches users:** deploy `firestore.rules` to `comik-7157c` if not current, and add the site domain under Authentication, Authorized domains in that project, or Google sign-in will fail on the web.
 - **Tooling.** `vite preview` now applies the same `/web` and `/releases` rewrites as Netlify. A browser tab that has already been used for a long session can stall at about 1 fps in the Chrome automation; a fresh tab renders normally, so it is not an app bug.
 
-### Later in 0.2 beta
+### Later in 0.2 beta (shipped as 0.2.1-beta; there is no 0.2.0 release)
 - GitHub Actions removed. Build locally (Android: JDK 17 + Gradle 8.9 in `~/.local/opt/comik`, then `npm run desktop:linux` and `npm run desktop:windows:portable`), then `node scripts/release.mjs --publish`. Binaries go to GitHub Releases, not git: the AppImage and zip exceed git's 100 MB file limit.
 - Private Community rooms are allowed on Comik Firebase and on the user's own project (the create-room selector defaults to Comik Firebase unless the user has their own config). Docs and the setup guide were corrected, since they previously said own-Firebase only.
 - Bringing your own Firebase is now also sold as data ownership: everything lives in the user's project and Comik stores nothing (docs, setup guide, Settings panel, README, release notes).
