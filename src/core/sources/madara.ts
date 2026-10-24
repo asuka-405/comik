@@ -34,7 +34,7 @@ export function createMadara(cfg: MadaraConfig): Source {
   const sel = {
     card: cfg.selectors?.card ?? MADARA_CARD,
     title: cfg.selectors?.title ?? MADARA_TITLE,
-    chapterRow: cfg.selectors?.chapterRow ?? "li.wp-manga-chapter",
+    chapterRow: cfg.selectors?.chapterRow ?? "li.wp-manga-chapter, div.wp-manga-chapter",
     pageImg: cfg.selectors?.pageImg ?? "div.page-break img, .reading-content img",
   };
 
@@ -112,6 +112,28 @@ export function createMadara(cfg: MadaraConfig): Source {
         if (!doc.querySelector(sel.chapterRow)) throw new Error("empty");
       } catch {
         doc = await fetchDoc(url, { referer: base + "/", minGapMs: 500 });
+      }
+      if (!doc.querySelector(sel.chapterRow)) {
+        // Some builds load chapters through admin-ajax using the series' post id.
+        const post = doc.querySelector<HTMLElement>("#manga-chapters-holder[data-id], [data-post]")?.getAttribute("data-id")
+          ?? doc.querySelector("[data-post]")?.getAttribute("data-post")
+          ?? doc.querySelector<HTMLInputElement>("input.rating-post-id")?.value
+          ?? /[?&]p=(\d+)/.exec(doc.querySelector("link[rel='shortlink']")?.getAttribute("href") ?? "")?.[1]
+          ?? /\bpostid-(\d+)/.exec(doc.body?.className ?? "")?.[1];
+        if (post) {
+          try {
+            const html = await (await request(`${base}/wp-admin/admin-ajax.php`, {
+              method: "POST",
+              body: new URLSearchParams({ action: "manga_get_chapters", manga: post }),
+              referer: url,
+              minGapMs: 500,
+            })).text();
+            const loaded = parseHtml(`<body>${html}</body>`, base);
+            if (loaded.querySelector(sel.chapterRow)) doc = loaded;
+          } catch {
+            // Fall through with whatever the page itself had.
+          }
+        }
       }
       const out: SChapter[] = [];
       for (const li of doc.querySelectorAll(sel.chapterRow)) {

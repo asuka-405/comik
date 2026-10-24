@@ -2,6 +2,20 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.3.0-beta
+
+### Search
+- **Global search is rebuilt.** One loader with a progress bar covers the whole search. A source appears in the list below the moment it has results; sources with no match, or that fail, no longer show up at all. If nothing matches anywhere you get a single "No results" message.
+- **No more sideways overflow.** Results sit in a wrapping grid instead of a row that ran off the right edge when a source returned more than a few series.
+- **Filter by name now matches names.** It used to match the site address too, so typing "com" or "ar" matched nearly everything. Names that start with what you type come first.
+
+### Sources
+- **MangaDex is back** as a dedicated source, and **MangaKatana** is new, with its own reader support.
+- New from your list: **ManhwaHub**, **HentaiWebtoon**, **Manga18.me** and **MangaForFree.net**. These are flagged 18+, so Safe mode hides them.
+- **Fewer dead sources.** Every source was checked end to end through the real engines (list, search, series, chapters, pages) and five that no longer worked were removed. Newest chapters that are locked no longer make a working source look broken, and sites that list chapters in `div` rows or through admin-ajax now work.
+- A new health check, `scripts/check-sources.ts`, repeats that test any time.
+- **Not added yet, from the list you sent:** Akai Comic, CulturedWorks, E-Hentai, Free Comic Online, Hentai2Read, izneo, Manhwa Hentai, Manhwahentai.me, ManyToon, Comic Asura, Comic Fury, Coomer, CosplayTele, Cutie Comics, DeviantArt, Doujin.io, Drake Scans, Everia.club, Grim Scans, Hentai Cosplay, InfinityScans, Luscious, MangaDNA, ManhuaTop, Manhwa18.cc, Manhwatop, MurimScan, Omega Scans, Oppai Stream, Photos18, Playmate Hunter, WebtoonScan and WebtoonXYZ. Reasons: they sit behind Cloudflare checks that only a real browser passes, render their pages with JavaScript so there is nothing to read in the HTML, use their own page layout that needs a dedicated reader, or their address no longer serves a comic site. Cloudflare-protected sites need a built-in browser step in the apps, which is not in this release.
+
 ## 0.2.2-beta
 
 ### New

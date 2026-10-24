@@ -12,7 +12,11 @@ const STATUS: Record<number, MangaStatus> = { 1: "ongoing", 2: "completed", 3: "
 const VIEWER: Record<number, ReaderMode> = { 1: "paged-ltr", 2: "paged-rtl", 3: "paged-vertical", 4: "webtoon", 5: "webtoon" };
 
 /** Tachiyomi stores paths relative to the site. A few sources store full URLs, so normalise both. */
-const relativeUrl = (url: string, source: Source) => (/^https?:\/\//i.test(url) ? pathOf(url, source.baseUrl) : url);
+const relativeUrl = (url: string, source: Source) => {
+  // Comik's MangaDex source identifies series and chapters by bare id, Tachiyomi by "/manga/<id>" and "/chapter/<id>".
+  if (source.id.startsWith("mangadex-")) return url.replace(/^\/(?:manga|chapter)\//, "");
+  return /^https?:\/\//i.test(url) ? pathOf(url, source.baseUrl) : url;
+};
 
 export interface ImportResult {
   series: number;

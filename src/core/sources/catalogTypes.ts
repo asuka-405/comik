@@ -9,4 +9,6 @@ export interface CatalogEntry {
   listUrl?: string;
   searchUrl?: string;
   paged?: boolean;
+  /** The extension is flagged 18+, so Safe mode hides it. */
+  nsfw?: boolean;
 }

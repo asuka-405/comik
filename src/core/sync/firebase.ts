@@ -80,7 +80,8 @@ function getNativeGoogleIdToken(serverClientId: string): Promise<string> {
 
 const LS_KEY = "comik.firebase.config";
 const MODE_KEY = "comik.firebase.mode";
-const ENV_CONFIG = import.meta.env.VITE_FIREBASE_CONFIG as string | undefined;
+// Optional chaining lets scripts run these modules outside Vite, where import.meta.env does not exist.
+const ENV_CONFIG = import.meta.env?.VITE_FIREBASE_CONFIG as string | undefined;
 const BUILT_IN_CONFIG: ComikFirebaseOptions = {
   apiKey: "AIzaSyC-Td_4ePDAi_y3rjNYV3e2Wh-QzoLzXH8",
   authDomain: "comik-7157c.firebaseapp.com",

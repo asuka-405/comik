@@ -24,6 +24,7 @@ export function createHeuristic(entry: CatalogEntry): Source {
     baseUrl: base,
     blurb: new URL(base).host,
     tint: "#8fb8ff",
+    isNsfw: entry.nsfw,
     supportsLatest: false,
     imageReferer: base + "/",
     getPopular: (page) => list(page),

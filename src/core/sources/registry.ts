@@ -1,4 +1,6 @@
 import { db, type CustomSourceRow } from "../db";
+import { createMangaDex } from "./mangadex";
+import { createMangaKatana } from "./mangakatana";
 import { createWebtoons } from "./webtoons";
 import { createMadara } from "./madara";
 import { createThemesia } from "./themesia";
@@ -13,12 +15,14 @@ const WT_LANGS: [string, string][] = [["en", "English"], ["es", "Spanish"], ["fr
 
 /** Sites from the Mihon / Tachiyomi extension index, mapped onto our engines and verified by scripts/build-catalog.ts. */
 function fromCatalog(e: CatalogEntry): Source {
-  if (e.engine === "madara") return createMadara({ id: e.id, name: e.name, baseUrl: e.baseUrl, lang: "en", mangaSubString: e.path });
-  if (e.engine === "themesia") return createThemesia({ id: e.id, name: e.name, baseUrl: e.baseUrl, lang: "en", listPath: e.path });
+  if (e.engine === "madara") return createMadara({ id: e.id, name: e.name, baseUrl: e.baseUrl, lang: "en", mangaSubString: e.path, nsfw: e.nsfw });
+  if (e.engine === "themesia") return createThemesia({ id: e.id, name: e.name, baseUrl: e.baseUrl, lang: "en", listPath: e.path, nsfw: e.nsfw });
   return createHeuristic(e);
 }
 
 const builtin: Source[] = [
+  createMangaDex("en", "English"),
+  createMangaKatana(),
   ...WT_LANGS.map(([l, n]) => createWebtoons(l, n)),
   createWebtoons("en", "English", true),
   ...(catalog as CatalogEntry[]).map(fromCatalog),

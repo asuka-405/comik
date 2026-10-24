@@ -5,7 +5,8 @@ import { MagnifyingGlass, Plus } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { allSources, onSourcesChange } from "@/core/sources/registry";
 import { upsertManga } from "@/core/repo";
-import type { SManga, Source } from "@/core/types";
+import type { Source } from "@/core/types";
+import { filterSources } from "@/core/sources/filter";
 import { Cover, CoverSkeletons, ReadingNotice, hueOf, useDebounced } from "../common";
 import { PanelField } from "../PanelField";
 import { useSettings } from "@/core/settings";
@@ -40,9 +41,7 @@ export function Browse() {
   const enabledSources = useMemo(() => sources.filter((s) => !disabledSourceIds.includes(s.id) && !(safeMode && s.isNsfw)), [sources, disabledSourceIds, safeMode]);
   const langs = useMemo(() => [...new Set(enabledSources.map((s) => s.lang))], [enabledSources]);
   const [sq, setSq] = useState("");
-  const shown = enabledSources
-    .filter((s) => s.lang === lang || s.lang === "all")
-    .filter((s) => !sq || `${s.name} ${s.baseUrl}`.toLowerCase().includes(sq.toLowerCase()));
+  const shown = filterSources(enabledSources.filter((s) => s.lang === lang || s.lang === "all"), sq);
   const searchable = shown.filter((s) => s.id !== "local");
 
   return (
@@ -66,9 +65,7 @@ export function Browse() {
       </div>
 
       {q ? (
-        searchable.length ? <div className="stack" style={{ marginTop: 14 }}>
-          {searchable.map((s) => <GlobalRow key={s.id} source={s} q={q} />)}
-        </div> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
+        searchable.length ? <GlobalSearch sources={searchable} q={q} /> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
       ) : (
         <>
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "10px 0 12px" }}>
@@ -96,83 +93,76 @@ export function Browse() {
   );
 }
 
-/** Global search must not hit 100 sites at once. */
-let active = 0;
-const waiting: (() => void)[] = [];
-async function slot<T>(fn: () => Promise<T | null>, onStart: () => void): Promise<T | null> {
-  if (active >= 4) await new Promise<void>((r) => waiting.push(r));
-  active++;
-  onStart();
-  try {
-    return await fn();
-  } finally {
-    active--;
-    waiting.shift()?.();
-  }
-}
+interface SourceResult { source: Source; rows: Awaited<ReturnType<typeof upsertManga>>[] }
 
-function GlobalRow({ source, q }: { source: Source; q: string }) {
-  const section = useRef<HTMLElement>(null);
-  const [visible, setVisible] = useState(false);
-  const [items, setItems] = useState<SManga[] | null>(null);
-  const [err, setErr] = useState("");
-  const [status, setStatus] = useState<"waiting" | "queued" | "loading" | "done">("waiting");
+const SEARCH_PARALLEL = 6;
+const PER_SOURCE = 12;
+
+/**
+ * Searches every enabled source and shows one loader for the whole search. A source joins the list
+ * below as soon as it has results. Sources with no match, or that fail, simply never appear.
+ */
+function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
+  const [results, setResults] = useState<SourceResult[]>([]);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
   const lib = useLiveQuery(() => db.manga.filter((m) => m.inLibrary).primaryKeys(), [], [] as string[]);
-  const [rows, setRows] = useState<Awaited<ReturnType<typeof upsertManga>>[]>([]);
+  // The list of sources can change while a search runs; the search itself only restarts on a new query.
+  const sourcesRef = useRef(sources);
+  sourcesRef.current = sources;
+  const ids = sources.map((s) => s.id).join("|");
 
   useEffect(() => {
-    const element = section.current;
-    if (!element || !("IntersectionObserver" in window)) {
-      setVisible(true);
-      return;
-    }
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting) {
-        setVisible(true);
-        observer.disconnect();
-      }
-    }, { rootMargin: "500px" });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!visible) return;
     let dead = false;
-    setItems(null);
-    setErr("");
-    setRows([]);
-    setStatus("queued");
-    slot(() => dead ? Promise.resolve(null) : source.search(1, q, source.getFilterList()), () => {
-      if (!dead) setStatus("loading");
-    })
-      .then(async (r) => {
-        if (!r || dead) return;
-        const mangas = r.mangas.slice(0, 12);
-        const saved = await Promise.all(mangas.map((m) => upsertManga(source.id, m)));
-        if (!dead) { setItems(mangas); setRows(saved); setStatus("done"); }
-      })
-      .catch((e: Error) => {
-        if (!dead) { setErr(e.message); setStatus("done"); }
-      });
+    const queue = [...sourcesRef.current];
+    setResults([]);
+    setProgress({ done: 0, total: queue.length });
+    const worker = async () => {
+      while (!dead) {
+        const source = queue.shift();
+        if (!source) return;
+        try {
+          const page = await source.search(1, q, source.getFilterList());
+          if (!dead && page.mangas.length) {
+            const rows = await Promise.all(page.mangas.slice(0, PER_SOURCE).map((m) => upsertManga(source.id, m)));
+            if (!dead) setResults((current) => [...current, { source, rows }]);
+          }
+        } catch {
+          // A source that cannot answer is left out rather than shown as an error.
+        }
+        if (!dead) setProgress((p) => ({ ...p, done: p.done + 1 }));
+      }
+    };
+    for (let i = 0; i < SEARCH_PARALLEL; i++) void worker();
     return () => { dead = true; };
-  }, [source, q, visible]);
+  }, [q, ids]);
 
+  const searching = progress.done < progress.total;
   return (
-    <section ref={section} data-hue={hueOf(source.id)}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
-        <h3 style={{ color: "var(--ink)", fontWeight: 800 }}>{source.name}</h3>
-        <Link className="muted" style={{ fontSize: 13 }} to={`/browse/${source.id}?q=${encodeURIComponent(q)}`}>See all</Link>
-      </div>
-      {err && <div className="err">{err}</div>}
-      {(status === "queued" || status === "loading") && <div className="muted" role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 28 }}><span className="reader-spinner" style={{ width: 16, height: 16 }} />{status === "queued" ? "Waiting to search" : "Searching this source"}</div>}
-      {items && !items.length && <div className="muted">No results.</div>}
-      {items && items.length > 0 && (
-        <div className="chips" style={{ gap: 16, paddingBottom: 14 }}>
-          {rows.map((m) => <div key={m.id} style={{ width: 128, flex: "none" }}><Cover m={m} inLibrary={lib?.includes(m.id)} /></div>)}
+    <div className="global-search">
+      {searching ? (
+        <div className="global-search-status" role="status" aria-live="polite">
+          <span className="reader-spinner" style={{ width: 18, height: 18 }} />
+          <span>Searching {progress.total.toLocaleString()} sources for “{q}”</span>
+          <span className="mono muted">{progress.done} / {progress.total}</span>
+          <progress value={progress.done} max={progress.total} aria-hidden="true" />
         </div>
+      ) : !results.length ? (
+        <div className="empty"><h2>No results for “{q}”</h2><p>Try fewer words or another spelling.</p></div>
+      ) : (
+        <div className="global-search-status done" role="status"><span>{results.length} source{results.length === 1 ? "" : "s"} had matches for “{q}”</span></div>
       )}
-    </section>
+      {results.map(({ source, rows }) => (
+        <section key={source.id} className="global-result" data-hue={hueOf(source.id)}>
+          <div className="global-result-head">
+            <h3>{source.name}</h3>
+            <Link className="muted" to={`/browse/${source.id}?q=${encodeURIComponent(q)}`}>See all</Link>
+          </div>
+          <div className="global-result-grid">
+            {rows.map((m) => <Cover key={m.id} m={m} inLibrary={lib?.includes(m.id)} />)}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 

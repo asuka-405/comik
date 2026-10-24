@@ -37,6 +37,30 @@ const cards = (html: string, selector: string) => parseHTML(html).document.query
 export const reasons: Record<string, string[]> = {};
 const why = (r: string, name: string) => ((reasons[r] ??= []).push(name), null);
 
+/**
+ * Sites asked for by name even when the extension is flagged 18+ (they are marked nsfw, so Safe mode
+ * hides them) or has been dropped from the index ("orphaned"; those need a home URL below).
+ */
+const WANTED = [
+  "Akai Comic", "CulturedWorks", "E-Hentai", "Free Comic Online", "Hentai2Read", "HentaiWebtoon", "izneo", "Manhwa Hentai", "Manhwahentai.me", "ManhwaHub", "ManyToon",
+  "Akaza Scans", "Aqua Manga", "Arena Scans", "Asura Scans", "Comic Asura", "Comic Fury", "Coomer", "CosplayTele", "Cutie Comics", "DeviantArt", "Doujin.io - J18", "Drake Scans",
+  "Everia.club", "Gourmet Scans", "Grim Scans", "Hentai Cosplay", "InfinityScans", "Luscious", "Manga18.me", "MangaDNA", "MangaForFree.net", "Mangakakalot", "MangaKatana",
+  "Manhua Plus", "ManhuaTop", "Manhwa18.cc", "Manhwatop", "MurimScan", "Omega Scans", "Oppai Stream", "Photos18", "Playmate Hunter", "WebtoonScan", "WebtoonXYZ",
+];
+const EXTRA: { name: string; home: string }[] = [
+  { name: "Akai Comic", home: "https://akaicomic.com" },
+  { name: "CulturedWorks", home: "https://culturedworks.com" },
+  { name: "E-Hentai", home: "https://e-hentai.org" },
+  { name: "Free Comic Online", home: "https://freecomiconline.me" },
+  { name: "Hentai2Read", home: "https://hentai2read.com" },
+  { name: "HentaiWebtoon", home: "https://hentaiwebtoon.com" },
+  { name: "izneo (webtoons)", home: "https://www.izneo.com" },
+  { name: "Manhwa Hentai", home: "https://manhwahentai.me" },
+  { name: "ManyToon", home: "https://manytoon.com" },
+];
+const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+const wanted = new Set(WANTED.map(norm));
+
 const MIN_SERIES = Number(process.env.MIN_SERIES ?? 6);
 const MIN_PAGES = Number(process.env.MIN_PAGES ?? 3);
 const LIST_PATHS = ["series", "manga", "comics", "comic", "browse", "webtoon", "manhwa", "library", "directory", "manga-list", "all", "latest", "popular", "list", "directory/all", ""];
@@ -124,26 +148,42 @@ async function main() {
   }
   const index = JSON.parse(readFileSync(CACHE, "utf8")) as { extensionList: { extensions: Ext[] } };
   const seen = new Set<string>();
-  const candidates: { id: string; name: string; home: string }[] = [];
+  const candidates: { id: string; name: string; home: string; nsfw?: boolean }[] = [];
   for (const e of index.extensionList.extensions) {
-    if (e.contentWarning?.includes("NSFW")) continue; // adult catalogues are left out of the defaults
+    const adult = !!e.contentWarning?.includes("NSFW");
     for (const s of e.sources) {
-      if (!(process.env.LANGS ?? "en").split(",").includes(s.language)) continue;
+      // Adult sites are only included when asked for by name.
+      if (adult && !wanted.has(norm(s.name))) continue;
+      // Multi-language ("all") sites are only taken when asked for by name; their content is served as English.
+      if (!(process.env.LANGS ?? "en").split(",").includes(s.language) && !(s.language === "all" && wanted.has(norm(s.name)))) continue;
       let host = "";
       try { host = new URL(s.homeUrl).host.replace(/^www\./, ""); } catch { continue; }
       if (seen.has(host)) continue;
       seen.add(host);
-      candidates.push({ id: `mihon-${s.id}`, name: s.name, home: s.homeUrl });
+      candidates.push({ id: `mihon-${s.id}`, name: s.name, home: s.homeUrl, nsfw: adult });
     }
+  }
+  // Sites that were dropped from the index still work as ordinary sites, so probe them by address.
+  for (const x of EXTRA) {
+    const host = new URL(x.home).host.replace(/^www\./, "");
+    if (seen.has(host)) continue;
+    seen.add(host);
+    candidates.push({ id: `mihon-extra-${norm(x.name)}`, name: x.name, home: x.home, nsfw: /hentai|18|izneo/i.test(x.name) && !/izneo/i.test(x.name) });
+  }
+  // ONLY="name,name": probe just these (by name) and print the reason for each one that fails.
+  if (process.env.ONLY) {
+    const only = new Set(process.env.ONLY.split(",").map(norm));
+    for (let i = candidates.length - 1; i >= 0; i--) if (![...only].some((o) => norm(candidates[i]!.name).includes(o))) candidates.splice(i, 1);
   }
   // KEEP=1: only probe what the existing catalogue is missing, then merge (used for slower retry passes)
   const existing: CatalogEntry[] = process.env.KEEP && existsSync(OUT) ? JSON.parse(readFileSync(OUT, "utf8")) : [];
   const have = new Set(existing.map((e) => e.id));
   for (let i = candidates.length - 1; i >= 0; i--) if (have.has(candidates[i]!.id)) candidates.splice(i, 1);
-  console.log(`probing ${candidates.length} English non-adult sites`);
+  console.log(`probing ${candidates.length} sites`);
   let done = 0;
-  const results = await pool(candidates, 16, async (c) => {
+  const results = await pool(candidates, Number(process.env.POOL ?? 16), async (c) => {
     const r = await probe(c.name, c.id, c.home);
+    if (r && c.nsfw) r.nsfw = true;
     if (++done % 25 === 0) console.log(`  ${done}/${candidates.length}`);
     return r;
   });
@@ -151,7 +191,7 @@ async function main() {
   writeFileSync(OUT, JSON.stringify(catalog, null, 1) + "\n");
   const byEngine = catalog.reduce<Record<string, number>>((m, c) => ((m[c.engine] = (m[c.engine] ?? 0) + 1), m), {});
   console.log(`kept ${catalog.length}`, byEngine);
-  for (const [k, v] of Object.entries(reasons)) console.log(`  ${k}: ${v.length}`, v.slice(0, 12).join(", "));
+  for (const [k, v] of Object.entries(reasons)) console.log(`  ${k}: ${v.length}`, v.slice(0, process.env.ONLY ? 100 : 12).join(", "));
 }
 
 void main();
