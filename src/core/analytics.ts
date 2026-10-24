@@ -15,10 +15,10 @@ async function analyticsClient(): Promise<import("firebase/analytics").Analytics
   }
   if (!analyticsPromise) {
     analyticsPromise = (async () => {
-      await loadFirebase();
+      const { appName } = await loadFirebase();
       const [{ getApps }, analytics] = await Promise.all([import("firebase/app"), import("firebase/analytics")]);
       if (!(await analytics.isSupported())) return null;
-      const app = getApps().find((item) => item.name === `comik-${config.projectId}`);
+      const app = getApps().find((item) => item.name === appName);
       return app ? analytics.getAnalytics(app) : null;
     })().catch(() => null);
   }
@@ -26,6 +26,8 @@ async function analyticsClient(): Promise<import("firebase/analytics").Analytics
 }
 
 export async function refreshAnalyticsConsent(enabled: boolean): Promise<void> {
+  // Turning it off before it ever started must not start it just to switch it off.
+  if (!enabled && !analyticsPromise) return;
   const analytics = await analyticsClient();
   if (!analytics) return;
   const module = await import("firebase/analytics");

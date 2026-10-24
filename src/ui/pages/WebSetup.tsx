@@ -9,9 +9,10 @@ const ROWS: [string, React.ReactNode, React.ReactNode, React.ReactNode][] = [
   ["Sign in (anonymous or Google)", YES, YES, YES],
   ["Library and progress sync", YES, YES, YES],
   ["Public Community", YES, YES, YES],
-  ["Private Community rooms", NO, NO, YES],
+  ["Private Community rooms", YES, YES, YES],
   ["Read comics in the app", NO, YES, YES],
   ["Where comic requests come from", "Nowhere", "Your device", "Your Firebase project"],
+  ["Where your data is stored", "Comik's project", "Comik's project", "Your project. Comik stores nothing"],
 ];
 
 const COMMANDS = `git clone https://github.com/asuka-405/comik.git
@@ -49,6 +50,7 @@ export function WebSetup() {
           <p><strong>Comics are fetched by whoever's address makes the request.</strong> Browsers cannot read most comic sites themselves, so a server has to make the request. If that server were Comik's, every reader's traffic would leave from one address. Sources would see thousands of readers as one scraper, ban it, and reading would break for everyone. In the apps this never happens, because each device fetches from its own connection.</p>
           <p><strong>Sign-in, sync and Community are safe to share.</strong> They store small documents, locked by security rules so you can only reach your own library. Running them centrally is what lets your shelf follow you across devices with no setup.</p>
           <p><strong>Your own project makes the proxy yours.</strong> The proxy is a Cloud Function in your project. Requests leave from your Google Cloud address, only users signed in to your project may call it, and the bill and the limits are yours. A failure or a ban affects only you.</p>
+          <p><strong>Your data stays with you.</strong> Beyond reading, a project of your own means your account, synced library, progress, posts and private rooms are stored in your Google Cloud project. You can export or delete them from the Firebase console, set your own rules, and delete the project to remove everything. Comik keeps no copy.</p>
           <p><strong>Cost.</strong> Cloud Functions that contact outside websites need the Blaze (pay as you go) plan. Firebase includes a monthly free allowance, and light personal reading normally stays inside it. Images are most of the traffic. Set a budget alert in Google Cloud so a surprise cannot grow.</p>
           <p><strong>Not a guarantee.</strong> Some sources block traffic from cloud data centers. Those may work in the apps and fail through the proxy.</p>
         </div>

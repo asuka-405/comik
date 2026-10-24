@@ -18,7 +18,7 @@ const FEATURES: { title: string; body: string }[] = [
   { title: "A library that remembers", body: "Progress, read marks and resume points per chapter. Duplicate uploads of the same chapter are folded together so counts stay honest." },
   { title: "Readers for every format", body: "Right to left, left to right, vertical paging and continuous webtoon scrolling. Fit modes, tall-strip splitting and per-image filters." },
   { title: "Downloads and updates", body: "Save chapters for offline reading and check the whole library for new chapters in one pass." },
-  { title: "Sign in and sync, built in", body: "Everything stays on your device until you turn on sync. Comik's Firebase handles guest or Google sign-in, sync and the public Community with no setup. Bring your own Firebase to run it all yourself." },
+  { title: "Sign in and sync, built in", body: "Everything stays on your device until you turn on sync. Comik's Firebase handles guest or Google sign-in, sync and the public Community with no setup. Bring your own Firebase and everything is stored in your project, with nothing kept by Comik." },
   { title: "Your Firebase reads for you on the web", body: "The apps fetch comics from your device. In the browser, a small proxy in your own Firebase project does it, so no shared address gets banned by the sources." },
   { title: "Backups", body: "Export your library and progress to a file and restore it on any device." },
   { title: "Community", body: "Share what you are reading, rate comics, vote in polls and open private rooms with an invite link." },

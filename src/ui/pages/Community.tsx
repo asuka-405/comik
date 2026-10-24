@@ -24,7 +24,7 @@ export function CommunityPage() {
   const [selectedId, setSelectedId] = useState(() => localStorage.getItem("comik.community.active") ?? "public");
   const [showRoomManager, setShowRoomManager] = useState(false);
   const [roomName, setRoomName] = useState("");
-  const [roomBackend, setRoomBackend] = useState<"public" | "personal">("personal");
+  const [roomBackend, setRoomBackend] = useState<"public" | "personal">(() => (readCustomFirebaseConfig() ? "personal" : "public"));
   const [joinInput, setJoinInput] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -181,11 +181,11 @@ export function CommunityPage() {
       </div>
       {showRoomManager && <section className="panel community-room-manager">
         <h2>Private communities</h2>
-        <p className="muted">Create invite-only rooms on Comik Firebase or a Firebase project you own. Each room has its own posts and membership.</p>
+        <p className="muted">Create invite-only rooms on Comik Firebase, or on your own Firebase project if you want the data to live with you. Each room has its own posts and membership.</p>
         <div className="community-room-create">
           <input className="input" value={roomName} onChange={(event) => setRoomName(event.target.value)} placeholder="Community name" aria-label="Community name" />
           <select className="input" value={roomBackend} onChange={(event) => setRoomBackend(event.target.value as "public" | "personal")} aria-label="Firebase for community">
-            <option value="personal">My Firebase</option><option value="public">Comik Firebase</option>
+            <option value="public">Comik Firebase</option><option value="personal" disabled={!readCustomFirebaseConfig()}>My Firebase{readCustomFirebaseConfig() ? "" : " (set up in Settings)"}</option>
           </select>
           <button className="btn primary" disabled={!roomName.trim()} onClick={() => void createRoom()}>Create invite-only room</button>
         </div>

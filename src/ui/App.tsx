@@ -26,6 +26,7 @@ import { SourceStudioPage } from "./components/SourceStudio";
 import { Reader } from "./reader/Reader";
 import { WebSetup } from "./pages/WebSetup";
 import { proxyToken } from "@/core/http";
+import { Onboarding } from "./Onboarding";
 
 function useTheme() {
   const theme = useSettings((s) => s.theme);
@@ -148,6 +149,7 @@ export function App() {
         </main>
       </div>
       {palette && <Palette onClose={() => setPalette(false)} />}
+      <Onboarding />
       <Toasts />
     </>
   );

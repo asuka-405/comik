@@ -15,6 +15,7 @@ import { resetPushCursor, startSync, stopSync, syncNow } from "@/core/sync/engin
 import { Row, Toggle, bytes, timeAgo, toast } from "../common";
 import type { CustomSourceRow } from "@/core/db";
 import { refreshAnalyticsConsent } from "@/core/analytics";
+import { useWalkthrough } from "@/core/onboarding";
 import RULES from "../../../firestore.rules?raw";
 
 declare const __APP_VERSION__: string;
@@ -202,7 +203,7 @@ export function PrivacySettings() {
       </Section>
       <Section title="Community and analytics" hue={1}>
         <Row title="Comik public community" hint="Show the shared public discussion room. This does not affect personal library sync."><Toggle label="Comik public community" on={s.publicCommunityEnabled} onChange={(v) => s.set({ publicCommunityEnabled: v })} /></Row>
-        <Row title="Anonymous usage analytics" hint="Opt-in. Sends generic screen and feature events only, never comic titles, searches, or post text.">
+        <Row title="Anonymous usage analytics" hint="Asked on first run, where it starts switched on. Sends generic screen and feature events only, never comic titles, searches, or post text.">
         <Toggle label="Usage analytics" on={s.analyticsConsent} onChange={(enabled) => {
         s.set({ analyticsConsent: enabled });
         void refreshAnalyticsConsent(enabled);
@@ -224,6 +225,7 @@ export function AboutSettings() {
       <Section title={`Comik ${APP_VERSION}`} hue={0}>
         <Row title="Release notes and downloads"><a className="btn sm" href="/releases/" target="_blank" rel="noreferrer">Open releases</a></Row>
         <Row title="Firebase setup guide" hint="What each Firebase does and how to bring your own"><Link className="btn sm" to="/setup">Open guide</Link></Row>
+        <Row title="Walkthrough" hint="The first-run tour and the Safe mode and analytics choices"><button className="btn sm" onClick={() => useWalkthrough.getState().show()}>Replay</button></Row>
         <Row title="Source code"><a className="btn sm" href="https://github.com/asuka-405/comik" target="_blank" rel="noreferrer">GitHub</a></Row>
       </Section>
     </Detail>
@@ -300,7 +302,7 @@ function SyncSection() {
       {mode === "default" ? (
         <div className="panel" data-hue="3">
           <h2>Comik's Firebase</h2>
-          <p className="muted" style={{ lineHeight: 1.65 }}>Handles sign-in, library sync and the public Community, with nothing to set up. {isNativeShell
+          <p className="muted" style={{ lineHeight: 1.65 }}>Handles sign-in, library sync, the public Community and private rooms, with nothing to set up. Your data is stored in Comik's project, readable only by you. {isNativeShell
             ? "In this app comics are fetched from your own device, so everything works with it."
             : "It never fetches comics. To read in the browser, use your own Firebase, or use the Android, Linux or Windows app."}</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
@@ -312,7 +314,7 @@ function SyncSection() {
         <>
           <div className="field"><label>Paste your Firebase web config</label><textarea className="input mono" rows={6} value={cfgText} onChange={(e) => setCfgText(e.target.value)} placeholder={'{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }'} /></div>
           <button className="btn primary" disabled={!cfgText.trim()} onClick={saveConfig}>Save config</button>
-          <p className="hint muted" style={{ marginTop: 12, lineHeight: 1.7 }}>Your project handles sign-in, sync, private Community rooms{isNativeShell ? "" : " and, through a function you deploy, reading comics in the browser"}. <Link to="/setup">Step-by-step guide</Link>.</p>
+          <p className="hint muted" style={{ marginTop: 12, lineHeight: 1.7 }}>Your project handles sign-in, sync and Community{isNativeShell ? "" : ", and, through a function you deploy, reading comics in the browser"}. Everything is stored in your own Firebase and Comik keeps nothing. <Link to="/setup">Step-by-step guide</Link>.</p>
         </>
       ) : null}
       {mode === "custom" && configured && (

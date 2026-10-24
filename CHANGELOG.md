@@ -8,15 +8,23 @@ Sign-in, sync and Community now work for everyone through Comik's Firebase, and 
 
 ### Firebase, split by what each one is good for
 - **Comik Firebase** now handles sign-in, library sync and the public Community on every platform, with nothing to set up. Before, web users had to bring their own project just to open the app.
-- **Your own Firebase** can do all of that for you alone, plus private Community rooms, plus the comic proxy on the web. Bring it under Settings, Firebase, My Firebase.
+- **Private Community rooms** can be created on Comik Firebase or on your own project.
+- **Your own Firebase** can do all of that for you alone, plus the comic proxy on the web. Everything is stored in your project and Comik holds nothing. Bring it under Settings, Firebase, My Firebase.
 - **Reading comics in the browser needs your own Firebase.** The hosted site no longer proxies comics. One shared address making every reader's requests would be banned by the sources. Your project runs a small Cloud Function (`comikProxy`) instead, so requests leave from your own address and only your signed-in users can use it.
 - **The Android, Linux and Windows apps need none of this.** They fetch comics from your device, so everything works with Comik's Firebase.
 - New setup guide inside the app (`/web/setup`) and in `docs/FIREBASE.md`: what each Firebase does, why it is split this way, and step-by-step deployment. The web build shows a notice where reading is unavailable.
 - Cloud Functions that contact outside sites need Firebase's Blaze (pay as you go) plan. There is a free monthly allowance, and you should set a budget alert.
 
+### First run
+- A short walkthrough for first-time visitors covers Discover, the shelf and reader, downloads, sign-in and sync. It ends with two choices, Safe mode and anonymous usage analytics, both pre-selected. You can change them any time in Settings, Privacy, and replay the walkthrough from Settings, About.
+- Settings are now a category list that opens sub-pages, like Android's Settings app, instead of one long page.
+
+### Distribution
+- Builds are made on a developer machine and published to GitHub Releases. The release workflow in GitHub Actions is gone.
+
 ### Fixes
 - Android: the top search bar no longer slides under the status bar. The page now starts below the system bars and keeps inputs above the keyboard.
-- Private Community rooms always use your own Firebase, never Comik's.
+- Anonymous usage analytics now actually reach Firebase when you opt in (the client was looking up the wrong app).
 - Settings links such as the Firebase section now scroll to the right place.
 
 ### Android signing fingerprints

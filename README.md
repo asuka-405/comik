@@ -21,7 +21,7 @@ Browsers cannot read most comic sites (no CORS, referer-locked images), so somet
 
 ## Firebase
 
-Comik's own Firebase project (`comik-7157c`) handles sign-in, library sync and the public Community for everyone. Users can bring their own project instead, which also adds private Community rooms and, on the web, the comic proxy. The full split, the reasoning and step-by-step instructions are in [docs/FIREBASE.md](docs/FIREBASE.md).
+Comik's own Firebase project (`comik-7157c`) handles sign-in, library sync and the public Community for everyone. Users can bring their own project instead, which also enables the comic proxy on the web and keeps all their data in their own project, with nothing stored by Comik. The full split, the reasoning and step-by-step instructions are in [docs/FIREBASE.md](docs/FIREBASE.md).
 
 Sync stays private under `users/{uid}`. Community contributions require a non-anonymous sign-in. Deploy the checked-in rules with `firebase deploy --only firestore:rules --project <project id>`. Deployments can override the built-in config at build time with `VITE_FIREBASE_CONFIG`.
 
@@ -33,7 +33,7 @@ Install dependencies with `npm install` first. Android builds require JDK 17, Gr
 
 For native Google sign-in, register Android package `in.archdev.comik` in Firebase and add the signing certificate SHA-1 under Project settings > Your apps. This debug build uses `35:99:13:DA:33:07:47:A0:66:AB:A7:D4:B7:E2:19:67:B5:AA:BD:E0`; add the release certificate fingerprint too before distributing a signed release. Download the updated `google-services.json` into `android/app/` after registration.
 
-Run `npm run desktop:linux` on Linux for an AppImage. Run `npm run desktop:windows:portable` on Linux for a Windows ZIP, or `npm run desktop:windows` on Windows for an NSIS installer. Artifacts are written to `release/`. The `Build native apps` GitHub Actions workflow also creates Linux, Windows, and Android artifacts on their matching runners.
+Run `npm run desktop:linux` on Linux for an AppImage. Run `npm run desktop:windows:portable` on Linux for a Windows ZIP, or `npm run desktop:windows` on Windows for an NSIS installer. Artifacts are written to `release/`. There is no CI: apps are built on a developer machine and published with `node scripts/release.mjs --publish`, which uploads them to GitHub Releases (the files are too large for git, which rejects files over 100 MB). The website's releases page reads from there.
 
 Android and desktop wrappers make source and image requests from the reader's device. Browser builds need a proxy: the reader's own Firebase function, or a proxy address set in Settings (`npm start` runs one).
 
