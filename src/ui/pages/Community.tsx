@@ -233,7 +233,9 @@ export function CommunityPage() {
 export function CommunityNewPostPage() {
   const [searchParams] = useSearchParams();
   const [rooms, setRooms] = useState(readCommunityRooms);
-  const roomId = searchParams.get("room");
+  // "public" is the shared community, not a saved room, so it must not demand an invite.
+  const requested = searchParams.get("room");
+  const roomId = requested && requested !== "public" ? requested : null;
   const activeRoom = rooms.find((room) => room.id === roomId);
   const publicSession = useCommunitySession();
   const roomSession = useRoomSessions((state) => activeRoom ? state.sessions[activeRoom.id] : undefined);
