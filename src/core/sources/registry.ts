@@ -15,6 +15,7 @@ import { createKeyoapp } from "./keyoapp";
 import { createGutenbergSource } from "./gutenberg";
 import { createRoyalRoadSource } from "./royalRoad";
 import { createAniListAnimeSource } from "./anilist";
+import { createNovelSites } from "./novelSites";
 import catalog from "./catalog.json";
 import type { CatalogEntry } from "./catalogTypes";
 import type { Source } from "../types";
@@ -40,6 +41,7 @@ const builtin: Source[] = [
   createWebtoons("en", "English", true),
   createGutenbergSource(),
   createRoyalRoadSource(),
+  ...createNovelSites(),
   createAniListAnimeSource(),
   ...(catalog as CatalogEntry[]).map(fromCatalog),
   localSource,

@@ -10,7 +10,7 @@ import { addCustomSource, allSources, isCustom, onSourcesChange, removeCustomSou
 import { importLocal } from "@/core/sources/local";
 import { createBackup, downloadBackup, restoreBackup } from "@/core/backup";
 import { storageUsage } from "@/core/downloads";
-import { applyAppUpdate, checkForAppUpdate, useAppUpdate } from "@/core/appUpdates";
+import { checkForAppUpdate, downloadAppUpdate, revealAppUpdate, useAppUpdate } from "@/core/appUpdates";
 import { getFirebaseMode, parseFirebaseConfig, readCustomFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
 import { resetPushCursor, startSync, stopSync, syncNow } from "@/core/sync/engine";
 import { Row, Toggle, bytes, timeAgo, toast } from "../common";
@@ -24,6 +24,7 @@ import RULES from "../../../firestore.rules?raw";
 
 declare const __APP_VERSION__: string;
 const APP_VERSION = __APP_VERSION__;
+const isAndroidApp = typeof window !== "undefined" && !!window.ComikAndroidUpdates;
 
 function Section({ id, title, children, hue = 0 }: { id?: string; title: string; children: ReactNode; hue?: number }) {
   return <section id={id} className="panel" data-hue={hue}><h2>{title}</h2>{children}</section>;
@@ -227,12 +228,13 @@ export function AboutSettings() {
   const update = useAppUpdate();
   return (
     <Detail title="About" intro="Comik is a local-first reader for web comics.">
-      <Section title={`Comik ${update.activeVersion || APP_VERSION}`} hue={0}>
+      <Section title={`Comik ${APP_VERSION}`} hue={0}>
         <Row title="Release notes and downloads"><a className="btn sm" href="/releases/" target="_blank" rel="noreferrer">Open releases</a></Row>
-        {isNativeShell && <Row title="Internal app updates" hint={update.candidate ? `Version ${update.candidate.version} is ready. This updates the app without a new installer.` : update.checkedAt ? "The app is up to date." : "Check for an incremental app update."}>
+        {isNativeShell && <Row title="App updates" hint={update.savedAs ? `Saved to ${update.savedAs}. ${isAndroidApp ? "Open the finished download in your notifications or the Files app to install it." : "Close Comik and run it to finish."}` : update.candidate ? `Version ${update.candidate.version} is available (${(update.candidate.size / 1048576).toFixed(0)} MB). It is downloaded to your Downloads folder.` : update.checkedAt && !update.error ? "You have the latest version." : "Check for a newer version of Comik."}>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-            <button className="btn sm" disabled={update.checking || update.installing} onClick={() => void checkForAppUpdate(APP_VERSION)}>{update.checking ? "Checking…" : "Check"}</button>
-            {update.candidate && <button className="btn sm primary" disabled={update.installing} onClick={() => void applyAppUpdate()}>{update.installing ? "Installing…" : `Install ${update.candidate.version}`}</button>}
+            <button className="btn sm" disabled={update.checking || update.downloading} onClick={() => void checkForAppUpdate(APP_VERSION)}>{update.checking ? "Checking…" : "Check"}</button>
+            {update.candidate && !update.savedAs && <button className="btn sm primary" disabled={update.downloading} onClick={() => void downloadAppUpdate()}>{update.downloading ? (update.progress ? `Downloading ${Math.round(update.progress * 100)}%` : "Downloading…") : `Download ${update.candidate.version}`}</button>}
+            {update.savedAs && !isAndroidApp && <button className="btn sm" onClick={revealAppUpdate}>Show in folder</button>}
           </div>
           {update.error && <span className="err" role="alert">{update.error}</span>}
         </Row>}

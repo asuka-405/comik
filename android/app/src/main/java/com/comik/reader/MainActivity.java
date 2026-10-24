@@ -2,9 +2,11 @@ package com.comik.reader;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.app.DownloadManager;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
@@ -73,7 +75,6 @@ public final class MainActivity extends Activity {
     private static final int MAX_HTML_BYTES = 12 * 1024 * 1024;
     private static final int MAX_IMAGE_BYTES = 40 * 1024 * 1024;
     private static final int MAX_REDIRECTS = 5;
-    private static final String UPDATE_PREFS = "comik.webUpdates";
 
     private WebView webView;
     private String userAgent;
@@ -84,7 +85,6 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        rollbackUnconfirmedUpdate();
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this))
@@ -195,8 +195,6 @@ public final class MainActivity extends Activity {
             }
             if ("/api/fetch".equals(uri.getPath())) return fetchSource(request, uri);
             if ("/api/img".equals(uri.getPath())) return fetchImage(uri);
-            WebResourceResponse updated = updatedAsset(uri.getPath());
-            if (updated != null) return updated;
             return assetLoader.shouldInterceptRequest(uri);
         }
 
@@ -223,132 +221,95 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** In-app updates: look up the newest release, and save its APK to the Downloads folder. */
     private final class UpdateBridge {
-        private String stagingVersion;
-        private final Map<String, UpdateFile> expected = new ConcurrentHashMap<>();
-
         @JavascriptInterface
-        public String getActiveVersion() {
-            return getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
-        }
-
-        @JavascriptInterface
-        public void downloadUpdateAsset(String requestId, String rawUrl) {
+        public void fetchUpdateInfo(String requestId, String rawUrl) {
             if (requestId == null || requestId.length() > 80) return;
-            Uri current = Uri.parse(webView.getUrl() == null ? "" : webView.getUrl());
-            if (!"https".equals(current.getScheme()) || !APP_HOST.equals(current.getHost())) {
-                sendUpdateDownloadResult(requestId, null, "Update downloads are only available inside Comik.");
+            if (!insideComik()) {
+                sendUpdateInfoResult(requestId, null, "Update checks are only available inside Comik.");
                 return;
             }
             updateExecutor.execute(() -> {
                 try {
-                    byte[] bytes = downloadGitHubAsset(rawUrl);
-                    sendUpdateDownloadResult(requestId, Base64.encodeToString(bytes, Base64.NO_WRAP), null);
+                    byte[] bytes = downloadGitHubAsset(rawUrl, 8 * 1024 * 1024);
+                    sendUpdateInfoResult(requestId, Base64.encodeToString(bytes, Base64.NO_WRAP), null);
                 } catch (Exception error) {
-                    sendUpdateDownloadResult(requestId, null, error.getMessage() == null ? "Update download failed" : error.getMessage());
+                    sendUpdateInfoResult(requestId, null, error.getMessage() == null ? "The update check failed" : error.getMessage());
                 }
             });
         }
 
         @JavascriptInterface
-        public synchronized boolean beginUpdate(String manifestJson) {
+        public boolean downloadApk(String rawUrl, String fileName) {
+            if (!insideComik() || fileName == null || !fileName.matches("Comik-[A-Za-z0-9._-]{1,100}\\.apk")) return false;
             try {
-                JSONObject manifest = new JSONObject(manifestJson);
-                String version = manifest.getString("version");
-                String baseVersion = manifest.optString("baseVersion", "");
-                JSONArray files = manifest.getJSONArray("files");
-                if (manifest.getInt("schema") != 1 || !validVersion(version) || files.length() < 1 || files.length() > 5000) return false;
-                if (!baseVersion.isEmpty() && !baseVersion.equals(activeInstalledVersion())) return false;
-                Map<String, UpdateFile> nextExpected = new HashMap<>();
-                boolean hasIndex = false;
-                long totalBytes = 0;
-                for (int index = 0; index < files.length(); index++) {
-                    JSONObject item = files.getJSONObject(index);
-                    String path = item.getString("path");
-                    String hash = item.getString("sha256").toLowerCase();
-                    int size = item.getInt("size");
-                    if (!safeUpdatePath(path) || !hash.matches("[a-f0-9]{64}") || size < 0 || size > 24 * 1024 * 1024 || nextExpected.containsKey(path)) return false;
-                    totalBytes += size;
-                    if (totalBytes > 160L * 1024 * 1024) return false;
-                    nextExpected.put(path, new UpdateFile(size, hash));
-                    if ("web/index.html".equals(path)) hasIndex = true;
-                }
-                if (!hasIndex) return false;
-                File staging = new File(updateRoot(), version + ".staging");
-                deleteTree(staging);
-                if (!staging.mkdirs()) return false;
-                String active = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
-                if (!active.isEmpty() && validVersion(active)) {
-                    File activeRoot = new File(updateRoot(), active);
-                    if (activeRoot.isDirectory()) copyTree(activeRoot, staging);
-                }
-                expected.clear();
-                expected.putAll(nextExpected);
-                stagingVersion = version;
+                URL target = new URL(rawUrl);
+                if (!"https".equalsIgnoreCase(target.getProtocol()) || !isGitHubUpdateHost(target.getHost())) return false;
+                mainHandler.post(() -> startApkDownload(target.toString(), fileName));
                 return true;
             } catch (Exception error) {
                 return false;
             }
-        }
-
-        @JavascriptInterface
-        public synchronized boolean writeUpdateFile(String version, String path, String contentBase64, String sha256) {
-            try {
-                if (!version.equals(stagingVersion) || !safeUpdatePath(path)) return false;
-                UpdateFile item = expected.get(path);
-                if (item == null || !item.sha256.equalsIgnoreCase(sha256)) return false;
-                byte[] bytes = Base64.decode(contentBase64, Base64.DEFAULT);
-                if (bytes.length != item.size || !item.sha256.equalsIgnoreCase(sha256(bytes))) return false;
-                File root = new File(updateRoot(), version + ".staging");
-                File target = new File(root, path);
-                if (!target.getCanonicalPath().startsWith(root.getCanonicalPath() + File.separator)) return false;
-                File parent = target.getParentFile();
-                if (parent == null || (!parent.exists() && !parent.mkdirs())) return false;
-                try (FileOutputStream output = new FileOutputStream(target)) { output.write(bytes); }
-                return true;
-            } catch (Exception error) {
-                return false;
-            }
-        }
-
-        @JavascriptInterface
-        public synchronized boolean activateUpdate(String version) {
-            try {
-                if (!version.equals(stagingVersion) || expected.isEmpty()) return false;
-                File root = new File(updateRoot(), version + ".staging");
-                for (Map.Entry<String, UpdateFile> entry : expected.entrySet()) {
-                    File file = new File(root, entry.getKey());
-                    if (!file.isFile() || file.length() != entry.getValue().size || !entry.getValue().sha256.equalsIgnoreCase(sha256(file))) return false;
-                }
-                File installed = new File(updateRoot(), version);
-                deleteTree(installed);
-                if (!root.renameTo(installed)) return false;
-                android.content.SharedPreferences prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE);
-                String previous = prefs.getString("active", "");
-                if (!prefs.edit().putString("previous", previous).putString("active", version)
-                    .putString("pending", version).commit()) return false;
-                expected.clear();
-                stagingVersion = null;
-                return true;
-            } catch (Exception error) {
-                return false;
-            }
-        }
-
-        @JavascriptInterface
-        public boolean confirmUpdate() {
-            getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).edit().remove("pending").remove("previous").apply();
-            return true;
         }
     }
 
-    private static final class UpdateFile {
-        final int size;
-        final String sha256;
-        UpdateFile(int size, String sha256) { this.size = size; this.sha256 = sha256; }
+    private boolean insideComik() {
+        Uri current = Uri.parse(webView.getUrl() == null ? "" : webView.getUrl());
+        return "https".equals(current.getScheme()) && APP_HOST.equals(current.getHost());
     }
 
-    private byte[] downloadGitHubAsset(String rawUrl) throws Exception {
+    /**
+     * Hands the file to Android's download manager. It saves into Downloads, shows its own progress and
+     * completion notification, and tapping that notification opens the package installer.
+     */
+    private void startApkDownload(String url, String fileName) {
+        try {
+            DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url))
+                    .setTitle(fileName)
+                    .setDescription("Comik update")
+                    .setMimeType("application/vnd.android.package-archive")
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+            long id = manager.enqueue(request);
+            updateExecutor.execute(() -> watchDownload(manager, id));
+        } catch (Exception error) {
+            sendDownloadReport("error", 0, 0, error.getMessage() == null ? "Android could not start the download." : error.getMessage());
+        }
+    }
+
+    private void watchDownload(DownloadManager manager, long id) {
+        for (int idle = 0; idle < 3600; idle++) {
+            try (android.database.Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(id))) {
+                if (cursor == null || !cursor.moveToFirst()) { sendDownloadReport("error", 0, 0, "The download was cancelled."); return; }
+                int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                long received = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+                long total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+                if (status == DownloadManager.STATUS_SUCCESSFUL) { sendDownloadReport("done", received, total, null); return; }
+                if (status == DownloadManager.STATUS_FAILED) { sendDownloadReport("error", received, total, "The download failed. Check your connection and try again."); return; }
+                sendDownloadReport("progress", received, total, null);
+            }
+            try { Thread.sleep(500); } catch (InterruptedException ignored) { return; }
+        }
+        sendDownloadReport("error", 0, 0, "The download took too long.");
+    }
+
+    private void sendDownloadReport(String status, long received, long total, String message) {
+        JSONObject report = new JSONObject();
+        try {
+            report.put("status", status);
+            report.put("received", received);
+            report.put("total", total);
+            if (message != null) report.put("message", message);
+        } catch (Exception ignored) { return; }
+        String script = "window.__comikAndroidDownload && window.__comikAndroidDownload(" + JSONObject.quote(report.toString()) + ");";
+        mainHandler.post(() -> {
+            if (webView != null && !isFinishing()) webView.evaluateJavascript(script, null);
+        });
+    }
+
+    private byte[] downloadGitHubAsset(String rawUrl, int limit) throws Exception {
         URL target = new URL(rawUrl);
         if (!"https".equalsIgnoreCase(target.getProtocol()) || !isGitHubUpdateHost(target.getHost())) throw new IOException("Update URL is not a trusted GitHub host");
         HttpURLConnection connection = (HttpURLConnection) target.openConnection();
@@ -361,8 +322,8 @@ public final class MainActivity extends Activity {
             URL finalUrl = connection.getURL();
             if (status < 200 || status >= 300) throw new IOException("GitHub update download returned " + status);
             if (!"https".equalsIgnoreCase(finalUrl.getProtocol()) || !isGitHubUpdateHost(finalUrl.getHost())) throw new IOException("GitHub redirected the update to an untrusted host");
-            if (connection.getContentLength() > 160 * 1024 * 1024) throw new IOException("Update download is too large");
-            try (InputStream input = connection.getInputStream()) { return readBounded(input, 160 * 1024 * 1024); }
+            if (connection.getContentLength() > limit) throw new IOException("Update response is too large");
+            try (InputStream input = connection.getInputStream()) { return readBounded(input, limit); }
         } finally {
             connection.disconnect();
         }
@@ -374,7 +335,7 @@ public final class MainActivity extends Activity {
                 || normalized.endsWith(".github.com") || normalized.endsWith(".githubusercontent.com");
     }
 
-    private void sendUpdateDownloadResult(String requestId, String data, String error) {
+    private void sendUpdateInfoResult(String requestId, String data, String error) {
         JSONObject result = new JSONObject();
         try {
             result.put("requestId", requestId);
@@ -385,97 +346,6 @@ public final class MainActivity extends Activity {
         mainHandler.post(() -> {
             if (webView != null && !isFinishing()) webView.evaluateJavascript(script, null);
         });
-    }
-
-    private File updateRoot() { return new File(getFilesDir(), "web-updates"); }
-
-    private String activeInstalledVersion() {
-        String active = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
-        if (!active.isEmpty()) return active;
-        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
-        catch (Exception ignored) { return ""; }
-    }
-
-    private void rollbackUnconfirmedUpdate() {
-        android.content.SharedPreferences prefs = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE);
-        if (prefs.contains("pending")) prefs.edit().putString("active", prefs.getString("previous", "")).remove("pending").remove("previous").apply();
-    }
-
-    private WebResourceResponse updatedAsset(String rawPath) {
-        try {
-            String path = rawPath == null ? "" : rawPath.replaceFirst("^/", "");
-            if (!safeUpdatePath(path)) return null;
-            String version = getSharedPreferences(UPDATE_PREFS, MODE_PRIVATE).getString("active", "");
-            if (!validVersion(version)) return null;
-            File root = new File(updateRoot(), version);
-            File file = new File(root, path);
-            if (!file.getCanonicalPath().startsWith(root.getCanonicalPath() + File.separator) || !file.isFile()) return null;
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Cache-Control", path.endsWith("index.html") ? "no-cache" : "public, max-age=31536000, immutable");
-            return new WebResourceResponse(updateMime(path), "UTF-8", 200, "OK", headers, new FileInputStream(file));
-        } catch (Exception error) { return null; }
-    }
-
-    private static boolean validVersion(String version) { return version.matches("[0-9]+\\.[0-9]+\\.[0-9]+-(alpha|beta|rc)(\\.[0-9A-Za-z.-]+)?"); }
-
-    private static boolean safeUpdatePath(String path) {
-        if (!path.matches("^(assets|web|releases)/[A-Za-z0-9._/-]+$")) return false;
-        for (String part : path.split("/")) if (part.isEmpty() || ".".equals(part) || "..".equals(part)) return false;
-        return true;
-    }
-
-    private static String updateMime(String path) {
-        String name = path.toLowerCase();
-        if (name.endsWith(".html")) return "text/html";
-        if (name.endsWith(".js")) return "text/javascript";
-        if (name.endsWith(".css")) return "text/css";
-        if (name.endsWith(".json")) return "application/json";
-        if (name.endsWith(".svg")) return "image/svg+xml";
-        if (name.endsWith(".woff2")) return "font/woff2";
-        if (name.endsWith(".woff")) return "font/woff";
-        if (name.endsWith(".ttf")) return "font/ttf";
-        if (name.endsWith(".otf")) return "font/otf";
-        return "application/octet-stream";
-    }
-
-    private static String sha256(byte[] bytes) throws Exception {
-        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
-        StringBuilder result = new StringBuilder();
-        for (byte value : digest) result.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
-        return result.toString();
-    }
-
-    private static String sha256(File file) throws Exception {
-        try (InputStream input = new FileInputStream(file); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[8192];
-            int count;
-            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
-            return sha256(output.toByteArray());
-        }
-    }
-
-    private static void deleteTree(File file) {
-        if (file.isDirectory()) {
-            File[] children = file.listFiles();
-            if (children != null) for (File child : children) deleteTree(child);
-        }
-        if (file.exists()) file.delete();
-    }
-
-    private static void copyTree(File source, File target) throws IOException {
-        if (source.isDirectory()) {
-            if (!target.exists() && !target.mkdirs()) throw new IOException("cannot create update staging directory");
-            File[] children = source.listFiles();
-            if (children != null) for (File child : children) copyTree(child, new File(target, child.getName()));
-            return;
-        }
-        File parent = target.getParentFile();
-        if (parent == null || (!parent.exists() && !parent.mkdirs())) throw new IOException("cannot create update staging directory");
-        try (InputStream input = new FileInputStream(source); FileOutputStream output = new FileOutputStream(target)) {
-            byte[] buffer = new byte[8192];
-            int count;
-            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
-        }
     }
 
     private int statusBarHeight() {

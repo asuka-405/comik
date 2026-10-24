@@ -12,12 +12,14 @@ Updated: 2026-10-24 (global search, source ordering, MangaDex removal)
 - In the chapter list, select an anchor chapter and mark every chapter before or after it read or unread, delete those chapters' downloads, or download them.
 - Add download-next-10 and download-next-25 actions, starting after the selected chapter or, when none is selected, after the latest read chapter.
 - Keep these chapter actions in 0.4.0-alpha, not the 0.3.5-alpha bug-fix release.
-- Add an internal incremental updater for Android, Windows, and Linux that can update the shared web app assets without downloading a new APK or desktop installer. Native shell code and permission changes still require a regular platform release.
-- OTA packages must be authenticated and verified before activation, installed atomically with rollback to the bundled/current assets if activation fails.
 - Improve series migration to search all eligible sources by the exact title and alternate names, then list every possible match with exact matches ranked first.
-- Publish 0.4.0-alpha as the installable OTA-capable base, followed by 0.4.1-alpha as a separately listed OTA-only delta for cross-platform update testing.
 
-## Active 0.4.x Follow-up (2026-10-25)
+## Updates and web novels (0.5.0-alpha)
+
+- **OTA is removed.** `src/core/appUpdates.ts` now only finds the newest GitHub release (newer than the running version, any major) and downloads the installer for this platform. Android: `ComikAndroidUpdates.downloadApk` hands the file to `DownloadManager`, which saves to Downloads and posts its own notification. Desktop: `/api/update/save`, `/progress`, `/reveal` in `desktop/main.cjs` stream the file to `app.getPath("downloads")`. The release list itself is fetched by the native side (`fetchUpdateInfo` on Android, `/api/update/download` on desktop) because the page could not always reach GitHub. Untested on a device: the Android download and the desktop download.
+- **Web novel sites** are configs in `src/core/sources/novelSites.ts` (one engine, selectors per site). Check them with `VIA=curl npx tsx scripts/check-novels.ts [name]` (add a proxy with `PROXY_PORT=8799 npx tsx server/index.ts` for the others). `VIA=curl` is needed for Cloudflare sites the Node proxy cannot pass. Verified: FreeWebNovel, ReadNovelFull, NovelFull, NovelFull.net, WuxiaBox. Not possible to verify: Ranobes, LightNovel*, Wuxiaworld, NovelFire (chapter pages bounce to a bot check).
+
+## Earlier 0.4.x follow-up (2026-10-25)
 
 - Fix OTA fetch failures by downloading GitHub metadata/assets through Android's native HTTP client and Electron's same-origin Chromium proxy, then verify GitHub/manifest SHA-256 values before activation.
 - Select OTA releases sequentially and require each delta's `baseVersion` to match the active overlay. Version ordering has no 0.4.x ceiling; higher minor/major versions are eligible on the same alpha/beta/RC channel.

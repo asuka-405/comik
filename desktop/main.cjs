@@ -3,6 +3,7 @@ const { createServer } = require("node:http");
 const { lookup } = require("node:dns/promises");
 const { isIP } = require("node:net");
 const fs = require("node:fs/promises");
+const fsSync = require("node:fs");
 const path = require("node:path");
 
 const DIST_ROOT = app.isPackaged
@@ -10,10 +11,8 @@ const DIST_ROOT = app.isPackaged
   : path.resolve(__dirname, "../dist");
 const HTML_LIMIT = 12 * 1024 * 1024;
 const IMAGE_LIMIT = 40 * 1024 * 1024;
-const UPDATE_FILE_LIMIT = 24 * 1024 * 1024;
-const UPDATE_REQUEST_LIMIT = 36 * 1024 * 1024;
+const REQUEST_LIMIT = 4 * 1024 * 1024;
 const APP_PORT = 41739;
-const UPDATE_ROOT = path.join(app.getPath("userData"), "web-updates");
 
 const MIME = {
   ".avif": "image/avif",
@@ -303,134 +302,95 @@ async function fetchImage(target, referer) {
   });
 }
 
-function safeUpdateVersion(version) {
-  return typeof version === "string" && /^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)(\.[0-9A-Za-z.-]+)?$/.test(version);
+function isGitHubUpdateHost(host) {
+  const name = String(host).toLowerCase();
+  return name === "github.com" || name === "api.github.com" || name.endsWith(".github.com") || name.endsWith(".githubusercontent.com");
 }
 
-function safeUpdatePath(relative) {
-  return typeof relative === "string" && /^(assets|web|releases)\/[A-Za-z0-9._/-]+$/.test(relative)
-    && !relative.split("/").some((part) => !part || part === "." || part === "..");
-}
+/**
+ * In-app updates are plain downloads: the new installer is saved to the Downloads folder and the person runs it.
+ * Only GitHub hosts are allowed, and only file names that look like Comik release files.
+ */
+const UPDATE_DOWNLOAD_LIMIT = 400 * 1024 * 1024;
+const SAFE_UPDATE_NAME = /^Comik-[A-Za-z0-9._-]{1,100}$/;
+let updateDownload = { state: "idle", name: "", received: 0, total: 0, path: "", error: "" };
 
-function sha256(bytes) {
-  return require("node:crypto").createHash("sha256").update(bytes).digest("hex");
-}
-
-const updateStatePath = () => path.join(UPDATE_ROOT, "active.json");
-
-async function readUpdateState() {
-  try { return JSON.parse(await fs.readFile(updateStatePath(), "utf8")); }
-  catch { return { active: "", previous: "", pending: false }; }
-}
-
-async function writeUpdateState(state) {
-  await fs.mkdir(UPDATE_ROOT, { recursive: true });
-  const temp = `${updateStatePath()}.tmp`;
-  await fs.writeFile(temp, JSON.stringify(state));
-  await fs.rename(temp, updateStatePath());
-}
-
-async function recoverUnconfirmedUpdate() {
-  const state = await readUpdateState();
-  if (state.pending) await writeUpdateState({ active: state.previous || "", previous: "", pending: false });
+function startUpdateDownload(rawUrl, fileName) {
+  const target = new URL(rawUrl);
+  if (target.protocol !== "https:" || !isGitHubUpdateHost(target.hostname)) throw new Error("The update address is not a GitHub address.");
+  if (!SAFE_UPDATE_NAME.test(fileName)) throw new Error("The update file name is not allowed.");
+  if (updateDownload.state === "downloading") throw new Error("An update is already downloading.");
+  // Electron falls back to the home folder when the system has no user-dirs setup, so prefer ~/Downloads when it exists.
+  const home = app.getPath("home");
+  const downloads = fsSync.existsSync(path.join(home, "Downloads")) ? path.join(home, "Downloads") : app.getPath("downloads");
+  const destination = path.join(downloads, fileName);
+  const partial = `${destination}.part`;
+  updateDownload = { state: "downloading", name: fileName, received: 0, total: 0, path: destination, error: "" };
+  const fail = (message) => {
+    updateDownload = { ...updateDownload, state: "error", error: message };
+    fsSync.rm(partial, { force: true }, () => {});
+  };
+  fs.mkdir(path.dirname(destination), { recursive: true }).then(() => {
+    const request = net.request({ url: target.toString(), session: session.defaultSession, redirect: "manual" });
+    request.on("redirect", (_status, _method, redirectUrl) => {
+      let next;
+      try { next = new URL(redirectUrl); } catch { request.abort(); return fail("GitHub sent an invalid redirect."); }
+      if (next.protocol !== "https:" || !isGitHubUpdateHost(next.hostname)) { request.abort(); return fail("GitHub redirected the update to an untrusted host."); }
+      request.followRedirect();
+    });
+    request.on("response", (incoming) => {
+      if (incoming.statusCode !== 200) { incoming.resume(); return fail(`GitHub answered ${incoming.statusCode}. Try again later.`); }
+      updateDownload.total = Number(incoming.headers["content-length"] || 0);
+      if (updateDownload.total > UPDATE_DOWNLOAD_LIMIT) { request.abort(); return fail("The update is larger than expected."); }
+      const out = fsSync.createWriteStream(partial);
+      incoming.on("data", (chunk) => {
+        updateDownload.received += chunk.length;
+        if (updateDownload.received > UPDATE_DOWNLOAD_LIMIT) { request.abort(); out.destroy(); fail("The update is larger than expected."); return; }
+        if (!out.write(chunk)) { incoming.pause(); out.once("drain", () => incoming.resume()); }
+      });
+      incoming.on("end", () => out.end(() => fs.rename(partial, destination).then(
+        () => { updateDownload = { ...updateDownload, state: "done" }; },
+        (error) => fail(error.message),
+      )));
+      incoming.on("error", (error) => fail(error.message));
+      out.on("error", (error) => fail(error.message));
+    });
+    request.on("error", (error) => fail(error.message));
+    request.end();
+  }).catch((error) => fail(error.message));
 }
 
 async function handleUpdateRequest(request, url) {
   const requestOrigin = request.headers.get("origin");
   const expectedOrigin = `http://${request.headers.get("host") || "localhost"}`;
   if (requestOrigin && requestOrigin !== expectedOrigin) return jsonResponse({ error: "origin not allowed" }, 403);
+
+  // The release list from GitHub, fetched here because the page itself cannot always reach it.
   if (url.pathname === "/api/update/download" && request.method === "GET") {
     let target;
     try { target = new URL(url.searchParams.get("url") || ""); }
     catch { return jsonResponse({ error: "invalid update URL" }, 400); }
     if (target.protocol !== "https:" || !isGitHubUpdateHost(target.hostname)) return jsonResponse({ error: "update URL is not a trusted GitHub host" }, 400);
     try {
-      const response = await guardedFetch(target, { headers: { accept: request.headers.get("accept") || "application/octet-stream" } });
-      if (!response.ok) return jsonResponse({ error: `GitHub update download returned ${response.status}` }, response.status);
-      const finalUrl = new URL(response.finalUrl || response.url);
-      if (finalUrl.protocol !== "https:" || !isGitHubUpdateHost(finalUrl.hostname)) return jsonResponse({ error: "GitHub redirected the update to an untrusted host" }, 400);
-      const bytes = await readBounded(response, 160 * 1024 * 1024);
-      return new Response(bytes, { headers: { "content-type": response.headers.get("content-type") || "application/octet-stream", "cache-control": "no-store" } });
+      const response = await guardedFetch(target, { headers: { accept: request.headers.get("accept") || "application/json", "user-agent": "Comik" } });
+      if (!response.ok) return jsonResponse({ error: `GitHub returned ${response.status}` }, response.status);
+      const bytes = await readBounded(response, 8 * 1024 * 1024);
+      return new Response(bytes, { headers: { "content-type": response.headers.get("content-type") || "application/json", "cache-control": "no-store" } });
     } catch (error) {
-      return jsonResponse({ error: error instanceof Error ? error.message : "update download failed" }, 502);
+      return jsonResponse({ error: error instanceof Error ? error.message : "update check failed" }, 502);
     }
   }
-  if (url.pathname === "/api/update/version" && request.method === "GET") {
-    const state = await readUpdateState();
-    return jsonResponse({ version: state.active || "" });
-  }
-  if (url.pathname === "/api/update/confirm" && request.method === "POST") {
-    const state = await readUpdateState();
-    await writeUpdateState({ active: state.active || "", previous: "", pending: false });
+  if (url.pathname === "/api/update/save" && request.method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    try { startUpdateDownload(String(body.url || ""), String(body.name || "")); }
+    catch (error) { return jsonResponse({ error: error instanceof Error ? error.message : "could not start the download" }, 400); }
     return jsonResponse({ ok: true });
   }
-  if (request.method !== "POST") return jsonResponse({ error: "POST required" }, 405);
-  let body;
-  try { body = await request.json(); }
-  catch { return jsonResponse({ error: "invalid JSON" }, 400); }
-
-  if (url.pathname === "/api/update/begin") {
-    if (body.schema !== 1 || !safeUpdateVersion(body.version) || !Array.isArray(body.files) || !body.files.length || body.files.length > 5000) return jsonResponse({ error: "invalid update manifest" }, 400);
-    const activeVersion = (await readUpdateState()).active || app.getVersion();
-    if (body.baseVersion && body.baseVersion !== activeVersion) return jsonResponse({ error: `update requires base ${body.baseVersion}; current version is ${activeVersion}` }, 409);
-    let total = 0;
-    let hasEntry = false;
-    const seen = new Set();
-    for (const item of body.files) {
-      if (!safeUpdatePath(item.path) || !Number.isSafeInteger(item.size) || item.size < 0 || item.size > UPDATE_FILE_LIMIT || !/^[a-f0-9]{64}$/i.test(item.sha256) || seen.has(item.path)) return jsonResponse({ error: "invalid update file entry" }, 400);
-      seen.add(item.path);
-      total += item.size;
-      if (item.path === "web/index.html") hasEntry = true;
-    }
-    if (!hasEntry || total > 160 * 1024 * 1024) return jsonResponse({ error: "update size or entry is invalid" }, 400);
-    const directory = path.join(UPDATE_ROOT, `${body.version}.staging`);
-    await fs.rm(directory, { recursive: true, force: true });
-    await fs.mkdir(directory, { recursive: true });
-    const active = (await readUpdateState()).active;
-    if (active && safeUpdateVersion(active)) {
-      const activeDirectory = path.join(UPDATE_ROOT, active);
-      await fs.cp(activeDirectory, directory, { recursive: true, force: true }).catch(() => {});
-    }
-    await fs.writeFile(path.join(directory, "manifest.json"), JSON.stringify(body));
-    return jsonResponse({ ok: true });
+  if (url.pathname === "/api/update/progress" && request.method === "GET") return jsonResponse(updateDownload);
+  if (url.pathname === "/api/update/reveal" && request.method === "POST") {
+    if (updateDownload.state === "done") shell.showItemInFolder(updateDownload.path);
+    return jsonResponse({ ok: updateDownload.state === "done" });
   }
-
-  if (url.pathname === "/api/update/file") {
-    if (!safeUpdateVersion(body.version) || !safeUpdatePath(body.path) || typeof body.content !== "string") return jsonResponse({ error: "invalid update file" }, 400);
-    const directory = path.join(UPDATE_ROOT, `${body.version}.staging`);
-    let manifest;
-    try { manifest = JSON.parse(await fs.readFile(path.join(directory, "manifest.json"), "utf8")); }
-    catch { return jsonResponse({ error: "update was not prepared" }, 409); }
-    const entry = manifest.files.find((item) => item.path === body.path);
-    if (!entry || entry.sha256 !== body.sha256 || body.content.length > Math.ceil(UPDATE_FILE_LIMIT * 4 / 3) + 16) return jsonResponse({ error: "file is not in manifest" }, 400);
-    const bytes = Buffer.from(body.content, "base64");
-    if (bytes.length !== entry.size || sha256(bytes) !== entry.sha256) return jsonResponse({ error: "file integrity check failed" }, 400);
-    const filePath = path.resolve(directory, body.path);
-    if (!filePath.startsWith(`${directory}${path.sep}`)) return jsonResponse({ error: "invalid file path" }, 400);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, bytes);
-    return jsonResponse({ ok: true });
-  }
-
-  if (url.pathname === "/api/update/activate") {
-    if (!safeUpdateVersion(body.version)) return jsonResponse({ error: "invalid version" }, 400);
-    const directory = path.join(UPDATE_ROOT, `${body.version}.staging`);
-    let manifest;
-    try { manifest = JSON.parse(await fs.readFile(path.join(directory, "manifest.json"), "utf8")); }
-    catch { return jsonResponse({ error: "update was not prepared" }, 409); }
-    for (const item of manifest.files) {
-      const filePath = path.join(directory, item.path);
-      const bytes = await fs.readFile(filePath).catch(() => null);
-      if (!bytes || bytes.length !== item.size || sha256(bytes) !== item.sha256) return jsonResponse({ error: `missing or invalid update file: ${item.path}` }, 409);
-    }
-    const installed = path.join(UPDATE_ROOT, body.version);
-    await fs.rm(installed, { recursive: true, force: true });
-    await fs.rename(directory, installed);
-    const previous = (await readUpdateState()).active || "";
-    await writeUpdateState({ active: body.version, previous, pending: true });
-    return jsonResponse({ ok: true });
-  }
-
   return jsonResponse({ error: "not found" }, 404);
 }
 
@@ -446,12 +406,6 @@ async function serveAsset(url) {
     return new Response("forbidden", { status: 403 });
   }
   try {
-    const state = await readUpdateState();
-    if (safeUpdateVersion(state.active) && safeUpdatePath(relative)) {
-      const overlayRoot = path.join(UPDATE_ROOT, state.active);
-      const overlayFile = path.resolve(overlayRoot, relative);
-      if (overlayFile.startsWith(`${overlayRoot}${path.sep}`) && await fs.stat(overlayFile).then((info) => info.isFile()).catch(() => false)) filePath = overlayFile;
-    }
     const info = await fs.stat(filePath);
     if (info.isDirectory()) filePath = path.join(filePath, "index.html");
     const body = await fs.readFile(filePath);
@@ -538,7 +492,6 @@ async function listen(server) {
 }
 
 async function start() {
-  await recoverUnconfirmedUpdate();
   // Chromium's own agent string, without the Electron and app tokens that sites treat as a bot.
   session.defaultSession.setUserAgent(session.defaultSession.getUserAgent().replace(/\s(Electron|comik-desktop|Comik)\/\S+/gi, ""));
   const server = createServer(async (incoming, outgoing) => {
@@ -551,7 +504,7 @@ async function start() {
         let total = 0;
         for await (const chunk of incoming) {
           total += chunk.length;
-          if (total > UPDATE_REQUEST_LIMIT) {
+          if (total > REQUEST_LIMIT) {
             const response = jsonResponse({ error: "request too large" }, 413);
             outgoing.writeHead(response.status, Object.fromEntries(response.headers.entries()));
             outgoing.end(Buffer.from(await response.arrayBuffer()));

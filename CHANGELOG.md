@@ -2,6 +2,20 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.5.0-alpha
+
+### Updates
+- **Updates are now plain downloads.** The over-the-air web updater is gone. Settings > About checks GitHub for a newer release (any newer version, including the next major) and, on your say-so, downloads the installer for your platform into the Downloads folder: the APK on Android (Android shows its own progress and a notification you tap to install), the AppImage on Linux and the zip on Windows (with a "Show in folder" button).
+- This release has to be installed by hand once. Earlier 0.4.x builds only look for over-the-air packages, so they will not offer it.
+
+### Web novels
+- Five new web-novel sources, each checked end to end (list, search, novel page, full chapter list and chapter text): **FreeWebNovel**, **ReadNovelFull**, **NovelFull**, **NovelFull.net** and **WuxiaBox** (the former ReadWN). They appear under Discover > Web novels next to Project Gutenberg and Royal Road.
+- FreeWebNovel, NovelFull and Royal Road sit behind Cloudflare, so in the Android, Linux and Windows apps the first request may show the verification window.
+- Not added: Readlightnovel.me and LTNovel are offline; NovelFull.me now redirects to NovelBuddy; Ranobes, LightNovelPub, LightNovelWorld and LightNovelCave refuse automated checks, and Wuxiaworld and NovelFire load their chapter text with scripts that could not be verified.
+
+### Anime
+- Anime still lists official streaming links through AniList. Streaming-site scrapers are not included.
+
 ## 0.4.2-alpha
 
 ### Internal updates

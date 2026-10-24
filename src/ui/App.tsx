@@ -5,7 +5,7 @@ import { BookBookmark, BookOpenText, ChatCircleText, Clock, Compass, FilmSlate, 
 import { db } from "@/core/db";
 import { useSettings } from "@/core/settings";
 import { isNativeShell } from "@/core/platform";
-import { checkForAppUpdate, confirmActiveUpdate } from "@/core/appUpdates";
+import { checkForAppUpdate } from "@/core/appUpdates";
 import { trackAnalytics } from "@/core/analytics";
 import { loadCustomSources } from "@/core/sources/registry";
 import { maybeAutoUpdate } from "@/core/updater";
@@ -92,7 +92,6 @@ export function App() {
     void loadCustomSources();
     void maybeAutoUpdate();
     if (isNativeShell) {
-      confirmActiveUpdate();
       void checkForAppUpdate(APP_VERSION);
     }
     if (readFirebaseConfig() && localStorage.getItem("comik.sync.enabled") === "1") void startSync();

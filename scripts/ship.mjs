@@ -9,7 +9,7 @@
  *
  * Flags: --skip-checks (no typecheck/tests)  --skip-build (reuse the last builds)  --no-push  --no-release
  *
- * Steps: preflight, typecheck + tests, web build, OTA bundle (alpha only), Linux AppImage, Windows zip,
+ * Steps: preflight, typecheck + tests, web build, Linux AppImage, Windows zip,
  * Android APK, commit, push to master (which deploys the website), GitHub release, verify the download links.
  * Needs git, gh (logged in), npm and the JDK/Gradle/Android SDK described in HANDOVER.md.
  */
@@ -26,7 +26,7 @@ const option = (...names) => {
   return index >= 0 ? args[index + 1] : undefined;
 };
 const messageIndex = args.findIndex((arg) => arg === "-m" || arg === "--message");
-const requested = args.find((arg, index) => /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(arg) && index !== messageIndex + 1);
+const requested = args.find((arg, index) => /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(arg) && (messageIndex < 0 || index !== messageIndex + 1));
 const dryRun = flag("--dry-run");
 
 const read = (file) => readFileSync(path.join(root, file), "utf8");
@@ -93,12 +93,6 @@ if (!flag("--skip-checks")) {
 }
 if (!flag("--skip-build")) {
   step("Web build", () => run("npm", ["run", "build:native"]));
-  if (/-alpha(\.|$)/i.test(version)) {
-    step("OTA update bundle", () => {
-      if (existsSync(path.join(root, "release", "app-updates", version))) console.log(`OTA bundle for ${version} already exists, keeping it.`);
-      else run("npm", ["run", "build:app-update"]);
-    });
-  }
   step("Linux AppImage", () => run("npm", ["run", "desktop:linux"]));
   step("Windows zip", () => run("npm", ["run", "desktop:windows:portable"]));
   step("Android APK", () => run("gradle", ["-p", "android", "assembleDebug", "--offline"]));

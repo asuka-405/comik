@@ -26,13 +26,7 @@ const PLATFORM_FILES = [
   [`release/Comik-${version}.AppImage`, "Comik-linux-x64.AppImage"],
   [`release/Comik-${version}-win-x64.zip`, "Comik-windows-x64.zip"],
 ];
-const otaOnly = process.argv.includes("--ota-only");
-const otaRoot = path.join(root, "release", "app-updates", version);
-const OTA_FILES = ["Comik-app-update.json", "Comik-app-update.zip"];
-const otaFiles = OTA_FILES.map((name) => [path.join("release", "app-updates", version, name), name]);
-const hasOta = OTA_FILES.every((name) => existsSync(path.join(otaRoot, name)));
-if (otaOnly && !hasOta) throw new Error(`Missing OTA bundle for ${version}; run npm run build:app-update first.`);
-const filesToPublish = otaOnly ? otaFiles : [...PLATFORM_FILES, ...(hasOta ? otaFiles : [])];
+const filesToPublish = PLATFORM_FILES;
 
 function notesFor(version) {
   const changelog = readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
