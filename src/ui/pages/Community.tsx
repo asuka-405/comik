@@ -7,7 +7,7 @@ import { db } from "@/core/db";
 import { hash53 } from "@/core/hash";
 import { trackAnalytics } from "@/core/analytics";
 import { getSource } from "@/core/sources/registry";
-import { connectPublicCommunity, connectRoomFirebase, linkGooglePublicCommunity, linkGoogleRoom, readFirebaseConfig, readPublicCommunityConfig, useCommunitySession, useRoomSessions } from "@/core/sync/firebase";
+import { connectPublicCommunity, connectRoomFirebase, linkGooglePublicCommunity, linkGoogleRoom, readCustomFirebaseConfig, readPublicCommunityConfig, useCommunitySession, useRoomSessions } from "@/core/sync/firebase";
 import { addComment, comicReference, createPrivateCommunityRoom, joinPrivateCommunityRoom, publishPost, rateComic, roomCommunityTarget, setPostLike, subscribeComments, subscribePollVotes, subscribePostLikes, subscribePosts, subscribeRatings, uploadCommunityImage, votePoll, type CommunityComment, type CommunityKind, type CommunityPost, type CommunityTarget, type PostLikeState, type RatingRecord } from "@/core/community";
 import { createCommunityInvite, newCommunityRoom, parseCommunityInvite, readCommunityRooms, saveCommunityRoom, type CommunityRoom } from "@/core/communityRooms";
 import { appLink } from "@/core/platform";
@@ -73,7 +73,7 @@ export function CommunityPage() {
   };
 
   const createRoom = async () => {
-    const config = roomBackend === "public" ? readPublicCommunityConfig() : readFirebaseConfig();
+    const config = roomBackend === "public" ? readPublicCommunityConfig() : readCustomFirebaseConfig();
     if (!config) {
       setError("Set up your Firebase project in Settings before creating a room on it.");
       return;
@@ -197,7 +197,7 @@ export function CommunityPage() {
         {rooms.length > 0 && <div className="community-room-list">{rooms.map((room) => <button key={room.id} className="community-room-item" onClick={() => selectCommunity(room.id)}><strong>{room.name}</strong><span>{room.config.projectId} · {room.joined ? "joined" : "invite added"}</span></button>)}</div>}
       </section>}
       {!activeRoom && !publicEnabled ? (
-        <section className="panel"><h2>Public community is off</h2><p className="muted">Turn it back on in Settings, or select a private community.</p><Link className="btn" to="/settings">Community settings</Link></section>
+        <section className="panel"><h2>Public community is off</h2><p className="muted">Turn it back on in Settings, or select a private community.</p><Link className="btn" to="/settings/privacy">Community settings</Link></section>
       ) : activeRoom && !activeRoom.joined ? (
         <section className="panel"><h2>Invite-only community</h2><p className="muted" style={{ marginBottom: 12 }}>Join {activeRoom.name} with your Google account. Room posts stay in {activeRoom.config.projectId}.</p><button className="btn primary" onClick={() => void joinRoom(activeRoom)}>Join community</button></section>
       ) : (
@@ -270,7 +270,7 @@ export function CommunityNewPostPage() {
       ) : activeRoom && !activeRoom.joined ? (
         <section className="community-gate"><h2>Join {activeRoom.name}</h2><p>Sign in with Google to join this invite-only room.</p><button className="btn primary" onClick={() => void joinRoom()}>Join community</button></section>
       ) : !config && !activeRoom ? (
-        <section className="community-gate"><h2>Set up Firebase first</h2><p>Connect the app server or your own Firebase project to publish community posts.</p><Link className="btn primary" to="/settings">Open Firebase settings</Link></section>
+        <section className="community-gate"><h2>Set up Firebase first</h2><p>Sign in with Comik Firebase, or connect your own, to publish community posts.</p><Link className="btn primary" to="/settings/firebase">Open Firebase settings</Link></section>
       ) : sync.status === "off" ? (
         <section className="community-gate"><h2>Connect to the reading room</h2><p>Posts and replies are shared with people using this Firebase project.</p><button className="btn primary" onClick={connect}>Connect</button></section>
       ) : (

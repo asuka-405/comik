@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { create } from "zustand";
 import { ArrowLeft, X } from "@phosphor-icons/react";
-import { imageUrl } from "@/core/http";
+import { imageUrl, readingNeedsOwnFirebase } from "@/core/http";
 import { getSource } from "@/core/sources/registry";
 import { hash53 } from "@/core/hash";
 
@@ -154,6 +154,21 @@ export function useDebounced<T>(value: T, ms = 300): T {
 }
 
 /** Back button that floats over the page corner instead of taking a row in the header. */
+/** Shown on the web build while the user has no Firebase proxy, because source requests cannot work without one. */
+export function ReadingNotice() {
+  if (!readingNeedsOwnFirebase()) return null;
+  return (
+    <div className="panel reading-notice" data-hue="5" role="note">
+      <h2>Reading comics in the browser needs your own Firebase</h2>
+      <p className="muted">The shared Comik site does not fetch comics, because one address making every reader's requests would be banned by the sources. Your library, sync and Community already work. To read here, connect your own Firebase project, or use the Android, Linux or Windows app, which fetch directly from your device.</p>
+      <div className="reading-notice-actions">
+        <Link className="btn primary" to="/setup">Set up my Firebase</Link>
+        <Link className="btn" to="/settings/firebase">Open Firebase settings</Link>
+      </div>
+    </div>
+  );
+}
+
 export function FloatBack({ to }: { to?: string }) {
   const nav = useNavigate();
   return (

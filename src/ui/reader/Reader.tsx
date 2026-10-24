@@ -29,7 +29,7 @@ export function Reader() {
 
   if (chapter === undefined || (chapter && manga === undefined)) return <div className="reader"><div className="interstitial"><div className="skel" style={{ width: 200, height: 14 }} /></div></div>;
   if (!chapter || !manga) return <div className="reader"><div className="interstitial"><h2>Chapter not found</h2><button className="btn" onClick={() => nav("/")}>Back</button></div></div>;
-  if (safeMode && getSource(manga.sourceId)?.isNsfw) return <div className="reader"><div className="interstitial"><h2>Hidden by Safe mode</h2><p>This series is from a source marked as 18+.</p><button className="btn" onClick={() => nav("/settings")}>Safe mode settings</button></div></div>;
+  if (safeMode && getSource(manga.sourceId)?.isNsfw) return <div className="reader"><div className="interstitial"><h2>Hidden by Safe mode</h2><p>This series is from a source marked as 18+.</p><button className="btn" onClick={() => nav("/settings/privacy")}>Safe mode settings</button></div></div>;
   return <ReaderBody key={chapter.id} chapter={chapter} manga={manga} siblings={siblings ?? []} />;
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "comik",
   "private": true,
-  "version": "0.1.0-alpha",
+  "version": "0.2.0-beta",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,proxy -c auto \"vite\" \"tsx watch server/index.ts\"",
@@ -48,6 +48,7 @@
     "concurrently": "^10.0.6",
     "electron": "^35.0.0",
     "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2",
     "linkedom": "^0.18.14",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",

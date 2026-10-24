@@ -315,3 +315,21 @@ h1,h2,h3,p{margin:0}
 .source-card.compact{padding:12px;gap:12px}.source-card.compact .ico{width:36px;height:36px;font-size:13px}
 .src-name{font-weight:800;color:var(--ink);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .src-sub{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.reading-notice{margin-bottom:18px}.reading-notice p{max-width:70ch;line-height:1.65}.reading-notice-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+
+/* settings: a category list that opens pages, like Android's Settings app */
+.settings-shell{display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:28px;align-items:start}
+.settings-list{display:grid;gap:8px;position:sticky;top:64px}.settings-list .topbar{margin-bottom:10px}
+.settings-item{display:flex;align-items:center;gap:14px;min-height:64px;padding:10px 14px;background:color-mix(in srgb,var(--h,var(--accent)) 5%,var(--surface));border:1px solid var(--line);color:var(--ink);transition:border-color .15s,transform .15s}
+.settings-item:hover{border-color:color-mix(in srgb,var(--h,var(--accent)) 55%,transparent)}.settings-item.active{border-color:var(--h,var(--accent));box-shadow:4px 4px 0 var(--accent-soft)}
+.settings-icon{display:grid;place-items:center;flex:none;width:42px;height:42px;background:color-mix(in srgb,var(--h,var(--accent)) 18%,transparent);color:var(--h,var(--accent))}
+.settings-text{display:grid;gap:3px;flex:1;min-width:0}.settings-text strong{font-size:15px;font-weight:700}.settings-text small{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.settings-caret{flex:none;color:var(--muted)}
+.settings-page-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px}.settings-page-head h2{font-size:24px;font-weight:800;letter-spacing:-.03em;color:var(--ink)}.settings-page-head p{margin-top:4px;max-width:60ch;font-size:13.5px}
+.settings-back{display:none;place-items:center;flex:none;width:38px;height:38px;border:1px solid var(--line);color:var(--ink);background:var(--surface)}
+@media(max-width:899px){
+  .settings-shell{display:block}
+  .settings-shell.has-detail .settings-list{display:none}.settings-shell:not(.has-detail) .settings-detail{display:none}
+  .settings-list{position:static}.settings-back{display:grid}
+}

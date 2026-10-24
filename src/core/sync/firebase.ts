@@ -105,6 +105,8 @@ export interface SyncUser {
 
 export interface ComikFirebaseOptions extends FirebaseOptions {
   googleWebClientId?: string;
+  /** Region of the comikProxy Cloud Function in this project. Defaults to us-central1. */
+  proxyRegion?: string;
 }
 
 interface SyncStore {
@@ -177,10 +179,17 @@ export function setFirebaseMode(mode: FirebaseMode) {
 
 export const defaultFirebaseAvailable = () => !!readPublicCommunityConfig();
 
+/** The user's own project, or null while they use the Comik project. */
+export function readCustomFirebaseConfig(): ComikFirebaseOptions | null {
+  return getFirebaseMode() === "custom" ? parseConfig(localStorage.getItem(LS_KEY) ?? undefined) : null;
+}
+
+/**
+ * The project that handles sign-in and library sync: the user's own when they have set one up,
+ * otherwise the Comik project. Comic fetching never uses the Comik project, see proxyBase().
+ */
 export function readFirebaseConfig(): ComikFirebaseOptions | null {
-  return getFirebaseMode() === "custom"
-    ? parseConfig(localStorage.getItem(LS_KEY) ?? undefined)
-    : null;
+  return readCustomFirebaseConfig() ?? readPublicCommunityConfig();
 }
 
 export function readPublicCommunityConfig(): ComikFirebaseOptions | null {
@@ -215,6 +224,22 @@ export function saveFirebaseConfig(cfg: ComikFirebaseOptions | null) {
 
 export const syncAvailable = () => readFirebaseConfig() !== null;
 
+/** URL of the comic proxy Cloud Function in the user's own project, or null without one. */
+export function ownProxyUrl(): string | null {
+  const config = readCustomFirebaseConfig();
+  if (!config?.projectId) return null;
+  return `https://${config.proxyRegion || "us-central1"}-${config.projectId}.cloudfunctions.net/comikProxy`;
+}
+
+/** A fresh ID token for the proxy function. Firebase caches it and renews it shortly before expiry. */
+export async function getProxyIdToken(): Promise<string> {
+  await ensureSignedIn();
+  const { auth } = await loadFirebase();
+  const user = auth.currentUser;
+  if (!user) throw new Error("Sign in to use your Firebase proxy.");
+  return user.getIdToken();
+}
+
 type FirebaseBits = {
   auth: import("firebase/auth").Auth;
   fs: import("firebase/firestore").Firestore;
@@ -241,8 +266,10 @@ export function loadFirebaseForConfig(cfg: ComikFirebaseOptions | null, appName:
 }
 
 export function loadFirebase(): Promise<FirebaseBits> {
-  const config = readFirebaseConfig();
-  return loadFirebaseForConfig(config, `comik-personal-${config?.projectId ?? "unconfigured"}`);
+  const own = readCustomFirebaseConfig();
+  // On the Comik project, sync and Community share one app so they share one signed-in user.
+  if (!own) return loadPublicCommunityFirebase();
+  return loadFirebaseForConfig(own, `comik-personal-${own.projectId}`);
 }
 
 export function loadPublicCommunityFirebase(): Promise<FirebaseBits> {
@@ -252,6 +279,14 @@ export function loadPublicCommunityFirebase(): Promise<FirebaseBits> {
 
 export function resetFirebase() {
   firebaseBits.clear();
+}
+
+/** On the Comik project one auth session serves both sync and Community, so keep both stores current. */
+function publishUser(user: SyncUser | null, extra: Partial<SyncStore> = {}) {
+  useSync.getState().patch({ user, ...extra });
+  if (!readCustomFirebaseConfig()) {
+    useCommunitySession.getState().patch({ user, status: user ? "ready" : "off", error: undefined });
+  }
 }
 
 const toUser = (u: import("firebase/auth").User | null): SyncUser | null => (u ? { uid: u.uid, isAnonymous: u.isAnonymous, email: u.email, name: u.displayName } : null);
@@ -387,7 +422,7 @@ export async function linkGoogle(): Promise<void> {
         await authMod.signInWithCredential(auth, credential);
       } else throw error;
     }
-    useSync.getState().patch({ user: toUser(auth.currentUser) });
+    publishUser(toUser(auth.currentUser));
     return;
   }
 
@@ -402,11 +437,11 @@ export async function linkGoogle(): Promise<void> {
       await authMod.signInWithPopup(auth, provider);
     } else throw e;
   }
-  useSync.getState().patch({ user: toUser(auth.currentUser) });
+  publishUser(toUser(auth.currentUser));
 }
 
 export async function signOutSync(): Promise<void> {
   const { auth, authMod } = await loadFirebase();
   await authMod.signOut(auth);
-  useSync.getState().patch({ user: null, status: "off" });
+  publishUser(null, { status: "off" });
 }

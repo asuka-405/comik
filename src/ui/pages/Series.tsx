@@ -11,7 +11,7 @@ import { resumeTarget, readingOrder, dedupeByNumber } from "@/core/progress";
 import { formatChapterNumber, missingBetween } from "@/core/chapterRecognition";
 import { deleteDownloads, enqueueDownloads } from "@/core/downloads";
 import type { ChapterRow } from "@/core/types";
-import { Empty, FloatBack, Sheet, coverSrc, hueOf, timeAgo, toast } from "../common";
+import { Empty, FloatBack, ReadingNotice, Sheet, coverSrc, hueOf, timeAgo, toast } from "../common";
 import { dominantColor } from "../color";
 
 type Filt = "unread" | "bookmarked" | "downloaded";
@@ -79,7 +79,7 @@ export function Series() {
 
   if (manga === undefined) return <div className="page"><div className="skel" style={{ height: 320 }} /></div>;
   if (!manga) return <div className="page"><Empty title="Series not found" body="Open it from Discover again." action={<button className="btn primary" onClick={() => nav("/browse")}>Discover</button>} /></div>;
-  if (safeMode && source?.isNsfw) return <div className="page"><Empty title="Hidden by Safe mode" body="This series is from a source marked as 18+. Turn off Safe mode in Settings to view it." action={<button className="btn primary" onClick={() => nav("/settings")}>Safe mode settings</button>} /></div>;
+  if (safeMode && source?.isNsfw) return <div className="page"><Empty title="Hidden by Safe mode" body="This series is from a source marked as 18+. Turn off Safe mode in Settings to view it." action={<button className="btn primary" onClick={() => nav("/settings/privacy")}>Safe mode settings</button>} /></div>;
 
   const target = resumeTarget(chapters ?? []);
   const unread = dedupeByNumber(chapters ?? []).filter((c) => !c.read).length;
@@ -110,6 +110,7 @@ export function Series() {
     <>
     <FloatBack />
     <div className="page has-back" style={{ ["--series" as string]: manga.accent ?? "var(--accent)" }} data-hue={hueOf(manga.id)}>
+      <ReadingNotice />
       <div className="topbar">
         <span className="kicker">{source?.name ?? manga.sourceId}</span>
         <div className="spacer" />

@@ -48,12 +48,12 @@ export function LoginPage() {
             </button>
             {error && <div className="err" role="alert">{error}</div>}
             {syncStatus === "error" && !error && <div className="err" role="alert">{useSync.getState().error}</div>}
-            <p className="login-project">{getFirebaseMode() === "default" ? "Comik shared project" : "Your Firebase project"} · {config.projectId}</p>
+            <p className="login-project">{getFirebaseMode() === "default" ? "Comik Firebase" : "Your Firebase project"} · {config.projectId}</p>
           </>
         ) : (
           <>
             <p className="muted">Connect the app server or enter your own Firebase project before signing in.</p>
-            <Link className="btn primary login-submit" to="/settings">Open Firebase settings</Link>
+            <Link className="btn primary login-submit" to="/settings/firebase">Open Firebase settings</Link>
           </>
         )}
         <Link className="login-back" to="/">Back to shelf</Link>

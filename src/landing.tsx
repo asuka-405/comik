@@ -57,8 +57,8 @@ function LandingPage() {
             <h2>Local first.<br />Sync when you choose.</h2>
           </div>
           <div className="landing-privacy-copy">
-            <p>Reading data stays on your device by default. For web sync, connect a Firebase project you own. Comik’s shared Firebase is used for the public reader community, not your web library.</p>
-            <a className="landing-text-link" href="/web/settings">Set up web sync <ArrowRight size={17} /></a>
+            <p>Your library stays on your device by default. Sign in to sync it through Comik’s Firebase with nothing to set up, or bring your own Firebase. The Android, Linux and Windows apps read comics straight from your device. On the web, reading uses a proxy in your own Firebase, so no shared address gets banned by the sources.</p>
+            <a className="landing-text-link" href="/web/setup">How the web setup works <ArrowRight size={17} /></a>
           </div>
         </section>
 

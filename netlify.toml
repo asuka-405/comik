@@ -1,24 +1,16 @@
 [build]
   command = "npm run build"
   publish = "dist"
-  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "22"
 
-[functions]
-  node_bundler = "esbuild"
-
+# The hosted site never fetches comic sources itself: doing so from one shared IP address would
+# get that address banned. Browsers read comics through a proxy in the user's own Firebase project.
 [[redirects]]
   from = "/web/*"
   to = "/web/index.html"
   status = 200
-
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/comik-api/:splat"
-  status = 200
-  force = true
 
 [[headers]]
   for = "/assets/webtoon-covers/*"

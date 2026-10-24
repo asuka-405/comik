@@ -6,7 +6,7 @@ import { db } from "@/core/db";
 import { allSources, onSourcesChange } from "@/core/sources/registry";
 import { upsertManga } from "@/core/repo";
 import type { SManga, Source } from "@/core/types";
-import { Cover, CoverSkeletons, hueOf, useDebounced } from "../common";
+import { Cover, CoverSkeletons, ReadingNotice, hueOf, useDebounced } from "../common";
 import { PanelField } from "../PanelField";
 import { useSettings } from "@/core/settings";
 
@@ -54,6 +54,7 @@ export function Browse() {
           <h2>Pick a source, or search all of them</h2>
         </div>
       </section>
+      <ReadingNotice />
       <div className="topbar">
         <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
           <MagnifyingGlass size={18} style={{ position: "absolute", left: 13, top: 12, color: "var(--muted)" }} />

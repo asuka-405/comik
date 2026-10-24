@@ -12,21 +12,18 @@ Visual language follows the Sutrid site (purple accent, square corners, hard off
 
 ## How it works
 
-Browsers cannot read most comic sites (no CORS, referer-locked images). `server/index.ts` is a small proxy
-(`/api/fetch`, `/api/img`) that blocks private networks. Sources run in the browser and parse HTML with DOMParser.
+Browsers cannot read most comic sites (no CORS, referer-locked images), so something must make the request. The apps do it from the device. The web build uses a proxy in the user's own Firebase project (`functions/`, same code as `server/app.ts`, which blocks private networks). The hosted site never proxies comics itself, because one shared address would be banned by every source. Sources run in the app and parse HTML with DOMParser. See [docs/FIREBASE.md](docs/FIREBASE.md).
 
 - `src/core/sources/` Webtoon (HTML), Madara and MangaThemesia engines, user-defined CSS-selector sources, local CBZ.
 - `src/core/chapterRecognition.ts` chapter number parsing; `repo.ts` chapter list reconciliation (keeps read state, follows chapter numbers across re-uploads).
 - `src/ui/reader/` paged (LTR/RTL/vertical, optional two-page spreads) and webtoon modes, crop borders, tall-image splitting, colour filters.
 - Offline: downloads are stored as blobs in IndexedDB.
 
-## Sync (optional)
+## Firebase
 
-Settings > Sync lets a reader use the app server's Firebase project or bring their own. The app-server project has a built-in Firebase web config; deployments can override it at build time with `VITE_FIREBASE_CONFIG`. Readers can also select Own Firebase and enter their own project config.
+Comik's own Firebase project (`comik-7157c`) handles sign-in, library sync and the public Community for everyone. Users can bring their own project instead, which also adds private Community rooms and, on the web, the comic proxy. The full split, the reasoning and step-by-step instructions are in [docs/FIREBASE.md](docs/FIREBASE.md).
 
-Enable Google sign-in and Anonymous auth in Firebase Authentication, create Firestore, then apply the rules shown in Settings. Sync stays private under `users/{uid}`. Community posts, comments, ratings, and polls are shared only inside the selected Firebase project; community contributions require a non-anonymous sign-in. Each Firebase project uses its own named client app and user session.
-
-This repository targets Firebase project ID `comik-7157c` via `.firebaserc`. Deploy the checked-in rules with `firebase deploy --only firestore:rules`. Google sign-in provider setup and OAuth consent/client IDs still need to be enabled in Firebase Console for the hosted project.
+Sync stays private under `users/{uid}`. Community contributions require a non-anonymous sign-in. Deploy the checked-in rules with `firebase deploy --only firestore:rules --project <project id>`. Deployments can override the built-in config at build time with `VITE_FIREBASE_CONFIG`.
 
 Firebase Analytics requires `measurementId` in the selected config and remains disabled unless the reader opts in under Settings. Events contain generic screen names only. Community image uploads use an optional Imgur Client ID; without one, attached images are limited to 50 KB and stored as a data URL in the post document.
 
@@ -38,7 +35,7 @@ For native Google sign-in, register Android package `in.archdev.comik` in Fireba
 
 Run `npm run desktop:linux` on Linux for an AppImage. Run `npm run desktop:windows:portable` on Linux for a Windows ZIP, or `npm run desktop:windows` on Windows for an NSIS installer. Artifacts are written to `release/`. The `Build native apps` GitHub Actions workflow also creates Linux, Windows, and Android artifacts on their matching runners.
 
-Android and desktop wrappers make source and image requests from the reader's device, rather than Netlify. Browser builds continue using the configured proxy.
+Android and desktop wrappers make source and image requests from the reader's device. Browser builds need a proxy: the reader's own Firebase function, or a proxy address set in Settings (`npm start` runs one).
 
 ## Known limits
 

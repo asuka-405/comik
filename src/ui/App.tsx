@@ -17,7 +17,7 @@ import { Browse } from "./pages/Browse";
 import { SourceView } from "./pages/SourceView";
 import { Series } from "./pages/Series";
 import { Timeline } from "./pages/Timeline";
-import { SettingsPage } from "./pages/Settings";
+import { AboutSettings, AppearanceSettings, DownloadsSettings, FirebaseSettings, LibrarySettings, PrivacySettings, ProxySettings, ReaderSettingsPage, SettingsIndex, SettingsLayout } from "./pages/Settings";
 import { SourceSettingsPage } from "./pages/SourceSettings";
 import { CommunityNewPostPage, CommunityPage } from "./pages/Community";
 import { AccountPage } from "./pages/Account";
@@ -25,7 +25,7 @@ import { LoginPage } from "./pages/Login";
 import { SourceStudioPage } from "./components/SourceStudio";
 import { Reader } from "./reader/Reader";
 import { WebSetup } from "./pages/WebSetup";
-import { isNativeShell } from "@/core/platform";
+import { proxyToken } from "@/core/http";
 
 function useTheme() {
   const theme = useSettings((s) => s.theme);
@@ -50,13 +50,18 @@ export function App() {
   const reading = loc.pathname.startsWith("/read/");
   const analyticsConsent = useSettings((s) => s.analyticsConsent);
 
-  const needsPersonalFirebase = !isNativeShell && !readFirebaseConfig();
-  const onboardingAllowed = ["/settings", "/community", "/community/new"].includes(loc.pathname);
-
   useEffect(() => {
     void loadCustomSources();
     void maybeAutoUpdate();
     if (readFirebaseConfig() && localStorage.getItem("comik.sync.enabled") === "1") void startSync();
+  }, []);
+
+  // With a Firebase proxy, source requests carry a sign-in token. Keep one ready so image URLs can use it.
+  useEffect(() => {
+    const tick = () => void proxyToken().catch(() => {});
+    tick();
+    const timer = setInterval(tick, 10 * 60_000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -80,7 +85,7 @@ export function App() {
     return db.chapters.where("fetchedAt").above(Math.max(since, 1)).filter((c) => !c.read).count();
   }, [loc.pathname], 0);
 
-  if (needsPersonalFirebase && !onboardingAllowed) return <WebSetup />;
+  if (loc.pathname === "/setup") return <WebSetup />;
 
   if (reading) {
     return (
@@ -125,7 +130,17 @@ export function App() {
             <Route path="/community/new" element={<CommunityNewPostPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings" element={<SettingsLayout />}>
+              <Route index element={<SettingsIndex />} />
+              <Route path="appearance" element={<AppearanceSettings />} />
+              <Route path="library" element={<LibrarySettings />} />
+              <Route path="reader" element={<ReaderSettingsPage />} />
+              <Route path="downloads" element={<DownloadsSettings />} />
+              <Route path="proxy" element={<ProxySettings />} />
+              <Route path="firebase" element={<FirebaseSettings />} />
+              <Route path="privacy" element={<PrivacySettings />} />
+              <Route path="about" element={<AboutSettings />} />
+            </Route>
             <Route path="/settings/sources" element={<SourceSettingsPage />} />
             <Route path="/source-studio" element={<SourceStudioPage />} />
             <Route path="*" element={<div className="page"><div className="empty"><h2>Lost page</h2><button className="btn primary" onClick={() => nav("/")}>Back to shelf</button></div></div>} />

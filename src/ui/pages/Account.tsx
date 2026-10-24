@@ -56,10 +56,10 @@ export function AccountPage() {
       </section>
 
       {!config ? (
-        <section className="account-actions"><h2>Connect Firebase</h2><p className="muted">Choose the app server or enter your own Firebase configuration in Settings to sign in and sync.</p><Link className="btn primary" to="/settings">Open settings</Link></section>
+        <section className="account-actions"><h2>Connect Firebase</h2><p className="muted">Use Comik Firebase or enter your own configuration in Settings to sign in and sync.</p><Link className="btn primary" to="/settings/firebase">Open settings</Link></section>
       ) : (
         <section className="account-actions">
-          <div><span className="kicker">Firebase project</span><h2>{config.projectId}</h2><p className="muted">{mode === "default" ? "App server" : "Your Firebase project"} · {sync.lastSyncedAt ? `Last synced ${new Date(sync.lastSyncedAt).toLocaleString()}` : "Not synced yet"}</p></div>
+          <div><span className="kicker">Firebase project</span><h2>{config.projectId}</h2><p className="muted">{mode === "default" ? "Comik Firebase" : "Your Firebase project"} · {sync.lastSyncedAt ? `Last synced ${new Date(sync.lastSyncedAt).toLocaleString()}` : "Not synced yet"}</p></div>
           <div className="account-buttons">
             {sync.user?.isAnonymous || !sync.user ? (
               <Link className="btn primary" to="/login"><UserCircle size={18} />Continue with Google</Link>
@@ -94,9 +94,9 @@ export function AccountPage() {
         </section>
 
         <section className="account-data-section">
-          <div className="kicker">Shared · this Firebase project</div>
+          <div className="kicker">Shared · public Community (Comik Firebase)</div>
           <h2>Community data</h2>
-          <p className="muted">Community content is visible to users of the selected project. Contributions are associated with your Firebase UID.</p>
+          <p className="muted">The public Community lives on the Comik Firebase project and is visible to every Comik user. Private rooms live on the Firebase project of whoever created them. Contributions are associated with your Firebase UID.</p>
           <ul className="account-data-list">
             <li>Discussion and recommendation posts, including comic/source references</li>
             <li>Comments, poll options, and individual poll votes</li>

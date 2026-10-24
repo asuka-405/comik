@@ -1,4 +1,6 @@
 import { getSettings } from "./settings";
+import { isNativeShell } from "./platform";
+import { getProxyIdToken, ownProxyUrl } from "./sync/firebase";
 
 /**
  * All network I/O goes through here so sources stay free of CORS / referer concerns.
@@ -6,9 +8,49 @@ import { getSettings } from "./settings";
  * rateLimit interceptor so sources don't get us banned.
  */
 
+/**
+ * Where source requests go.
+ *
+ *  - An address set in Settings, for people who host their own proxy.
+ *  - The Android, Linux and Windows apps fetch from the device itself, so every user has their own IP address.
+ *  - The dev server proxies to a local process.
+ *  - Otherwise the web build uses the comikProxy function in the user's own Firebase project.
+ *
+ * The shared Comik site never fetches comics. Thousands of readers behind one address would get that
+ * address banned by every source, so without the user's own Firebase the web build cannot read.
+ */
 export function proxyBase(): string {
-  const url = getSettings().proxyUrl.trim().replace(/\/+$/, "");
-  return url ? `${url}/api` : "/api";
+  const custom = getSettings().proxyUrl.trim().replace(/\/+$/, "");
+  if (custom) return `${custom}/api`;
+  if (isNativeShell || import.meta.env.DEV) return "/api";
+  return ownProxyUrl() ?? "";
+}
+
+/** True when this build cannot fetch comics until the user connects their own Firebase. */
+export function readingNeedsOwnFirebase(): boolean {
+  return proxyBase() === "";
+}
+
+/** True when requests go to the user's Firebase function and must carry a sign-in token. */
+const usesOwnProxy = () => !getSettings().proxyUrl.trim() && !isNativeShell && !import.meta.env.DEV && ownProxyUrl() !== null;
+
+export class ProxyUnavailableError extends Error {
+  constructor() {
+    super("Reading comics in the browser needs your own Firebase project. Open Settings, choose My Firebase, or use the Android, Linux or Windows app.");
+    this.name = "ProxyUnavailableError";
+  }
+}
+
+let cachedToken = { value: "", at: 0 };
+
+/** Image tags cannot send headers, so image URLs carry the token in the query string. */
+export async function proxyToken(): Promise<string> {
+  if (!usesOwnProxy()) return "";
+  // Firebase tokens last an hour. Ask again after 30 minutes; the SDK hands back a fresh one when needed.
+  if (!cachedToken.value || Date.now() - cachedToken.at > 30 * 60_000) {
+    cachedToken = { value: await getProxyIdToken(), at: Date.now() };
+  }
+  return cachedToken.value;
 }
 
 class HostLimiter {
@@ -55,6 +97,7 @@ export class HttpError extends Error {
 
 export async function request(url: string, opts: FetchOpts = {}): Promise<Response> {
   const host = new URL(url).host;
+  if (readingNeedsOwnFirebase()) throw new ProxyUnavailableError();
   const retries = opts.retries ?? 2;
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -64,6 +107,8 @@ export async function request(url: string, opts: FetchOpts = {}): Promise<Respon
       if (opts.referer) qs.set("ref", opts.referer);
       const headers: Record<string, string> = {};
       if (opts.headers) headers["x-comik-headers"] = JSON.stringify(opts.headers);
+      const token = await proxyToken();
+      if (token) headers.authorization = `Bearer ${token}`;
       const res = await fetch(`${proxyBase()}/fetch?${qs}`, {
         method: opts.method ?? "GET",
         headers,
@@ -73,6 +118,11 @@ export async function request(url: string, opts: FetchOpts = {}): Promise<Respon
       if (res.status === 429 || res.status >= 502) {
         lastErr = new HttpError(res.status, `HTTP ${res.status}`, url);
         await sleep(600 * (attempt + 1));
+        continue;
+      }
+      if (res.status === 401 && usesOwnProxy() && attempt < retries) {
+        // The token expired between refreshes; get a new one and go again.
+        cachedToken = { value: "", at: 0 };
         continue;
       }
       if (!res.ok) {
@@ -86,6 +136,10 @@ export async function request(url: string, opts: FetchOpts = {}): Promise<Respon
       lastErr = e;
       await sleep(400 * (attempt + 1));
     }
+  }
+  if (lastErr instanceof TypeError && usesOwnProxy()) {
+    // A missing function answers without CORS headers, which the browser reports as a bare network error.
+    throw new Error("Could not reach your Firebase proxy. Deploy the comikProxy function and check its region in Settings, see the setup guide.");
   }
   throw lastErr instanceof Error ? lastErr : new Error("request failed");
 }
@@ -120,6 +174,8 @@ export function imageUrl(raw: string, referer?: string, direct?: boolean): strin
   if (direct) return raw;
   const qs = new URLSearchParams({ url: raw });
   if (referer) qs.set("ref", referer);
+  // Set by proxyToken() before any page list is fetched, so it is ready when images are requested.
+  if (usesOwnProxy() && cachedToken.value) qs.set("t", cachedToken.value);
   return `${proxyBase()}/img?${qs}`;
 }
 

@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -14,6 +15,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 
 import androidx.webkit.WebViewAssetLoader;
 import androidx.core.graphics.Insets;
@@ -76,10 +78,16 @@ public final class MainActivity extends Activity {
         webView.getSettings().setAllowContentAccess(true);
         webView.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         webView.addJavascriptInterface(new GoogleAuthBridge(), "ComikAndroidAuth");
-        ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
+        // The window draws edge to edge, so the status and navigation bars sit on top of whatever is
+        // underneath. WebView ignores its own padding for page content, which let the page's top bar
+        // slide under the status bar. Pad a parent instead and the page starts below the bars.
+        // The keyboard is included so inputs stay visible.
+        FrameLayout container = new FrameLayout(this);
+        container.setBackgroundColor(0xFF111713);
+        ViewCompat.setOnApplyWindowInsetsListener(container, (view, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return WindowInsetsCompat.CONSUMED;
         });
         userAgent = webView.getSettings().getUserAgentString();
         webView.setWebViewClient(new AppWebViewClient(assetLoader));
@@ -103,7 +111,8 @@ public final class MainActivity extends Activity {
                 setTitle(title == null || title.isEmpty() ? "Comik" : title);
             }
         });
-        setContentView(webView);
+        container.addView(webView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(container);
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl("https://" + APP_HOST + "/web/index.html");

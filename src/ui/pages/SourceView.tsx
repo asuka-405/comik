@@ -8,7 +8,7 @@ import { getSource } from "@/core/sources/registry";
 import { upsertManga } from "@/core/repo";
 import { cloneFilters, hasActiveFilters } from "@/core/filters";
 import type { Filter, MangaRow } from "@/core/types";
-import { Cover, CoverSkeletons, Empty, FloatBack, useDebounced } from "../common";
+import { Cover, CoverSkeletons, Empty, FloatBack, ReadingNotice, useDebounced } from "../common";
 import { FilterSheet } from "../components_filters";
 
 type Mode = "popular" | "latest" | "search";
@@ -90,11 +90,12 @@ export function SourceView() {
   }, [hasNext, loading, error, page, rows.length, load]);
 
   if (!enabled) return <div className="page"><Empty title="Source disabled" body="Enable this source in source settings to browse it again." action={<button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button>} /></div>;
-  if (hiddenBySafeMode) return <div className="page"><Empty title="Hidden by Safe mode" body="This source is marked as 18+. Turn off Safe mode in Settings to view it." action={<button className="btn primary" onClick={() => nav("/settings")}>Safe mode settings</button>} /></div>;
+  if (hiddenBySafeMode) return <div className="page"><Empty title="Hidden by Safe mode" body="This source is marked as 18+. Turn off Safe mode in Settings to view it." action={<button className="btn primary" onClick={() => nav("/settings/privacy")}>Safe mode settings</button>} /></div>;
   if (!source) return <div className="page"><Empty title="Source not found" body="It may have been removed." action={<button className="btn primary" onClick={() => nav("/browse")}>Back to Discover</button>} /></div>;
 
   return (
     <div className="page has-back">
+      <ReadingNotice />
       <FloatBack to="/browse" />
       <div className="topbar">
         <div><div className="kicker">{source.lang.toUpperCase()}</div><h1>{source.name}</h1></div>

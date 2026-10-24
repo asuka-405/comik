@@ -61,7 +61,7 @@ export function SourceSettingsPage() {
       <div className="topbar">
         <div><div className="kicker">Settings</div><h1>Sources</h1></div>
         <div className="spacer" />
-        <Link className="btn" to="/settings">Back to settings</Link>
+        <Link className="btn" to="/settings/proxy">Back to sources and proxy</Link>
       </div>
       <p className="muted" style={{ maxWidth: 680, marginBottom: 18 }}>Disabled sources are hidden from Discover and global search. Your shelf entries, reading progress, and downloaded chapters are unchanged.</p>
       <div style={{ position: "relative", maxWidth: 460 }}>

@@ -1,99 +1,232 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
+import { BookOpenText, Books, CaretLeft, CaretRight, CloudArrowUp, Compass, DownloadSimple, Info, Palette, ShieldCheck, type Icon } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/core/db";
 import { useSettings, type FitMode, type LibraryDensity, type LibrarySort, type Theme } from "@/core/settings";
 import { proxyBase } from "@/core/http";
+import { isNativeShell } from "@/core/platform";
 import { addCustomSource, allSources, isCustom, onSourcesChange, removeCustomSource } from "@/core/sources/registry";
 import { importLocal } from "@/core/sources/local";
 import { createBackup, downloadBackup, restoreBackup } from "@/core/backup";
 import { storageUsage } from "@/core/downloads";
-import { getFirebaseMode, linkGoogle, parseFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
+import { getFirebaseMode, linkGoogle, parseFirebaseConfig, readCustomFirebaseConfig, readFirebaseConfig, resetFirebase, saveFirebaseConfig, setFirebaseMode, signOutSync, useSync } from "@/core/sync/firebase";
 import { resetPushCursor, startSync, stopSync, syncNow } from "@/core/sync/engine";
 import { Row, Toggle, bytes, timeAgo, toast } from "../common";
 import type { CustomSourceRow } from "@/core/db";
 import { refreshAnalyticsConsent } from "@/core/analytics";
 import RULES from "../../../firestore.rules?raw";
 
+declare const __APP_VERSION__: string;
+const APP_VERSION = __APP_VERSION__;
+
 function Section({ id, title, children, hue = 0 }: { id?: string; title: string; children: ReactNode; hue?: number }) {
   return <section id={id} className="panel" data-hue={hue}><h2>{title}</h2>{children}</section>;
 }
 
-export function SettingsPage() {
+/* ------------------------------ settings shell ------------------------------ */
+interface Category { slug: string; title: string; summary: (s: ReturnType<typeof useSettings.getState>) => string; icon: Icon; hue: number }
+
+const CATEGORIES: Category[] = [
+  { slug: "appearance", title: "Appearance", icon: Palette, hue: 0, summary: (s) => `${s.theme[0]!.toUpperCase()}${s.theme.slice(1)} theme, 3D backdrop ${s.fx ? "on" : "off"}` },
+  { slug: "library", title: "Library", icon: Books, hue: 2, summary: (s) => `${s.autoUpdateHours ? `Updates every ${s.autoUpdateHours >= 24 ? `${s.autoUpdateHours / 24} day${s.autoUpdateHours > 24 ? "s" : ""}` : `${s.autoUpdateHours} hours`}` : "Updates off"}, ${s.libraryDensity === "list" ? "list" : `${s.libraryDensity} grid`}` },
+  { slug: "reader", title: "Reader", icon: BookOpenText, hue: 4, summary: (s) => `${s.readerMode === "auto" ? "Auto mode" : s.readerMode.replace("paged-", "").replace("rtl", "right to left").replace("ltr", "left to right")}, ${s.fit} fit` },
+  { slug: "downloads", title: "Downloads and storage", icon: DownloadSimple, hue: 6, summary: (s) => `${s.downloadConcurrency} at a time, backup and restore` },
+  { slug: "proxy", title: "Sources and proxy", icon: Compass, hue: 5, summary: (s) => `${s.disabledSourceIds.length ? `${s.disabledSourceIds.length} disabled` : "All enabled"}, custom sources, file import` },
+  { slug: "firebase", title: "Firebase and sync", icon: CloudArrowUp, hue: 3, summary: () => (getFirebaseMode() === "custom" ? "Your own Firebase" : "Comik Firebase") },
+  { slug: "privacy", title: "Privacy and community", icon: ShieldCheck, hue: 1, summary: (s) => `Safe mode ${s.safeMode ? "on" : "off"}, analytics ${s.analyticsConsent ? "on" : "off"}` },
+  { slug: "about", title: "About", icon: Info, hue: 0, summary: () => `Version ${APP_VERSION}` },
+];
+
+function useWide() {
+  const query = "(min-width: 900px)";
+  const [wide, setWide] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const mq = matchMedia(query);
+    const update = () => setWide(mq.matches);
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
+
+/** Android-style settings: a list of categories, each opening its own page. Wide screens show both side by side. */
+export function SettingsLayout() {
+  const settings = useSettings();
+  const { pathname } = useLocation();
+  const detail = pathname.replace(/\/+$/, "") !== "/settings";
+  return (
+    <div className={`page settings-shell${detail ? " has-detail" : ""}`}>
+      <nav className="settings-list" aria-label="Settings categories">
+        <div className="topbar"><div><div className="kicker">Settings</div><h1>Make it yours</h1></div></div>
+        {CATEGORIES.map(({ slug, title, summary, icon: CategoryIcon, hue }) => (
+          <NavLink key={slug} to={`/settings/${slug}`} className="settings-item" data-hue={hue}>
+            <span className="settings-icon"><CategoryIcon size={22} weight="duotone" /></span>
+            <span className="settings-text"><strong>{title}</strong><small>{summary(settings)}</small></span>
+            <CaretRight size={16} className="settings-caret" aria-hidden="true" />
+          </NavLink>
+        ))}
+      </nav>
+      <div className="settings-detail"><Outlet /></div>
+    </div>
+  );
+}
+
+/** On a wide screen `/settings` has nothing to show beside the list, so open the first category. */
+export function SettingsIndex() {
+  const wide = useWide();
+  return wide ? <Navigate to="/settings/appearance" replace /> : null;
+}
+
+function Detail({ title, intro, children }: { title: string; intro?: string; children: ReactNode }) {
+  return (
+    <div className="settings-page">
+      <div className="settings-page-head">
+        <Link to="/settings" className="settings-back" aria-label="Back to settings"><CaretLeft size={20} /></Link>
+        <div><h2>{title}</h2>{intro && <p className="muted">{intro}</p>}</div>
+      </div>
+      <div className="stack">{children}</div>
+    </div>
+  );
+}
+
+export function AppearanceSettings() {
   const s = useSettings();
   return (
-    <div className="page">
-      <div className="topbar"><div><div className="kicker">Settings</div><h1>Make it yours</h1></div></div>
-      <div className="two" style={{ alignItems: "start" }}>
-        <div className="stack">
-          <Section title="Appearance" hue={0}>
-            <Row title="Theme">
-              <div className="seg">{(["system", "dark", "light"] as Theme[]).map((t) => <button key={t} className={s.theme === t ? "on" : ""} onClick={() => s.set({ theme: t })} style={{ textTransform: "capitalize" }}>{t}</button>)}</div>
-            </Row>
-            <Row title="3D panel backdrop" hint="Turn off to save battery. Reduced-motion users get a still frame."><Toggle label="3D backdrop" on={s.fx} onChange={(v) => s.set({ fx: v })} /></Row>
-            <Row title="Safe mode" hint="Hide comics from sources marked as 18+. Enabled by default."><Toggle label="Safe mode" on={s.safeMode} onChange={(v) => s.set({ safeMode: v })} /></Row>
-            <Row title="Unread badges on covers"><Toggle label="Unread badges" on={s.libraryUnreadBadge} onChange={(v) => s.set({ libraryUnreadBadge: v })} /></Row>
-          </Section>
-          <Section title="Library updates" hue={2}>
-            <Row title="Check for new chapters" hint="Runs when you open the app"><select className="input" style={{ width: "auto" }} value={s.autoUpdateHours} onChange={(e) => s.set({ autoUpdateHours: Number(e.target.value) })}><option value={0}>Never</option><option value={6}>Every 6 hours</option><option value={12}>Every 12 hours</option><option value={24}>Daily</option><option value={168}>Weekly</option></select></Row>
-            <Row title="Skip completed series"><Toggle label="Skip completed" on={s.updateSkipCompleted} onChange={(v) => s.set({ updateSkipCompleted: v })} /></Row>
-            <Row title="Skip series you have started" hint="Only check ones you have not read yet"><Toggle label="Skip started" on={s.updateSkipStarted} onChange={(v) => s.set({ updateSkipStarted: v })} /></Row>
-            <Row title="Default sort"><select className="input" style={{ width: "auto" }} value={s.librarySort} onChange={(e) => s.set({ librarySort: e.target.value as LibrarySort })}><option value="lastRead">Last read</option><option value="lastUpdate">Latest update</option><option value="unread">Unread</option><option value="title">Title</option><option value="added">Date added</option></select></Row>
-            <Row title="Sort ascending"><Toggle label="Ascending order" on={s.librarySortAsc} onChange={(v) => s.set({ librarySortAsc: v })} /></Row>
-            <Row title="Shelf layout"><select className="input" style={{ width: "auto" }} value={s.libraryDensity} onChange={(e) => s.set({ libraryDensity: e.target.value as LibraryDensity })}><option value="cozy">Comfortable grid</option><option value="compact">Compact grid</option><option value="list">List</option></select></Row>
-            <Row title="Only show unread"><Toggle label="Unread only" on={s.libraryOnlyUnread} onChange={(v) => s.set({ libraryOnlyUnread: v })} /></Row>
-          </Section>
-          <Section title="Reading defaults" hue={4}>
-            <Row title="Mode"><select className="input" style={{ width: "auto" }} value={s.readerMode} onChange={(e) => s.set({ readerMode: e.target.value as typeof s.readerMode })}><option value="auto">Auto</option><option value="paged-rtl">Right to left</option><option value="paged-ltr">Left to right</option><option value="paged-vertical">Vertical</option><option value="webtoon">Webtoon</option></select></Row>
-            <Row title="Page fit"><select className="input" style={{ width: "auto" }} value={s.fit} onChange={(e) => s.set({ fit: e.target.value as FitMode })}><option value="width">Fit width</option><option value="height">Fit height</option><option value="screen">Fit screen</option><option value="original">Original size</option></select></Row>
-            <Row title="Two-page spread"><Toggle label="Two pages" on={s.doublePages} onChange={(v) => s.set({ doublePages: v })} /></Row>
-            <Row title="Keep wide pages single"><Toggle label="Smart spreads" on={s.smartSpreads} onChange={(v) => s.set({ smartSpreads: v })} /></Row>
-            <Row title="Crop borders"><Toggle label="Crop borders" on={s.cropBorders} onChange={(v) => s.set({ cropBorders: v })} /></Row>
-            <Row title="Split tall images"><Toggle label="Split tall" on={s.splitTall} onChange={(v) => s.set({ splitTall: v })} /></Row>
-            <Row title="Preload pages" hint={`${s.preload} pages ahead`}><input type="range" min={1} max={10} value={s.preload} onChange={(e) => s.set({ preload: Number(e.target.value) })} /></Row>
-            <Row title="Tap zones"><select className="input" style={{ width: "auto" }} value={s.tapZones} onChange={(e) => s.set({ tapZones: e.target.value as typeof s.tapZones })}><option value="standard">Left and right</option><option value="l-shaped">L-shaped</option><option value="edge">Screen edges</option><option value="off">Off</option></select></Row>
-            <Row title="Invert tap direction"><Toggle label="Invert taps" on={s.invertTaps} onChange={(v) => s.set({ invertTaps: v })} /></Row>
-            <Row title="Show page number when controls hide"><Toggle label="Page number" on={s.showPageNumber} onChange={(v) => s.set({ showPageNumber: v })} /></Row>
-            <Row title="Keep screen awake"><Toggle label="Keep screen awake" on={s.keepScreenOn} onChange={(v) => s.set({ keepScreenOn: v })} /></Row>
-            <Row title="Auto-advance at chapter end"><Toggle label="Auto-next" on={s.autoNextChapter} onChange={(v) => s.set({ autoNextChapter: v })} /></Row>
-            <Row title="Skip chapters already read when going next"><Toggle label="Skip read" on={s.skipReadChapters} onChange={(v) => s.set({ skipReadChapters: v })} /></Row>
-            <Row title="Screen brightness" hint={`${Math.round(s.brightness * 100)}%`}><input type="range" min={0.3} max={1.2} step={0.05} value={s.brightness} onChange={(e) => s.set({ brightness: Number(e.target.value) })} /></Row>
-            <Row title="Warm tint" hint={`${Math.round(s.sepia * 100)}%`}><input type="range" min={0} max={0.8} step={0.05} value={s.sepia} onChange={(e) => s.set({ sepia: Number(e.target.value) })} /></Row>
-            <Row title="Grayscale"><Toggle label="Grayscale" on={s.grayscale} onChange={(v) => s.set({ grayscale: v })} /></Row>
-            <Row title="Invert image colors"><Toggle label="Invert colors" on={s.invert} onChange={(v) => s.set({ invert: v })} /></Row>
-          </Section>
-          <Section title="Downloads" hue={6}>
-            <Row title="Concurrent downloads" hint={`${s.downloadConcurrency} at a time`}><input type="range" min={1} max={8} value={s.downloadConcurrency} onChange={(e) => s.set({ downloadConcurrency: Number(e.target.value) })} /></Row>
-            <Row title="Download ahead" hint={`${s.autoDownloadAhead} chapters`}><input type="range" min={0} max={10} value={s.autoDownloadAhead} onChange={(e) => s.set({ autoDownloadAhead: Number(e.target.value) })} /></Row>
-            <Row title="Delete download after reading"><Toggle label="Delete after read" on={s.deleteAfterRead} onChange={(v) => s.set({ deleteAfterRead: v })} /></Row>
-          </Section>
-          <Section title="Community and privacy" hue={6}>
-            <Row title="Comik public community" hint="Show the shared public discussion room. This does not affect personal library sync."><Toggle label="Comik public community" on={s.publicCommunityEnabled} onChange={(v) => s.set({ publicCommunityEnabled: v })} /></Row>
-            <Row title="Anonymous usage analytics" hint="Opt-in. Sends generic screen and feature events only, never comic titles, searches, or post text.">
-              <Toggle label="Usage analytics" on={s.analyticsConsent} onChange={(enabled) => {
-                s.set({ analyticsConsent: enabled });
-                void refreshAnalyticsConsent(enabled);
-              }} />
-            </Row>
-            <div className="field" style={{ marginTop: 12 }}>
-              <label htmlFor="imgur-client-id">Imgur Client ID (optional)</label>
-              <input id="imgur-client-id" className="input" value={s.imgurClientId} onChange={(event) => s.set({ imgurClientId: event.target.value.trim() })} placeholder="Enable larger image uploads" autoComplete="off" />
-              <span className="hint muted">Without Imgur, attachments are limited to 50 KB.</span>
-            </div>
-          </Section>
-          <Data />
+    <Detail title="Appearance" intro="Theme and motion.">
+      <Section title="Display" hue={0}>
+        <Row title="Theme">
+        <div className="seg">{(["system", "dark", "light"] as Theme[]).map((t) => <button key={t} className={s.theme === t ? "on" : ""} onClick={() => s.set({ theme: t })} style={{ textTransform: "capitalize" }}>{t}</button>)}</div>
+        </Row>
+        <Row title="3D panel backdrop" hint="Turn off to save battery. Reduced-motion users get a still frame."><Toggle label="3D backdrop" on={s.fx} onChange={(v) => s.set({ fx: v })} /></Row>
+      </Section>
+    </Detail>
+  );
+}
+
+export function LibrarySettings() {
+  const s = useSettings();
+  return (
+    <Detail title="Library" intro="How your shelf looks and when it checks for new chapters.">
+      <Section title="Updates" hue={2}>
+        <Row title="Check for new chapters" hint="Runs when you open the app"><select className="input" style={{ width: "auto" }} value={s.autoUpdateHours} onChange={(e) => s.set({ autoUpdateHours: Number(e.target.value) })}><option value={0}>Never</option><option value={6}>Every 6 hours</option><option value={12}>Every 12 hours</option><option value={24}>Daily</option><option value={168}>Weekly</option></select></Row>
+        <Row title="Skip completed series"><Toggle label="Skip completed" on={s.updateSkipCompleted} onChange={(v) => s.set({ updateSkipCompleted: v })} /></Row>
+        <Row title="Skip series you have started" hint="Only check ones you have not read yet"><Toggle label="Skip started" on={s.updateSkipStarted} onChange={(v) => s.set({ updateSkipStarted: v })} /></Row>
+      </Section>
+      <Section title="Shelf" hue={2}>
+        <Row title="Unread badges on covers"><Toggle label="Unread badges" on={s.libraryUnreadBadge} onChange={(v) => s.set({ libraryUnreadBadge: v })} /></Row>
+        <Row title="Default sort"><select className="input" style={{ width: "auto" }} value={s.librarySort} onChange={(e) => s.set({ librarySort: e.target.value as LibrarySort })}><option value="lastRead">Last read</option><option value="lastUpdate">Latest update</option><option value="unread">Unread</option><option value="title">Title</option><option value="added">Date added</option></select></Row>
+        <Row title="Sort ascending"><Toggle label="Ascending order" on={s.librarySortAsc} onChange={(v) => s.set({ librarySortAsc: v })} /></Row>
+        <Row title="Shelf layout"><select className="input" style={{ width: "auto" }} value={s.libraryDensity} onChange={(e) => s.set({ libraryDensity: e.target.value as LibraryDensity })}><option value="cozy">Comfortable grid</option><option value="compact">Compact grid</option><option value="list">List</option></select></Row>
+        <Row title="Only show unread"><Toggle label="Unread only" on={s.libraryOnlyUnread} onChange={(v) => s.set({ libraryOnlyUnread: v })} /></Row>
+      </Section>
+    </Detail>
+  );
+}
+
+export function ReaderSettingsPage() {
+  const s = useSettings();
+  return (
+    <Detail title="Reader" intro="Defaults for new series. You can still change them per series while reading.">
+      <Section title="Layout" hue={4}>
+        <Row title="Mode"><select className="input" style={{ width: "auto" }} value={s.readerMode} onChange={(e) => s.set({ readerMode: e.target.value as typeof s.readerMode })}><option value="auto">Auto</option><option value="paged-rtl">Right to left</option><option value="paged-ltr">Left to right</option><option value="paged-vertical">Vertical</option><option value="webtoon">Webtoon</option></select></Row>
+        <Row title="Page fit"><select className="input" style={{ width: "auto" }} value={s.fit} onChange={(e) => s.set({ fit: e.target.value as FitMode })}><option value="width">Fit width</option><option value="height">Fit height</option><option value="screen">Fit screen</option><option value="original">Original size</option></select></Row>
+        <Row title="Two-page spread"><Toggle label="Two pages" on={s.doublePages} onChange={(v) => s.set({ doublePages: v })} /></Row>
+        <Row title="Keep wide pages single"><Toggle label="Smart spreads" on={s.smartSpreads} onChange={(v) => s.set({ smartSpreads: v })} /></Row>
+        <Row title="Crop borders"><Toggle label="Crop borders" on={s.cropBorders} onChange={(v) => s.set({ cropBorders: v })} /></Row>
+        <Row title="Split tall images"><Toggle label="Split tall" on={s.splitTall} onChange={(v) => s.set({ splitTall: v })} /></Row>
+        <Row title="Preload pages" hint={`${s.preload} pages ahead`}><input type="range" min={1} max={10} value={s.preload} onChange={(e) => s.set({ preload: Number(e.target.value) })} /></Row>
+      </Section>
+      <Section title="Controls" hue={4}>
+        <Row title="Tap zones"><select className="input" style={{ width: "auto" }} value={s.tapZones} onChange={(e) => s.set({ tapZones: e.target.value as typeof s.tapZones })}><option value="standard">Left and right</option><option value="l-shaped">L-shaped</option><option value="edge">Screen edges</option><option value="off">Off</option></select></Row>
+        <Row title="Invert tap direction"><Toggle label="Invert taps" on={s.invertTaps} onChange={(v) => s.set({ invertTaps: v })} /></Row>
+        <Row title="Show page number when controls hide"><Toggle label="Page number" on={s.showPageNumber} onChange={(v) => s.set({ showPageNumber: v })} /></Row>
+        <Row title="Keep screen awake"><Toggle label="Keep screen awake" on={s.keepScreenOn} onChange={(v) => s.set({ keepScreenOn: v })} /></Row>
+        <Row title="Auto-advance at chapter end"><Toggle label="Auto-next" on={s.autoNextChapter} onChange={(v) => s.set({ autoNextChapter: v })} /></Row>
+        <Row title="Skip chapters already read when going next"><Toggle label="Skip read" on={s.skipReadChapters} onChange={(v) => s.set({ skipReadChapters: v })} /></Row>
+      </Section>
+      <Section title="Image color" hue={4}>
+        <Row title="Screen brightness" hint={`${Math.round(s.brightness * 100)}%`}><input type="range" min={0.3} max={1.2} step={0.05} value={s.brightness} onChange={(e) => s.set({ brightness: Number(e.target.value) })} /></Row>
+        <Row title="Warm tint" hint={`${Math.round(s.sepia * 100)}%`}><input type="range" min={0} max={0.8} step={0.05} value={s.sepia} onChange={(e) => s.set({ sepia: Number(e.target.value) })} /></Row>
+        <Row title="Grayscale"><Toggle label="Grayscale" on={s.grayscale} onChange={(v) => s.set({ grayscale: v })} /></Row>
+        <Row title="Invert image colors"><Toggle label="Invert colors" on={s.invert} onChange={(v) => s.set({ invert: v })} /></Row>
+      </Section>
+    </Detail>
+  );
+}
+
+export function DownloadsSettings() {
+  const s = useSettings();
+  return (
+    <Detail title="Downloads and storage" intro="Offline chapters, backups and the page cache.">
+      <Section title="Downloads" hue={6}>
+        <Row title="Concurrent downloads" hint={`${s.downloadConcurrency} at a time`}><input type="range" min={1} max={8} value={s.downloadConcurrency} onChange={(e) => s.set({ downloadConcurrency: Number(e.target.value) })} /></Row>
+        <Row title="Download ahead" hint={`${s.autoDownloadAhead} chapters`}><input type="range" min={0} max={10} value={s.autoDownloadAhead} onChange={(e) => s.set({ autoDownloadAhead: Number(e.target.value) })} /></Row>
+        <Row title="Delete download after reading"><Toggle label="Delete after read" on={s.deleteAfterRead} onChange={(v) => s.set({ deleteAfterRead: v })} /></Row>
+      </Section>
+      <Data />
+    </Detail>
+  );
+}
+
+export function ProxySettings() {
+  return (
+    <Detail title="Sources and proxy" intro="Which sources appear, where requests go, and your own files.">
+      <Section title="Enabled sources" hue={5}>
+        <p className="muted" style={{ marginBottom: 12 }}>Choose which built-in and custom sources appear in Discover and global search.</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link className="btn" to="/settings/sources">Manage enabled sources</Link>
+          <Link className="btn" to="/source-studio">Source Studio</Link>
         </div>
-        <div className="stack">
-          <SyncSection />
-          <Section title="Source settings" hue={5}>
-            <p className="muted" style={{ marginBottom: 12 }}>Choose which built-in and custom sources appear in Discover and global search.</p>
-            <Link className="btn" to="/settings/sources">Manage enabled sources</Link>
-          </Section>
-          <SourcesSection />
-          <LocalImport />
+      </Section>
+      <SourcesSection />
+      <LocalImport />
+    </Detail>
+  );
+}
+
+export function FirebaseSettings() {
+  return (
+    <Detail title="Firebase and sync" intro="Sign-in, library sync and private rooms. Reading in the browser needs your own project.">
+      <SyncSection />
+    </Detail>
+  );
+}
+
+export function PrivacySettings() {
+  const s = useSettings();
+  return (
+    <Detail title="Privacy and community" intro="Content filtering, the public Community and analytics.">
+      <Section title="Content" hue={1}>
+        <Row title="Safe mode" hint="Hide comics from sources marked as 18+. Enabled by default."><Toggle label="Safe mode" on={s.safeMode} onChange={(v) => s.set({ safeMode: v })} /></Row>
+      </Section>
+      <Section title="Community and analytics" hue={1}>
+        <Row title="Comik public community" hint="Show the shared public discussion room. This does not affect personal library sync."><Toggle label="Comik public community" on={s.publicCommunityEnabled} onChange={(v) => s.set({ publicCommunityEnabled: v })} /></Row>
+        <Row title="Anonymous usage analytics" hint="Opt-in. Sends generic screen and feature events only, never comic titles, searches, or post text.">
+        <Toggle label="Usage analytics" on={s.analyticsConsent} onChange={(enabled) => {
+        s.set({ analyticsConsent: enabled });
+        void refreshAnalyticsConsent(enabled);
+        }} />
+        </Row>
+        <div className="field" style={{ marginTop: 12 }}>
+        <label htmlFor="imgur-client-id">Imgur Client ID (optional)</label>
+        <input id="imgur-client-id" className="input" value={s.imgurClientId} onChange={(event) => s.set({ imgurClientId: event.target.value.trim() })} placeholder="Enable larger image uploads" autoComplete="off" />
+        <span className="hint muted">Without Imgur, attachments are limited to 50 KB.</span>
         </div>
-      </div>
-    </div>
+      </Section>
+    </Detail>
+  );
+}
+
+export function AboutSettings() {
+  return (
+    <Detail title="About" intro="Comik is a local-first reader for web comics.">
+      <Section title={`Comik ${APP_VERSION}`} hue={0}>
+        <Row title="Release notes and downloads"><a className="btn sm" href="/releases/" target="_blank" rel="noreferrer">Open releases</a></Row>
+        <Row title="Firebase setup guide" hint="What each Firebase does and how to bring your own"><Link className="btn sm" to="/setup">Open guide</Link></Row>
+        <Row title="Source code"><a className="btn sm" href="https://github.com/asuka-405/comik" target="_blank" rel="noreferrer">GitHub</a></Row>
+      </Section>
+    </Detail>
   );
 }
 
@@ -102,10 +235,11 @@ function SyncSection() {
   const sync = useSync();
   const [cfgText, setCfgText] = useState("");
   const [googleWebClientId, setGoogleWebClientId] = useState(() => readFirebaseConfig()?.googleWebClientId ?? "");
-  const [configured, setConfigured] = useState(() => !!readFirebaseConfig());
+  const [configured, setConfigured] = useState(() => getFirebaseMode() === "default" || !!readCustomFirebaseConfig());
   const [mode, setMode] = useState(getFirebaseMode);
   const [enabled, setEnabled] = useState(() => localStorage.getItem("comik.sync.enabled") === "1");
   const [showRules, setShowRules] = useState(false);
+  const [proxyRegion, setProxyRegion] = useState(() => readCustomFirebaseConfig()?.proxyRegion ?? "");
 
   const saveConfig = () => {
     try {
@@ -136,54 +270,74 @@ function SyncSection() {
   const switchMode = (next: "default" | "custom") => {
     if (next === mode) return;
     stopSync();
-    if (next === "default") {
-      localStorage.removeItem("comik.sync.enabled");
-      setEnabled(false);
-    }
     setFirebaseMode(next);
     resetFirebase();
     resetPushCursor();
     setMode(next);
     const config = readFirebaseConfig();
-    setConfigured(!!config);
+    setConfigured(!!readCustomFirebaseConfig() || next === "default");
     setGoogleWebClientId(config?.googleWebClientId ?? "");
+    setProxyRegion(readCustomFirebaseConfig()?.proxyRegion ?? "");
     useSync.getState().patch({ status: "off", user: null, error: undefined });
     void refreshAnalyticsConsent(useSettings.getState().analyticsConsent);
-    if (next === "custom" && enabled && readFirebaseConfig()) void startSync();
+    if (enabled && (next === "default" || readCustomFirebaseConfig())) void startSync();
   };
+  const savePartial = (patch: Partial<NonNullable<ReturnType<typeof readCustomFirebaseConfig>>>, message: string) => {
+    const config = readCustomFirebaseConfig();
+    if (!config) return;
+    saveFirebaseConfig({ ...config, ...patch });
+    resetFirebase();
+    toast(message);
+  };
+  const ready = mode === "default" || configured;
 
   return (
-    <Section id="sync" title="Personal library sync" hue={3}>
-      <p className="muted" style={{ marginBottom: 12 }}>The Comik Firebase project is reserved for the public community. Reading data syncs only to a Firebase project you own. Without one, this device stays local.</p>
+    <Section id="sync" title="Firebase project" hue={3}>
       <div className="seg" style={{ marginBottom: 12 }}>
-        <button className={mode === "default" ? "on" : ""} onClick={() => switchMode("default")}>Local only</button>
+        <button className={mode === "default" ? "on" : ""} onClick={() => switchMode("default")}>Comik Firebase</button>
         <button className={mode === "custom" ? "on" : ""} onClick={() => switchMode("custom")}>My Firebase</button>
       </div>
       {mode === "default" ? (
-        <div className="panel" data-hue="3"><h2>Use Comik on this device</h2><p className="muted" style={{ marginBottom: 12 }}>Your library and reading progress remain on this device. The public Community remains available separately.</p><button className="btn" onClick={() => switchMode("custom")}>Set up personal sync</button></div>
+        <div className="panel" data-hue="3">
+          <h2>Comik's Firebase</h2>
+          <p className="muted" style={{ lineHeight: 1.65 }}>Handles sign-in, library sync and the public Community, with nothing to set up. {isNativeShell
+            ? "In this app comics are fetched from your own device, so everything works with it."
+            : "It never fetches comics. To read in the browser, use your own Firebase, or use the Android, Linux or Windows app."}</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {!isNativeShell && <Link className="btn primary" to="/setup">Set up my Firebase</Link>}
+            <button className="btn" onClick={() => switchMode("custom")}>Use my own Firebase</button>
+          </div>
+        </div>
       ) : !configured ? (
         <>
           <div className="field"><label>Paste your Firebase web config</label><textarea className="input mono" rows={6} value={cfgText} onChange={(e) => setCfgText(e.target.value)} placeholder={'{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }'} /></div>
           <button className="btn primary" disabled={!cfgText.trim()} onClick={saveConfig}>Save config</button>
-          <div className="hint muted" style={{ marginTop: 12, lineHeight: 1.7 }}><strong>Setup steps</strong><ol><li>Create a Firebase project you control and add a Web app.</li><li>In Authentication, enable Google and Anonymous sign-in.</li><li>Add the current site domain under Authentication settings, Authorized domains.</li><li>Create a Firestore database and publish the rules shown here.</li><li>Paste the Web app config. For Android, also add the Web OAuth client ID below.</li></ol></div>
+          <p className="hint muted" style={{ marginTop: 12, lineHeight: 1.7 }}>Your project handles sign-in, sync, private Community rooms{isNativeShell ? "" : " and, through a function you deploy, reading comics in the browser"}. <Link to="/setup">Step-by-step guide</Link>.</p>
         </>
-      ) : (
+      ) : null}
+      {mode === "custom" && configured && (
         <>
-          {mode === "custom" && <div className="field" style={{ marginTop: 12 }}>
+          <div className="field" style={{ marginTop: 4 }}>
             <label htmlFor="google-web-client-id">Google OAuth Web client ID</label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input id="google-web-client-id" className="input mono" style={{ flex: "1 1 320px", minWidth: 0 }} value={googleWebClientId} onChange={(event) => setGoogleWebClientId(event.target.value.trim())} placeholder="...apps.googleusercontent.com" autoComplete="off" />
-              <button className="btn sm" disabled={!googleWebClientId.trim()} onClick={() => {
-                const config = readFirebaseConfig();
-                if (!config) return;
-                saveFirebaseConfig({ ...config, googleWebClientId: googleWebClientId.trim() });
-                resetFirebase();
-                toast("Google client ID saved");
-              }}>Save client ID</button>
+              <button className="btn sm" disabled={!googleWebClientId.trim()} onClick={() => savePartial({ googleWebClientId: googleWebClientId.trim() }, "Google client ID saved")}>Save client ID</button>
             </div>
-            <p className="hint muted">Required for Android’s native Google account chooser. Use the Web OAuth client from this Firebase project.</p>
+            <p className="hint muted">Required for Android's native Google account chooser. Use the Web OAuth client from this Firebase project.</p>
+          </div>
+          {!isNativeShell && <div className="field">
+            <label htmlFor="proxy-region">Proxy function region</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input id="proxy-region" className="input mono" style={{ flex: "0 1 220px", minWidth: 0 }} value={proxyRegion} onChange={(event) => setProxyRegion(event.target.value.trim())} placeholder="us-central1" autoComplete="off" />
+              <button className="btn sm" onClick={() => savePartial({ proxyRegion: proxyRegion.trim() || undefined }, "Proxy region saved")}>Save region</button>
+            </div>
+            <p className="hint muted">Where you deployed <span className="mono">comikProxy</span>. The browser sends source requests there. Leave empty for us-central1. <Link to="/setup">Deploy guide</Link>.</p>
           </div>}
-          <Row title="Sync this device" hint={enabled ? (sync.user ? `${sync.user.isAnonymous ? "Anonymous account" : sync.user.email ?? "Signed in"}${sync.lastSyncedAt ? `, synced ${timeAgo(sync.lastSyncedAt)}` : ""}` : sync.status === "connecting" ? "Connecting" : "Starting") : "Off, data stays local"}>
+        </>
+      )}
+      {ready && (
+        <>
+          <Row title="Sync this device" hint={enabled ? (sync.user ? `${sync.user.isAnonymous ? "Guest account" : sync.user.email ?? "Signed in"}${sync.lastSyncedAt ? `, synced ${timeAgo(sync.lastSyncedAt)}` : ""}` : sync.status === "connecting" ? "Connecting" : "Starting") : "Off, data stays on this device"}>
             <Toggle label="Sync" on={enabled} onChange={(v) => (v ? void turnOn() : turnOff())} />
           </Row>
           {sync.status === "error" && <div className="err" style={{ margin: "10px 0" }}>{sync.error}</div>}
@@ -195,14 +349,14 @@ function SyncSection() {
             </div>
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-            <button className="btn sm ghost" onClick={() => setShowRules(!showRules)}>Firestore rules</button>
+            {mode === "custom" && <button className="btn sm ghost" onClick={() => setShowRules(!showRules)}>Firestore rules</button>}
             {mode === "custom" && <button className="btn sm ghost danger" onClick={() => {
               turnOff();
               saveFirebaseConfig(null);
               resetFirebase();
               setMode("default");
-              setConfigured(false);
-            }}>Forget own config</button>}
+              setConfigured(true);
+            }}>Forget my Firebase</button>}
           </div>
           {showRules && <pre className="input mono" style={{ whiteSpace: "pre-wrap", marginTop: 10, fontSize: 12 }}>{RULES}</pre>}
         </>
@@ -224,6 +378,7 @@ function SourcesSection() {
   const [lang, setLang] = useState("en");
 
   const test = async () => {
+    if (!proxyBase()) return setHealth("No proxy yet. Connect your own Firebase to read in the browser.");
     setHealth("Checking");
     try {
       const r = await fetch(`${proxyBase()}/health`);
@@ -246,7 +401,7 @@ function SourcesSection() {
 
   return (
     <Section id="sources" title="Sources and proxy" hue={5}>
-      <div className="field"><label>Proxy address (leave empty to use this site)</label>
+      <div className="field"><label>Proxy address (advanced; leave empty to use this device or your Firebase)</label>
         <div style={{ display: "flex", gap: 8 }}><input className="input" value={proxyUrl} onChange={(e) => set({ proxyUrl: e.target.value })} placeholder="https://my-proxy.example.com" /><button className="btn" onClick={test}>Test</button></div>
         {health && <span className="hint muted">{health}</span>}
       </div>

@@ -3,3 +3,5 @@ dist
 release
 .env*
 *.log
+functions/index.js
+functions/.env
