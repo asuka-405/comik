@@ -14,16 +14,19 @@ const ICONS: Record<Platform, React.ReactNode> = {
 };
 
 const FEATURES: { title: string; body: string }[] = [
-  { title: "100 English sources", body: "Webtoon, Webtoon Canvas and about 97 community sites in one searchable catalogue. Pick the ones you want and switch the rest off." },
-  { title: "A library that remembers", body: "Progress, read marks and resume points per chapter. Duplicate uploads of the same chapter are folded together so counts stay honest." },
-  { title: "Readers for every format", body: "Right to left, left to right, vertical paging and continuous webtoon scrolling. Fit modes, tall-strip splitting and per-image filters." },
-  { title: "Downloads and updates", body: "Save chapters for offline reading and check the whole library for new chapters in one pass." },
+  { title: "Comic reader", body: "Right to left, left to right, vertical paging and continuous webtoon scrolling, with fit modes, tall-strip splitting and per-image filters. About 100 English sources, including Webtoon and community sites, in one searchable catalogue." },
+  { title: "Web novel reader", body: "Follow web novels from FreeWebNovel, ReadNovelFull, NovelFull, WuxiaBox, Royal Road and Project Gutenberg, or import your own EPUB and text files. Chapters, progress and updates work like they do for comics." },
+  { title: "Anime player", body: "HLS and MP4 playback with a quality menu, VTT and SRT subtitles, skip intro and outro, resume and automatic next episode. Episodes show thumbnails, descriptions, durations and seasons. Discover lists anime from AniList." },
+  { title: "Anime connectors", body: "Connect a service you have permission to use with a small JavaScript file. It runs in a locked sandbox, reaches only the https hosts it declares and is checked before Comik uses what it returns. Comik ships none for third-party sites." },
+  { title: "Connector debugger", body: "Syntax errors are marked as you type, with the line, column and a suggested fix. A step-by-step run shows what each call returned, every request and what Comik kept. Includes a JSON formatter, connector icons and built-in documentation." },
+  { title: "Source Studio", body: "Build a comic source for a site you are allowed to read with CSS selectors, preview it live and save it into your catalogue. Madara and MangaThemesia templates get you started." },
+  { title: "Community", body: "Share what you are reading and watching, rate titles, vote in polls and reference a comic, novel or anime in a post. Join communities with channels and announcements, with owners, admins and moderators, or open a private room with an invite link." },
+  { title: "Vault", body: "Move titles out of sight. They stay off your shelf, history and community suggestions until you open the Vault, which you can lock with a PIN. Safe mode also hides adult-marked sources by default." },
+  { title: "One shelf, one library", body: "Comics, novels and anime share progress, read marks and resume points, with shelf tabs, sort, filter and multi-select. History and updates have a tab for each kind." },
+  { title: "Downloads and updates", body: "Save chapters for offline reading and check the whole library for new chapters or episodes in one pass. App updates download as a plain file you choose to install." },
   { title: "Sign in and sync, built in", body: "Everything stays on your device until you turn on sync. Comik's Firebase handles guest or Google sign-in, sync and the public Community with no setup. Bring your own Firebase and everything is stored in your project, with nothing kept by Comik." },
-  { title: "Your Firebase reads for you on the web", body: "The apps fetch comics from your device. In the browser, a small proxy in your own Firebase project does it, so no shared address gets banned by the sources." },
+  { title: "Your Firebase reads for you on the web", body: "The apps fetch from your device. In the browser, a small proxy in your own Firebase project does it, so no shared address gets banned by the sources." },
   { title: "Backups and Tachiyomi import", body: "Export your library and progress to a file and restore it on any device, or import a Tachiyomi or Mihon backup to bring your whole shelf and read progress across." },
-  { title: "Community", body: "Share what you are reading, rate comics, vote in polls and open private rooms with an invite link." },
-  { title: "Safe mode on by default", body: "Adult-marked sources are hidden from Discover, search, your shelf and community posts until you turn it off." },
-  { title: "Source Studio", body: "Build a source for a site you are allowed to read with CSS selectors, preview it live, and save it into your catalogue." },
   { title: "Command palette", body: "Press Ctrl K to jump to a series, a page or a setting without touching the mouse." },
 ];
 
@@ -153,7 +156,7 @@ function ReleasesPage() {
         <section className="rel-section" id="features">
           <div className="landing-section-heading">
             <h2>What you get.</h2>
-            <p>The same reader on the web, Android, Linux and Windows.</p>
+            <p>Comics, web novels and anime on the web, Android, Linux and Windows.</p>
           </div>
           <ul className="rel-features">
             {FEATURES.map((feature) => (

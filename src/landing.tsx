@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ArrowRight, AndroidLogo, LinuxLogo, WindowsLogo } from "@phosphor-icons/react";
+import { ArrowRight, AndroidLogo, BookOpen, BookOpenText, LinuxLogo, PlayCircle, WindowsLogo } from "@phosphor-icons/react";
 import { PanelField } from "./ui/PanelField";
 import "./styles.css";
 import "./landing.css";
@@ -11,7 +11,9 @@ function LandingPage() {
       <header className="landing-nav">
         <a className="landing-brand" href="/" aria-label="Comik home"><span className="landing-mark">C</span><span>comik</span></a>
         <nav aria-label="Main navigation">
-          <a href="#reading">Reading</a>
+          <a href="#reading">Read and watch</a>
+          <a href="#community">Community</a>
+          <a href="#sources">Your sources</a>
           <a href="#privacy">Your data</a>
           <a href="#downloads">Downloads</a>
           <a className="landing-nav-keep" href="/releases/">Releases</a>
@@ -22,9 +24,9 @@ function LandingPage() {
       <main>
         <section className="landing-hero">
           <div className="landing-hero-copy">
-            <span className="landing-kicker">A home for your comics</span>
-            <h1>Your comics.<br />Your shelf.<br /><em>Your rules.</em></h1>
-            <p>Bring your favorite sources together. Read on the web or install Comik on your device.</p>
+            <span className="landing-kicker">Comics, web novels and anime</span>
+            <h1>Read it.<br />Watch it.<br /><em>Your rules.</em></h1>
+            <p>One shelf for the comics you read, the web novels you follow and the anime you watch. Use it on the web or install Comik on your device.</p>
             <div className="landing-actions">
               <a className="landing-button primary" href="/releases/">Get Comik <ArrowRight size={18} /></a>
               <a className="landing-button secondary" href="/web/">Open the web reader</a>
@@ -38,16 +40,80 @@ function LandingPage() {
 
         <section className="landing-reading" id="reading">
           <div className="landing-section-heading">
-            <h2>One shelf for every source.</h2>
-            <p>Browse comic catalogs, follow series, and keep your place across chapters.</p>
+            <h2>Three ways to read and watch. One shelf.</h2>
+            <p>Comics, web novels and anime sit side by side, each with its own reader, and share the same library, progress and sync.</p>
           </div>
-          <div className="landing-reading-layout">
-            <div className="landing-reading-art"><PanelField mode="hero" className="landing-reading-canvas" /></div>
-            <div className="landing-reading-copy">
-              <h3>Find it. Follow it. Pick up where you left off.</h3>
-              <p>Comik keeps your library, reading progress, and downloads together. Webtoon and manga sources stay searchable in one place.</p>
-              <a className="landing-text-link" href="/web/">Explore the reader <ArrowRight size={17} /></a>
+          <div className="landing-media">
+            <article>
+              <BookOpen size={30} weight="duotone" />
+              <h3>Comic reader</h3>
+              <p>Manga, manhwa and webtoons in the layout you like: right to left, left to right, vertical paging or continuous scrolling.</p>
+              <ul>
+                <li>About 100 English sources in one searchable catalogue</li>
+                <li>Downloads for offline reading and one-pass library updates</li>
+                <li>Resume points per chapter, and Tachiyomi or Mihon import</li>
+              </ul>
+            </article>
+            <article>
+              <BookOpenText size={30} weight="duotone" />
+              <h3>Web novel reader</h3>
+              <p>A text reader for long chapters. Follow series from web novel sites, read them in the app and keep your place on every device.</p>
+              <ul>
+                <li>FreeWebNovel, ReadNovelFull, NovelFull, WuxiaBox, Royal Road and Project Gutenberg</li>
+                <li>Import your own EPUB and text files</li>
+                <li>Chapter lists, progress and updates like any other title</li>
+              </ul>
+            </article>
+            <article>
+              <PlayCircle size={30} weight="duotone" />
+              <h3>Anime player</h3>
+              <p>A full player with a quality menu, subtitles, skip intro and outro, resume, and automatic next episode. Episodes come with art, descriptions and seasons.</p>
+              <ul>
+                <li>HLS and MP4, with VTT and SRT subtitles</li>
+                <li>Discover lists anime from AniList</li>
+                <li>Add the services you may use through connectors</li>
+              </ul>
+            </article>
+          </div>
+          <p className="landing-media-note">Comik ships no connector for third-party anime sites. Connect only sites whose operators allow it.</p>
+        </section>
+
+        <section className="landing-split" id="community">
+          <div className="landing-split-copy">
+            <span className="landing-kicker">Together and private</span>
+            <h2>Community, and a Vault for the rest.</h2>
+          </div>
+          <div className="landing-split-cols">
+            <div>
+              <h3>Community</h3>
+              <p>Share what you are reading and watching, rate titles, vote in polls and reference a comic, novel or anime in a post. Join a community with channels and announcements, or start your own with owners, admins and moderators and an invite link.</p>
             </div>
+            <div>
+              <h3>Vault</h3>
+              <p>Move any title out of sight. Vault titles stay off your shelf, your history and community suggestions until you open the Vault, which you can lock with a PIN. Safe mode also keeps adult-marked sources hidden by default.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-sources" id="sources">
+          <div className="landing-section-heading">
+            <span className="landing-kicker">Make it yours</span>
+            <h2>Bring your own sources.</h2>
+            <p>The catalogue is a start. Add the sites you are allowed to use, and Comik does the rest.</p>
+          </div>
+          <div className="landing-sources-grid">
+            <article>
+              <h3>Source Studio for comics</h3>
+              <p>Build a source from CSS selectors, preview the results live, then save it into your catalogue. Start from a Madara or MangaThemesia template, or point it at your own site.</p>
+            </article>
+            <article>
+              <h3>Connectors for anime</h3>
+              <p>A connector is one small JavaScript file that tells Comik how to read a service: titles, seasons, episodes, video and subtitles. It runs in a locked sandbox and can only contact the https hosts it declares, which you see before you install it.</p>
+            </article>
+            <article>
+              <h3>A debugger that points at the problem</h3>
+              <p>Syntax errors are marked as you type. A step-by-step run shows what each call returned, every request and what Comik kept, with the line, column and a suggested fix. There is a JSON formatter, connector icons and documentation built in.</p>
+            </article>
           </div>
         </section>
 
@@ -57,7 +123,7 @@ function LandingPage() {
             <h2>Local first.<br />Sync when you choose.</h2>
           </div>
           <div className="landing-privacy-copy">
-            <p>Your library stays on your device by default. Sign in to sync it through Comik’s Firebase with nothing to set up, or bring your own Firebase. The Android, Linux and Windows apps read comics straight from your device. On the web, reading uses a proxy in your own Firebase, so no shared address gets banned by the sources.</p>
+            <p>Your library, comics, novels and anime alike, stays on your device by default. Sign in to sync it through Comik’s Firebase with nothing to set up, or bring your own Firebase. The Android, Linux and Windows apps read comics straight from your device. On the web, reading uses a proxy in your own Firebase, so no shared address gets banned by the sources.</p>
             <a className="landing-text-link" href="/web/setup">How the web setup works <ArrowRight size={17} /></a>
           </div>
         </section>
