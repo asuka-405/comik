@@ -1,12 +1,12 @@
 {
   "name": "comik-desktop",
-  "version": "0.6.6-beta",
+  "version": "0.7.0-alpha",
   "private": true,
   "main": "main.cjs",
   "build": {
     "appId": "com.comik.reader",
     "productName": "Comik",
-    "electronVersion": "35.0.0",
+    "electronVersion": "42.11.18",
     "directories": {
       "output": "../release"
     },

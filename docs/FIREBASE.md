@@ -2,6 +2,27 @@
 
 Comik uses Firebase for three things, and a Cloud Function for a fourth. Which project provides each depends on where you run Comik.
 
+## Public capacity and data visibility
+
+The public catalog and schema view is available in the app at `/data`. It reads only the public feed and public-community metadata. Private-community posts and channels remain member-only. Every `users/{uid}` path is owner-only and is never queried by the public view.
+
+The Firestore rules accept a read-only status document at `system/capacity`. If `state` is `closed`, `firestorePercent` is at least `95`, or `authUsersPercent` is at least `95`, rules reject new or edited sync and Community records. Deletes and reads remain available. The app displays the capacity notice and checks the status before its normal anonymous-account creation flow.
+
+**This repository does not measure Google Cloud quota usage automatically.** An operator must monitor Firestore storage/operations and the applicable Auth user limit, then set `system/capacity` with the Firebase Admin SDK or console when a metric reaches 95%. Example document:
+
+```json
+{
+   "state": "closed",
+   "firestorePercent": 95,
+   "authUsersPercent": 0,
+   "updatedAt": 1792960000000
+}
+```
+
+To reopen after capacity is available, set `state` to `open` and update both percentages below 95. This status document is client-read-only; only a trusted project administrator can change it. Firestore rules cannot prevent direct Firebase Authentication account creation, so a hard account-creation stop also requires an Auth blocking function and the required Identity Platform setup. The client check is for friendly feedback, not a security boundary.
+
+Other server-side protections: the rules allow only bounded `users/{uid}/series`, `meta`, and `memberships` documents; Community create/update paths are gated and public post/comment/chat writes have an 8-second per-user cooldown. The Cloud Function proxy verifies every ID token, caps bodies at 2 MiB, and limits each UID to 600 requests per minute per function instance. The standalone Node proxy binds to `127.0.0.1` by default; remote binding requires `PROXY_AUTH_TOKEN`. It checks every redirect, blocks private/special-use IPs, pins the socket to the checked IP, and caps responses.
+
 ## What each Firebase does
 
 | | Comik Firebase, web | Comik Firebase, Android / Linux / Windows | Your Firebase, any platform |

@@ -7,7 +7,7 @@
       "source": "functions",
       "codebase": "default",
       "ignore": ["node_modules", "src", "tsconfig.json", ".git", "*.log"],
-      "predeploy": ["node scripts/build-functions.mjs"]
+      "predeploy": ["node scripts/build-functions.cjs"]
     }
   ]
 }

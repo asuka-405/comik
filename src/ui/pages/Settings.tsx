@@ -21,6 +21,7 @@ import { useWalkthrough } from "@/core/onboarding";
 import { TachiyomiImport } from "../components/TachiyomiImport";
 import { CustomCssEditor, ThemeStudio } from "../components/ThemeStudio";
 import { PRESETS } from "@/core/themes";
+import { DEFAULT_COMMUNITY_PROFILE, DEFAULT_TASTE_PREFERENCES, inferGenrePreferences } from "@/core/preferences";
 import RULES from "../../../firestore.rules?raw";
 
 declare const __APP_VERSION__: string;
@@ -120,7 +121,12 @@ export function AppearanceSettings() {
 export function LibrarySettings() {
   const s = useSettings();
   return (
-    <Detail title="Library" intro="How your shelf looks and when it checks for new chapters.">
+    <Detail title="Library" intro="How your shelf looks, search matching, and when it checks for new chapters.">
+      <Section title="Discover search" hue={5}>
+        <Row title={`Match tolerance: ${Math.round(s.globalSearchTolerance * 100)}%`} hint="Lower values include more approximate title matches. Default: 75%.">
+          <input aria-label="Search match tolerance" type="range" min="0.5" max="0.95" step="0.05" value={s.globalSearchTolerance} onChange={(event) => s.set({ globalSearchTolerance: Number(event.target.value) })} />
+        </Row>
+      </Section>
       <Section title="Updates" hue={2}>
         <Row title="Check for new chapters" hint="Runs when you open the app"><select className="input" style={{ width: "auto" }} value={s.autoUpdateHours} onChange={(e) => s.set({ autoUpdateHours: Number(e.target.value) })}><option value={0}>Never</option><option value={6}>Every 6 hours</option><option value={12}>Every 12 hours</option><option value={24}>Daily</option><option value={168}>Weekly</option></select></Row>
         <Row title="Skip completed series"><Toggle label="Skip completed" on={s.updateSkipCompleted} onChange={(v) => s.set({ updateSkipCompleted: v })} /></Row>
@@ -209,19 +215,52 @@ export function FirebaseSettings() {
 
 export function PrivacySettings() {
   const s = useSettings();
+  const inferredGenres = useLiveQuery(async () => {
+    const shelf = await db.manga.filter((manga) => manga.inLibrary).toArray();
+    const recentChapters = await db.chapters.where("readAt").above(0).reverse().limit(500).toArray();
+    const recentIds = [...new Set(recentChapters.map((chapter) => chapter.mangaId))];
+    const recentManga = (await db.manga.bulkGet(recentIds)).filter((manga): manga is NonNullable<typeof manga> => !!manga);
+    const entries = new Map([...shelf, ...recentManga].map((manga) => [manga.id, manga]));
+    return inferGenrePreferences([...entries.values()], recentChapters);
+  }, [], []);
+  const profile = s.communityProfile;
+  const taste = s.tastePreferences;
+  const setTasteGenres = (field: "includeGenres" | "avoidGenres", genre: string, checked: boolean) => {
+    const values = new Set(taste[field]);
+    if (checked) values.add(genre); else values.delete(genre);
+    s.set({ tastePreferences: { ...taste, [field]: [...values] } });
+  };
   return (
     <Detail title="Privacy and community" intro="Content filtering, the public Community and analytics.">
       <Section title="Content" hue={1}>
         <Row title="Safe mode" hint="Hide comics from sources marked as 18+. Enabled by default."><Toggle label="Safe mode" on={s.safeMode} onChange={(v) => s.set({ safeMode: v })} /></Row>
+        <Link className="btn" to="/data">View public data and database schemas</Link>
       </Section>
       <Section title="Community and analytics" hue={1}>
         <Row title="Comik public community" hint="Show the shared public discussion room. This does not affect personal library sync."><Toggle label="Comik public community" on={s.publicCommunityEnabled} onChange={(v) => s.set({ publicCommunityEnabled: v })} /></Row>
+        <Row title="Reader discussions" hint="Show episode and page discussions while reading. Disabled by default."><Toggle label="Reader discussions" on={s.readerCommunityEnabled} onChange={(v) => s.set({ readerCommunityEnabled: v })} /></Row>
+        <div className="community-profile-fields">
+          <label><span className="label">Username</span><input className="input" autoComplete="username" maxLength={24} value={profile.username} onChange={(event) => s.set({ communityProfile: { ...profile, username: event.target.value.replace(/^@/, "").replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 24) } })} placeholder="reader_name" /></label>
+          <label><span className="label">Display name</span><input className="input" autoComplete="nickname" maxLength={40} value={profile.displayName} onChange={(event) => s.set({ communityProfile: { ...profile, displayName: event.target.value.slice(0, 40) } })} placeholder="Reader" /></label>
+        </div>
         <Row title="Anonymous usage analytics" hint="Asked on first run, where it starts switched on. Sends generic screen and feature events only, never comic titles, searches, or post text.">
         <Toggle label="Usage analytics" on={s.analyticsConsent} onChange={(enabled) => {
         s.set({ analyticsConsent: enabled });
         void refreshAnalyticsConsent(enabled);
         }} />
         </Row>
+      </Section>
+      <Section title="Reading preferences" hue={5}>
+        <Row title="Build from my activity" hint="Uses genres from your shelf and recent reading. Only your account can read these settings."><Toggle label="Auto-build reading preferences" on={taste.autoBuild} onChange={(value) => s.set({ tastePreferences: { ...taste, autoBuild: value } })} /></Row>
+        <div className="taste-preference-list">
+          {(taste.autoBuild ? inferredGenres.map((item) => item.name) : [...new Set([...taste.includeGenres, ...taste.avoidGenres])]).map((genre) => <div className="taste-preference-row" key={genre}>
+            <strong>{genre}</strong>
+            <label><input type="checkbox" checked={taste.includeGenres.includes(genre)} onChange={(event) => setTasteGenres("includeGenres", genre, event.target.checked)} /> Prefer</label>
+            <label><input type="checkbox" checked={taste.avoidGenres.includes(genre)} onChange={(event) => setTasteGenres("avoidGenres", genre, event.target.checked)} /> Avoid</label>
+          </div>)}
+          {taste.autoBuild && !inferredGenres.length && <p className="muted">Your preferences will appear after you add or read titles with genre tags.</p>}
+        </div>
+        <button className="btn" onClick={() => s.set({ communityProfile: DEFAULT_COMMUNITY_PROFILE, tastePreferences: DEFAULT_TASTE_PREFERENCES })}>Reset personalization</button>
       </Section>
     </Detail>
   );

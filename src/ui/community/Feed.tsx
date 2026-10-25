@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChatCircleDots, Heart, MagnifyingGlass, PushPin, ShareNetwork, Trash, X } from "@phosphor-icons/react";
+import { ChatCircleDots, MagnifyingGlass, PushPin, ShareNetwork, Trash, X } from "@phosphor-icons/react";
 import { useSettings } from "@/core/settings";
 import { db } from "@/core/db";
 import { hash53 } from "@/core/hash";
 import { trackAnalytics } from "@/core/analytics";
 import { getSource } from "@/core/sources/registry";
 import { appLink } from "@/core/platform";
-import { addComment, deleteComment, deletePost, isStaff, pinPost, rateComic, setPostLike, subscribeComments, subscribePollVotes, subscribePostLikes, subscribePosts, subscribeRatings, votePoll, type CommunityComment, type CommunityPost, type CommunityTarget, type PostLikeState, type RatingRecord, type Role } from "@/core/community";
+import { addComment, deleteComment, deletePost, isStaff, pinPost, rateComic, setPostVote, subscribeComments, subscribePollVotes, subscribePostVotes, subscribePosts, subscribeRatings, votePoll, type CommunityComment, type CommunityPost, type CommunityTarget, type PostVoteState, type RatingRecord, type Role, type PostVoteDirection, type VoteReaction } from "@/core/community";
 import { ConfirmDialog, coverSrc, hueOf, timeAgo, toast } from "../common";
 import { SocialAvatar } from "./shared";
 
 const HASHTAG = /#([\p{L}\p{N}_]{2,30})/gu;
+const VOTE_REACTIONS: { id: VoteReaction; emoji: string }[] = [
+  { id: "heart", emoji: "❤️" }, { id: "fire", emoji: "🔥" }, { id: "laugh", emoji: "😂" },
+  { id: "surprise", emoji: "😮" }, { id: "clap", emoji: "👏" },
+];
 
 export function hashtagsOf(text: string): string[] {
   return [...text.matchAll(HASHTAG)].map((m) => m[1]!.toLowerCase());
@@ -158,7 +162,7 @@ function PostView({ post, target, viewer, canPin, onTag, onAuthor }: { post: Com
   const [votes, setVotes] = useState<Record<string, number>>({});
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [comments, setComments] = useState<CommunityComment[]>([]);
-  const [likes, setLikes] = useState<PostLikeState>({ count: 0, liked: false });
+  const [postVotes, setPostVotes] = useState<PostVoteState>({ up: 0, down: 0, reactions: { up: {}, down: {} } });
   const [comment, setComment] = useState("");
   const [showComments, setShowComments] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -197,9 +201,22 @@ function PostView({ post, target, viewer, canPin, onTag, onAuthor }: { post: Com
   useEffect(() => {
     let dead = false;
     let off: (() => void) | undefined;
-    void subscribePostLikes(post.id, viewer.uid, setLikes, nothing, target).then((close) => { if (dead) close(); else off = close; }).catch(nothing);
+    void subscribePostVotes(post.id, viewer.uid, setPostVotes, nothing, target).then((close) => { if (dead) close(); else off = close; }).catch(nothing);
     return () => { dead = true; off?.(); };
   }, [post.id, viewer.uid, target.id]);
+
+  const toggleVote = (direction: PostVoteDirection) => {
+    const next = postVotes.mine?.direction === direction ? undefined : direction;
+    void setPostVote(post.id, next, next ? postVotes.mine?.reaction : undefined, target)
+      .then(() => trackAnalytics("community_vote", { direction: next ?? "removed" }))
+      .catch((cause: Error) => toast(cause.message, true));
+  };
+  const reactToVote = (reaction: VoteReaction) => {
+    const direction = postVotes.mine?.direction;
+    if (!direction) return;
+    void setPostVote(post.id, direction, postVotes.mine?.reaction === reaction ? undefined : reaction, target)
+      .catch((cause: Error) => toast(cause.message, true));
+  };
 
   const ratingAverage = ratings.length ? ratings.reduce((sum, rating) => sum + rating.score, 0) / ratings.length : 0;
   const userVote = viewer.uid ? votes[viewer.uid] : undefined;
@@ -255,7 +272,11 @@ function PostView({ post, target, viewer, canPin, onTag, onAuthor }: { post: Com
       })}<span className="muted">{Object.keys(votes).length} votes</span></div>}
       {post.comic && <div className="community-rating"><span>{mediaLabel(post.comic.mediaKind)} rating {ratingAverage ? `${ratingAverage.toFixed(1)} / 5 · ${ratings.length}` : "not rated yet"}</span><div className="rating-buttons" aria-label={`Rate this ${mediaLabel(post.comic.mediaKind).toLowerCase()}`}>{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" aria-label={`Rate ${score} out of 5`} disabled={!interact} className={(ratings.find((rating) => rating.uid === viewer.uid)?.score ?? 0) >= score ? "on" : ""} onClick={() => void rateComic(post.comic!, score, target).then(() => trackAnalytics("community_rating", { score })).catch((cause: Error) => toast(cause.message, true))}>★</button>)}</div></div>}
       <div className="community-post-actions">
-        <button className={`community-action like${likes.liked ? " liked" : ""}`} disabled={!interact} aria-pressed={likes.liked} onClick={() => void setPostLike(post.id, likes.liked, target).then(() => trackAnalytics("community_like")).catch((cause: Error) => toast(cause.message, true))}><Heart size={19} weight={likes.liked ? "fill" : "regular"} /><span>{likes.count ? likes.count : "Like"}</span></button>
+        <button className={`community-action vote${postVotes.mine?.direction === "up" ? " selected" : ""}`} disabled={!interact} aria-label="Upvote" aria-pressed={postVotes.mine?.direction === "up"} onClick={() => toggleVote("up")}><span aria-hidden="true">▲</span><span>{postVotes.up}</span></button>
+        <button className={`community-action vote${postVotes.mine?.direction === "down" ? " selected" : ""}`} disabled={!interact} aria-label="Downvote" aria-pressed={postVotes.mine?.direction === "down"} onClick={() => toggleVote("down")}><span aria-hidden="true">▼</span><span>{postVotes.down}</span></button>
+        {postVotes.mine && <div className="community-vote-reactions" role="group" aria-label="Vote reaction">
+          {VOTE_REACTIONS.map(({ id, emoji }) => <button key={id} className={`community-vote-reaction${postVotes.mine?.reaction === id ? " on" : ""}`} disabled={!interact} aria-label={`React to ${postVotes.mine?.direction}vote with ${emoji}`} aria-pressed={postVotes.mine?.reaction === id} title={emoji} onClick={() => reactToVote(id)}>{emoji}<span>{postVotes.reactions[postVotes.mine!.direction][id] || ""}</span></button>)}
+        </div>}
         <button className={`community-action${showComments ? " selected" : ""}`} onClick={() => setShowComments((value) => !value)}><ChatCircleDots size={19} /><span>{showComments ? "Hide replies" : "Reply"}</span></button>
         <button className="community-action" onClick={() => void share()}><ShareNetwork size={18} /><span>Share</span></button>
         {canPin && <button className="community-action" onClick={() => void pinPost(post.id, !post.pinned, target).catch((cause: Error) => toast(cause.message, true))}><PushPin size={18} weight={post.pinned ? "fill" : "regular"} /><span>{post.pinned ? "Unpin" : "Pin"}</span></button>}
@@ -270,7 +291,7 @@ function PostView({ post, target, viewer, canPin, onTag, onAuthor }: { post: Com
         ))}
         <form onSubmit={(event) => void submitComment(event)}><input className="input" value={comment} onChange={(event) => setComment(event.target.value)} maxLength={2000} placeholder={interact ? "Add a comment" : "Join and sign in to reply"} aria-label="Add a comment" /><button className="btn" disabled={busy || !interact}>Reply</button></form>
       </div>}
-      {confirmDelete && <ConfirmDialog title="Delete this post?" body="The post and its replies, likes and votes are removed for everyone. This cannot be undone." action="Delete post" danger onConfirm={() => void remove()} onClose={() => setConfirmDelete(false)} />}
+      {confirmDelete && <ConfirmDialog title="Delete this post?" body="The post and its replies, votes and reactions are removed for everyone. This cannot be undone." action="Delete post" danger onConfirm={() => void remove()} onClose={() => setConfirmDelete(false)} />}
     </article>
   );
 }

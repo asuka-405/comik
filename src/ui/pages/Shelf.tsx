@@ -36,7 +36,7 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
   const data = useLiveQuery(async () => {
     const manga = await db.manga.filter((m) => m.inLibrary).toArray();
     const ids = new Set(manga.map((m) => m.id));
-    const chapters = (await db.chapters.toArray()).filter((c) => ids.has(c.mangaId));
+    const chapters = ids.size ? await db.chapters.where("mangaId").anyOf([...ids]).toArray() : [];
     const by = new Map<string, ChapterRow[]>();
     for (const c of chapters) (by.get(c.mangaId) ?? by.set(c.mangaId, []).get(c.mangaId)!).push(c);
     const cats = (await db.categories.orderBy("order").toArray()).filter((c) => !c.deleted);
@@ -88,9 +88,19 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
   }, [view]);
   useEffect(() => {
     if (!selecting) return;
-    const k = (e: KeyboardEvent) => e.key === "Escape" && !dialog && stopSelecting();
-    addEventListener("keydown", k);
-    return () => removeEventListener("keydown", k);
+    const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && !dialog && stopSelecting();
+    const onPopState = (event: PopStateEvent) => {
+      event.stopImmediatePropagation();
+      window.history.go(1);
+      if (dialog) setDialog(null);
+      stopSelecting();
+    };
+    addEventListener("keydown", onKeyDown);
+    addEventListener("popstate", onPopState, true);
+    return () => {
+      removeEventListener("keydown", onKeyDown);
+      removeEventListener("popstate", onPopState, true);
+    };
   }, [selecting, dialog]);
 
   const done = (msg: string) => { toast(msg); setDialog(null); stopSelecting(); };

@@ -16,6 +16,7 @@ import { ReaderSettings } from "./ReaderSettings";
 import { NovelReader } from "./NovelReader";
 import { AnimeReader } from "./AnimeReader";
 import { ChallengeFix } from "../ChallengeFix";
+import { ContentDiscussion } from "../community/ContentDiscussion";
 
 type Mode = Exclude<ReaderMode, "auto">;
 const STRIP_GENRES = /webtoon|long strip|manhwa|manhua|full color|web comic/i;
@@ -33,7 +34,7 @@ export function Reader() {
   if (chapter === undefined || (chapter && manga === undefined)) return <div className="reader"><div className="interstitial"><div className="skel" style={{ width: 200, height: 14 }} /></div></div>;
   if (!chapter || !manga) return <div className="reader"><div className="interstitial"><h2>Chapter not found</h2><button className="btn" onClick={() => nav("/")}>Back</button></div></div>;
   if (safeMode && getSource(manga.sourceId)?.isNsfw) return <div className="reader"><div className="interstitial"><h2>Hidden by Safe mode</h2><p>This series is from a source marked as 18+.</p><button className="btn" onClick={() => nav("/settings/privacy")}>Safe mode settings</button></div></div>;
-  if (manga.kind === "novel") return <NovelReader key={chapter.id} manga={manga} chapter={chapter} siblings={siblings ?? []} />;
+  if (manga.kind === "novel") return <><NovelReader key={chapter.id} manga={manga} chapter={chapter} siblings={siblings ?? []} /><ContentDiscussion manga={manga} chapter={chapter} /></>;
   if (manga.kind === "anime") return <AnimeReader key={chapter.id} manga={manga} chapter={chapter} siblings={siblings ?? []} />;
   return <ReaderBody key={chapter.id} chapter={chapter} manga={manga} siblings={siblings ?? []} />;
 }
@@ -432,6 +433,7 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
       </div>
 
       {menu && <ReaderSettings mode={mode} chosen={chosen} onClose={() => setMenu(false)} onMode={(m) => void patchManga(manga.id, { readerMode: m })} />}
+      <ContentDiscussion manga={manga} chapter={activeChapter} page={cur} />
     </div>
   );
 }

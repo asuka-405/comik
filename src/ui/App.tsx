@@ -11,7 +11,7 @@ import { checkForAppUpdate } from "@/core/appUpdates";
 import { trackAnalytics } from "@/core/analytics";
 import { loadCustomSources } from "@/core/sources/registry";
 import { maybeAutoUpdate } from "@/core/updater";
-import { readFirebaseConfig } from "@/core/sync/firebase";
+import { loadPublicCommunityFirebase, readFirebaseConfig, readPublicCommunityConfig } from "@/core/sync/firebase";
 import { startSync } from "@/core/sync/engine";
 import { Backdrop } from "./Backdrop";
 import { Toasts } from "./common";
@@ -36,6 +36,7 @@ import { LoginPage } from "./pages/Login";
 import { SourceStudioPage } from "./components/SourceStudio";
 import { Reader } from "./reader/Reader";
 import { WebSetup } from "./pages/WebSetup";
+import { DataCatalog } from "./pages/DataCatalog";
 import { proxyToken } from "@/core/http";
 import { Onboarding } from "./Onboarding";
 import { AccountMenu } from "./AccountMenu";
@@ -43,6 +44,29 @@ import { BASE_COLORS, resolveTheme, themeCss } from "@/core/themes";
 
 declare const __APP_VERSION__: string;
 const APP_VERSION = __APP_VERSION__;
+
+function PublicCapacityNotice() {
+  const [closed, setClosed] = useState(false);
+
+  useEffect(() => {
+    if (!readPublicCommunityConfig()) return;
+    let dead = false;
+    let unsubscribe: (() => void) | undefined;
+    void loadPublicCommunityFirebase().then(({ fs, fsMod }) => {
+      if (dead) return;
+      unsubscribe = fsMod.onSnapshot(fsMod.doc(fs, "system", "capacity"), (snapshot) => {
+        const data = snapshot.exists() ? snapshot.data() : {};
+        const firestore = Number(data.firestorePercent ?? 0);
+        const users = Number(data.authUsersPercent ?? 0);
+        setClosed(data.state === "closed" || firestore >= 95 || users >= 95);
+      }, () => {});
+    }).catch(() => {});
+    return () => { dead = true; unsubscribe?.(); };
+  }, []);
+
+  if (!closed) return null;
+  return <div className="public-capacity-notice" role="alert">Comik's public Firestore has become full. Please wait for an update from the Comik team.</div>;
+}
 
 function useTheme() {
   const theme = useSettings((s) => s.theme);
@@ -132,12 +156,13 @@ export function App() {
     return db.chapters.where("fetchedAt").above(Math.max(since, 1)).filter((c) => !c.read && !vaulted.has(c.mangaId)).count();
   }, [loc.pathname], 0);
 
-  if (loc.pathname === "/setup") return <WebSetup />;
+  if (loc.pathname === "/setup") return <><WebSetup /><PublicCapacityNotice /></>;
 
   if (reading) {
     return (
       <>
         <Routes><Route path="/read/:chapterId" element={<Reader />} /></Routes>
+        <PublicCapacityNotice />
         <Toasts />
       </>
     );
@@ -146,6 +171,7 @@ export function App() {
   return (
     <>
       <Backdrop />
+      <PublicCapacityNotice />
       <div className="shell">
         <nav className="rail" aria-label="Main">
           <div className="logo" aria-hidden="true"><BookBookmark size={24} weight="fill" /></div>
@@ -183,6 +209,7 @@ export function App() {
             <Route path="/community/:cid" element={<CommunityHome />} />
             <Route path="/community/:cid/chat/:chid" element={<ChannelPage />} />
             <Route path="/community/:cid/settings" element={<CommunitySettings />} />
+            <Route path="/data" element={<DataCatalog />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/settings" element={<SettingsLayout />}>

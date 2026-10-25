@@ -2,7 +2,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function publicCapacityOpen() {
+      let path = /databases/$(database)/documents/system/capacity;
+      return !exists(path)
+        || (get(path).data.state != 'closed'
+          && (!('firestorePercent' in get(path).data) || get(path).data.firestorePercent < 95)
+          && (!('authUsersPercent' in get(path).data) || get(path).data.authUsersPercent < 95));
+    }
     function communityUser() {
+      return communityUserAuth() && publicCapacityOpen();
+    }
+    function communityUserAuth() {
       return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
     function validImage(data) {
@@ -33,21 +43,79 @@ service cloud.firestore {
         && validImage(data);
     }
 
-    match /users/{uid}/{document=**} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+    function withinCommunityCooldown(uid, entryId) {
+      let path = /databases/$(database)/documents/communityRateLimits/$(uid);
+      return existsAfter(path)
+        && getAfter(path).data.lastAt == request.time
+        && getAfter(path).data.lastId == entryId
+        && (!exists(path) || request.time - get(path).data.lastAt >= duration.value(8, 's'));
+      }
+
+    match /communityRateLimits/{uid} {
+      allow read: if communityUser() && uid == request.auth.uid;
+      allow create, update: if communityUser() && publicCapacityOpen()
+        && uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['lastAt', 'lastId'])
+        && request.resource.data.lastAt == request.time
+        && request.resource.data.lastId is string
+        && (!exists(/databases/$(database)/documents/communityRateLimits/$(uid))
+          || request.time - get(/databases/$(database)/documents/communityRateLimits/$(uid)).data.lastAt >= duration.value(8, 's'));
+      allow delete: if false;
+    }
+
+    match /system/capacity {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /users/{uid}/series/{seriesId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid && publicCapacityOpen()
+        && request.resource.data.keys().hasOnly(['id', 'sourceId', 'url', 'title', 'kind', 'externalUrl', 'episodeCount', 'externalLinks', 'banner', 'year', 'studios', 'rating', 'trailerUrl', 'contentRating', 'aliases', 'cover', 'author', 'artist', 'description', 'genres', 'status', 'vault', 'inLibrary', 'categoryIds', 'addedAt', 'lastUpdateAt', 'lastFetchedAt', 'accent', 'readerMode', 'chapterSort', 'chapterSortAsc', 'chapterFilter', 'modifiedAt', 'chapters'])
+        && request.resource.data.id is string && request.resource.data.id.size() <= 300
+        && request.resource.data.sourceId is string && request.resource.data.sourceId.size() <= 120
+        && request.resource.data.url is string && request.resource.data.url.size() <= 2048
+        && request.resource.data.title is string && request.resource.data.title.size() <= 200
+        && request.resource.data.genres is list && request.resource.data.genres.size() <= 100
+        && request.resource.data.categoryIds is list && request.resource.data.categoryIds.size() <= 100
+        && request.resource.data.chapters is map && request.resource.data.chapters.size() <= 5000;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid}/meta/{metaId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid && publicCapacityOpen()
+        && ((metaId == 'categories'
+            && request.resource.data.keys().hasOnly(['items', 'modifiedAt'])
+            && request.resource.data.items is list && request.resource.data.items.size() <= 100)
+          || (metaId == 'settings'
+            && request.resource.data.keys().hasOnly(['values', 'modifiedAt'])
+            && request.resource.data.values is map && request.resource.data.values.size() <= 40
+            && request.resource.data.values.keys().hasOnly(['theme', 'userThemes', 'customCss', 'customCssOn', 'librarySort', 'librarySortAsc', 'libraryDensity', 'libraryGridColumns', 'globalSearchGridColumns', 'libraryUnreadBadge', 'readerMode', 'fit', 'webtoonGap', 'webtoonSidePadding', 'doublePages', 'smartSpreads', 'cropBorders', 'splitTall', 'preload', 'tapZones', 'invertTaps', 'showPageNumber', 'brightness', 'grayscale', 'invert', 'sepia', 'autoNextChapter', 'skipReadChapters', 'updateSkipCompleted', 'autoUpdateHours', 'communityProfile', 'tastePreferences'])));
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid}/memberships/{communityId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if communityUser() && request.auth.uid == uid && publicCapacityOpen()
+        && request.resource.data.keys().hasOnly(['role', 'joinedAt'])
+        && request.resource.data.role in ['owner', 'admin', 'mod', 'member']
+        && request.resource.data.joinedAt is int;
+      allow delete: if signedIn() && request.auth.uid == uid;
     }
 
     match /communityPosts/{postId} {
       allow read: if true;
-      allow create: if communityUser() && validPost(request.resource.data);
+      allow create: if communityUser() && validPost(request.resource.data) && withinCommunityCooldown(request.auth.uid, postId);
       allow update: if communityUser()
         && resource.data.authorId == request.auth.uid
         && validPost(request.resource.data);
-      allow delete: if communityUser() && resource.data.authorId == request.auth.uid;
+      allow delete: if communityUserAuth() && resource.data.authorId == request.auth.uid;
 
       match /comments/{commentId} {
         allow read: if true;
         allow create: if communityUser()
+          && withinCommunityCooldown(request.auth.uid, commentId)
           && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt'])
           && request.resource.data.authorId == request.auth.uid
           && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
@@ -60,7 +128,7 @@ service cloud.firestore {
           && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
           && request.resource.data.createdAt is int
           && request.resource.data.body is string && request.resource.data.body.size() <= 2000;
-        allow delete: if communityUser() && (resource.data.authorId == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
+        allow delete: if communityUserAuth() && (resource.data.authorId == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
       }
 
       match /votes/{voteId} {
@@ -73,17 +141,21 @@ service cloud.firestore {
           && request.resource.data.optionIndex >= 0 && request.resource.data.optionIndex < 8
           && request.resource.data.optionIndex < get(/databases/$(database)/documents/communityPosts/$(postId)).data.pollOptions.size()
           && request.resource.data.updatedAt is int;
-        allow delete: if communityUser() && (voteId == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
+        allow delete: if communityUserAuth() && (voteId == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
       }
 
       match /likes/{uid} {
         allow read: if true;
         allow create, update: if communityUser()
           && uid == request.auth.uid
-          && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
           && request.resource.data.uid == request.auth.uid
-          && request.resource.data.createdAt is int;
-        allow delete: if communityUser() && (uid == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
+          && ((request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+              && request.resource.data.createdAt is int)
+            || (request.resource.data.keys().hasOnly(['uid', 'direction', 'reaction', 'updatedAt'])
+              && request.resource.data.direction in ['up', 'down']
+              && (!('reaction' in request.resource.data) || request.resource.data.reaction in ['heart', 'fire', 'laugh', 'surprise', 'clap'])
+              && request.resource.data.updatedAt is int));
+        allow delete: if communityUserAuth() && (uid == request.auth.uid || get(/databases/$(database)/documents/communityPosts/$(postId)).data.authorId == request.auth.uid);
       }
     }
 
@@ -99,7 +171,24 @@ service cloud.firestore {
         && request.resource.data.score is int
         && request.resource.data.score >= 1 && request.resource.data.score <= 5
         && request.resource.data.updatedAt is int;
-      allow delete: if communityUser() && resource.data.uid == request.auth.uid;
+      allow delete: if communityUserAuth() && resource.data.uid == request.auth.uid;
+    }
+
+    match /communityContent/{contentId}/comments/{commentId} {
+      allow read: if true;
+      allow create: if communityUser() && publicCapacityOpen()
+        && withinCommunityCooldown(request.auth.uid, commentId)
+        && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'body', 'createdAt', 'page'])
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
+        && request.resource.data.body is string && request.resource.data.body.size() > 0 && request.resource.data.body.size() <= 2000
+        && request.resource.data.createdAt is int
+        && request.resource.data.page is int && request.resource.data.page >= -1;
+      allow update: if communityUser() && publicCapacityOpen()
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['body'])
+        && request.resource.data.body is string && request.resource.data.body.size() > 0 && request.resource.data.body.size() <= 2000;
+      allow delete: if communityUserAuth() && resource.data.authorId == request.auth.uid;
     }
 
     // ---- Communities -------------------------------------------------------------------------
@@ -170,7 +259,7 @@ service cloud.firestore {
               || (exists(mdoc(cid, request.auth.uid)) && !existsAfter(mdoc(cid, request.auth.uid))
                   && request.resource.data.memberCount == resource.data.memberCount - 1)))
         );
-      allow delete: if communityUser() && resource.data.ownerId == request.auth.uid;
+      allow delete: if communityUserAuth() && resource.data.ownerId == request.auth.uid;
 
       match /private/{doc} {
         allow read: if isStaff(cid);
@@ -207,7 +296,7 @@ service cloud.firestore {
             || (isAdmin(cid) && resource.data.role in ['member', 'mod'] && request.resource.data.role in ['member', 'mod']
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']))
           );
-        allow delete: if communityUser() && (
+        allow delete: if communityUserAuth() && (
             (uid == request.auth.uid && resource.data.role != 'owner')
             || isOwner(cid)
             || (isAdmin(cid) && resource.data.role in ['member', 'mod'])
@@ -223,7 +312,7 @@ service cloud.firestore {
           && request.resource.data.name is string && request.resource.data.name.size() <= 60
           && request.resource.data.by == request.auth.uid
           && request.resource.data.createdAt is int;
-        allow delete: if communityUser() && (isStaff(cid) || isOwner(cid));
+        allow delete: if communityUserAuth() && (isStaff(cid) || isOwner(cid));
       }
 
       match /channels/{chid} {
@@ -236,21 +325,23 @@ service cloud.firestore {
           && request.resource.data.kind in ['chat', 'announcements']
           && request.resource.data.createdAt is int
           && request.resource.data.createdBy is string;
-        allow delete: if communityUser() && isAdmin(cid);
+        allow delete: if communityUserAuth() && isAdmin(cid);
 
         match /messages/{mid} {
           allow read: if canRead(cid);
           // announcement channels are written by staff only, chat channels by any member
           allow create: if communityUser() && isMember(cid)
+            && withinCommunityCooldown(request.auth.uid, mid)
             && validComment(request.resource.data)
             && (get(/databases/$(database)/documents/communities/$(cid)/channels/$(chid)).data.kind == 'chat' || isStaff(cid));
-          allow delete: if communityUser() && (resource.data.authorId == request.auth.uid || isStaff(cid));
+          allow delete: if communityUserAuth() && (resource.data.authorId == request.auth.uid || isStaff(cid));
         }
       }
 
       match /posts/{postId} {
         allow read: if canRead(cid);
         allow create: if communityUser() && isMember(cid) && validPost(request.resource.data)
+          && withinCommunityCooldown(request.auth.uid, postId)
           && !('pinned' in request.resource.data);
         allow update: if communityUser() && isMember(cid) && (
             (resource.data.authorId == request.auth.uid && validPost(request.resource.data)
@@ -258,13 +349,13 @@ service cloud.firestore {
             || (isStaff(cid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned'])
               && request.resource.data.pinned is bool)
           );
-        allow delete: if communityUser() && isMember(cid) && (resource.data.authorId == request.auth.uid || isStaff(cid));
+        allow delete: if communityUserAuth() && isMember(cid) && (resource.data.authorId == request.auth.uid || isStaff(cid));
 
         match /comments/{commentId} {
           allow read: if canRead(cid);
-          allow create: if communityUser() && isMember(cid) && validComment(request.resource.data);
+          allow create: if communityUser() && isMember(cid) && withinCommunityCooldown(request.auth.uid, commentId) && validComment(request.resource.data);
           allow update: if communityUser() && isMember(cid) && resource.data.authorId == request.auth.uid && validComment(request.resource.data);
-          allow delete: if communityUser() && isMember(cid) && (resource.data.authorId == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
+          allow delete: if communityUserAuth() && isMember(cid) && (resource.data.authorId == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
         }
 
         match /votes/{voteId} {
@@ -276,17 +367,21 @@ service cloud.firestore {
             && request.resource.data.optionIndex >= 0 && request.resource.data.optionIndex < 8
             && request.resource.data.optionIndex < get(/databases/$(database)/documents/communities/$(cid)/posts/$(postId)).data.pollOptions.size()
             && request.resource.data.updatedAt is int;
-          allow delete: if communityUser() && (voteId == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
+          allow delete: if communityUserAuth() && (voteId == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
         }
 
         match /likes/{uid} {
           allow read: if canRead(cid);
           allow create, update: if communityUser() && isMember(cid)
             && uid == request.auth.uid
-            && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
             && request.resource.data.uid == request.auth.uid
-            && request.resource.data.createdAt is int;
-          allow delete: if communityUser() && (uid == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
+            && ((request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+                && request.resource.data.createdAt is int)
+              || (request.resource.data.keys().hasOnly(['uid', 'direction', 'reaction', 'updatedAt'])
+                && request.resource.data.direction in ['up', 'down']
+                && (!('reaction' in request.resource.data) || request.resource.data.reaction in ['heart', 'fire', 'laugh', 'surprise', 'clap'])
+                && request.resource.data.updatedAt is int));
+          allow delete: if communityUserAuth() && (uid == request.auth.uid || isStaff(cid) || isPostAuthor(cid, postId));
         }
       }
 
@@ -301,7 +396,7 @@ service cloud.firestore {
           && request.resource.data.sourceId is string && request.resource.data.sourceId.size() <= 120
           && request.resource.data.score is int && request.resource.data.score >= 1 && request.resource.data.score <= 5
           && request.resource.data.updatedAt is int;
-        allow delete: if communityUser() && (isOwner(cid) || (isMember(cid) && (resource.data.uid == request.auth.uid || isStaff(cid))));
+        allow delete: if communityUserAuth() && (isOwner(cid) || (isMember(cid) && (resource.data.uid == request.auth.uid || isStaff(cid))));
       }
     }
   }

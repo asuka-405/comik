@@ -6,6 +6,7 @@ import { readingOrder } from "@/core/progress";
 import { getSource } from "@/core/sources/registry";
 import type { ChapterRow, MangaRow } from "@/core/types";
 import { AnimePlayer } from "./AnimePlayer";
+import { ContentDiscussion } from "../community/ContentDiscussion";
 
 /** One episode: a video player when the source is a connector, otherwise links to the official services. */
 export function AnimeReader({ manga, chapter, siblings }: { manga: MangaRow; chapter: ChapterRow; siblings: ChapterRow[] }) {
@@ -53,5 +54,6 @@ export function AnimeReader({ manga, chapter, siblings }: { manga: MangaRow; cha
       <span className="mono muted">{index + 1} / {order.length}</span>
       <button className="btn primary" disabled={!next} onClick={() => next && nav(`/read/${encodeURIComponent(next.id)}`)}>Next <CaretRight size={16} /></button>
     </footer>
+    <ContentDiscussion manga={manga} chapter={chapter} />
   </main>;
 }

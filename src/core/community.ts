@@ -1,7 +1,8 @@
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, onSnapshot, orderBy, query, setDoc, updateDoc, where, writeBatch, type Firestore, type Unsubscribe } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type DocumentReference, type Firestore, type Unsubscribe } from "firebase/firestore";
 import { hash53 } from "./hash";
 import { loadPublicCommunityFirebase, readPublicCommunityConfig, useCommunitySession } from "./sync/firebase";
 import type { MangaRow, MediaKind } from "./types";
+import { useSettings } from "./settings";
 
 /**
  * Communities live in the Comik Firebase project. "public" is the original shared feed that every
@@ -71,9 +72,17 @@ export interface CommunityComment {
   body: string;
   createdAt: number;
 }
+export interface ContentComment extends CommunityComment { page?: number }
 
 export interface RatingRecord { uid: string; score: number }
-export interface PostLikeState { count: number; liked: boolean }
+export type PostVoteDirection = "up" | "down";
+export type VoteReaction = "heart" | "fire" | "laugh" | "surprise" | "clap";
+export interface PostVoteState {
+  up: number;
+  down: number;
+  reactions: Record<PostVoteDirection, Partial<Record<VoteReaction, number>>>;
+  mine?: { direction: PostVoteDirection; reaction?: VoteReaction };
+}
 
 /** Where a post lives: the shared feed ("public") or one community. */
 export interface CommunityTarget { id: string; communityId?: string }
@@ -95,7 +104,11 @@ export function requireUser() {
   return user;
 }
 
-const displayName = (user: { name?: string | null; email?: string | null }) => (user.name || user.email?.split("@")[0] || "Reader").trim().slice(0, 60);
+const displayName = (user: { name?: string | null; email?: string | null }) => {
+  const profile = useSettings.getState().communityProfile;
+  const name = profile.displayName.trim() || profile.username.trim() || user.name || user.email?.split("@")[0] || "Reader";
+  return `${name}${profile.username.trim() && profile.displayName.trim() ? ` (@${profile.username.trim()})` : ""}`.slice(0, 60);
+};
 const codeOf = (error: unknown) => (error as { code?: string })?.code;
 
 /** Firestore says only "permission-denied". Say what that is likely to mean here. */
@@ -157,6 +170,22 @@ const withId = <T,>(item: { id: string; data: () => unknown }) => ({ id: item.id
 function randomCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   return [...bytes].map((byte) => (byte % 36).toString(36)).join("");
+}
+
+const COMMUNITY_WRITE_COOLDOWN_MS = 8_000;
+const lastCommunityWriteAt = new Map<string, number>();
+
+/** Use one batch and a unique marker so Firestore rules can enforce one content write per cooldown. */
+async function createRateLimited(fs: Firestore, reference: DocumentReference, data: Record<string, unknown>): Promise<void> {
+  const user = requireUser();
+  if (Date.now() - (lastCommunityWriteAt.get(user.uid) ?? 0) < COMMUNITY_WRITE_COOLDOWN_MS) throw new Error("Please wait a few seconds before posting again.");
+  await write(async () => {
+    const batch = writeBatch(fs);
+    batch.set(doc(fs, "communityRateLimits", user.uid), { lastAt: serverTimestamp(), lastId: reference.id });
+    batch.set(reference, data);
+    await batch.commit();
+  });
+  lastCommunityWriteAt.set(user.uid, Date.now());
 }
 
 /* ------------------------------------------------------------ the directory */
@@ -398,7 +427,8 @@ export async function sendMessage(cid: string, chid: string, body: string): Prom
   const { fs } = await bits();
   const text = body.trim().slice(0, 2000);
   if (!text) return;
-  await write(() => addDoc(cCol(fs, cid, "channels", chid, "messages"), { authorId: user.uid, authorName: displayName(user), body: text, createdAt: Date.now() }));
+  const reference = doc(cCol(fs, cid, "channels", chid, "messages"));
+  await createRateLimited(fs, reference, { authorId: user.uid, authorName: displayName(user), body: text, createdAt: Date.now() });
 }
 
 export async function deleteMessage(cid: string, chid: string, messageId: string): Promise<void> {
@@ -418,8 +448,9 @@ export async function subscribePosts(onPosts: (posts: CommunityPost[]) => void, 
 export async function publishPost(input: Omit<CommunityPost, "id" | "authorId" | "authorName" | "createdAt" | "pinned">, target: CommunityTarget = communityTarget(PUBLIC_ID)): Promise<string> {
   const user = requireUser();
   const { fs } = await bits();
-  const created = await write(() => addDoc(postCollection(fs, target), { ...input, authorId: user.uid, authorName: displayName(user), createdAt: Date.now() }));
-  return created.id;
+  const reference = doc(postCollection(fs, target));
+  await createRateLimited(fs, reference, { ...input, authorId: user.uid, authorName: displayName(user), createdAt: Date.now() });
+  return reference.id;
 }
 
 /** The author, or staff in a community, may remove a post. Its replies, likes and votes go with it. */
@@ -449,7 +480,8 @@ export async function addComment(postId: string, body: string, target: Community
   const { fs } = await bits();
   const text = body.trim().slice(0, 2000);
   if (!text) return;
-  await write(() => addDoc(childCollection(fs, target, postId, "comments"), { authorId: user.uid, authorName: displayName(user), body: text, createdAt: Date.now() }));
+  const reference = doc(childCollection(fs, target, postId, "comments"));
+  await createRateLimited(fs, reference, { authorId: user.uid, authorName: displayName(user), body: text, createdAt: Date.now() });
 }
 
 export async function deleteComment(postId: string, commentId: string, target: CommunityTarget): Promise<void> {
@@ -458,18 +490,68 @@ export async function deleteComment(postId: string, commentId: string, target: C
   await write(() => deleteDoc(doc(childCollection(fs, target, postId, "comments"), commentId)));
 }
 
-export async function subscribePostLikes(postId: string, uid: string, onLikes: (state: PostLikeState) => void, onError: (error: Error) => void, target: CommunityTarget = communityTarget(PUBLIC_ID)): Promise<Unsubscribe> {
+function normalizeContentTitle(value: string): string {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+/** A source-independent episode key so readers on different providers can share a discussion. */
+export function contentDiscussionKey(manga: MangaRow, chapter: { number: number; season?: number }): string {
+  const names = [manga.title, ...(manga.aliases ?? [])].map(normalizeContentTitle).filter(Boolean).sort();
+  return hash53(`${manga.kind ?? "comic"}:${names[0] ?? ""}:${chapter.season ?? 0}:${chapter.number}`);
+}
+
+function contentComments(fs: Firestore, contentKey: string) {
+  return collection(fs, "communityContent", contentKey, "comments");
+}
+
+export async function subscribeContentComments(contentKey: string, page: number | undefined, onComments: (comments: ContentComment[]) => void, onError: (error: Error) => void): Promise<Unsubscribe> {
   const { fs } = await bits();
-  return onSnapshot(childCollection(fs, target, postId, "likes"), (snapshot) => {
-    onLikes({ count: snapshot.size, liked: !!uid && snapshot.docs.some((item) => item.id === uid) });
+  return onSnapshot(query(contentComments(fs, contentKey), where("page", "==", page ?? -1), limit(150)), (snapshot) => {
+    const comments = snapshot.docs.map((item) => withId<ContentComment>(item)).map((item) => ({ ...item, page: item.page === -1 ? undefined : item.page }));
+    onComments(comments.sort((a, b) => a.createdAt - b.createdAt));
   }, (error) => onError(friendly(error)));
 }
 
-export async function setPostLike(postId: string, liked: boolean, target: CommunityTarget = communityTarget(PUBLIC_ID)): Promise<void> {
+export async function addContentComment(contentKey: string, page: number | undefined, body: string): Promise<void> {
+  const user = requireUser();
+  const { fs } = await bits();
+  const text = body.trim().slice(0, 2000);
+  if (!text) return;
+  const reference = doc(contentComments(fs, contentKey));
+  await createRateLimited(fs, reference, {
+    authorId: user.uid,
+    authorName: displayName(user),
+    body: text,
+    createdAt: Date.now(),
+    page: page ?? -1,
+  });
+}
+
+export async function subscribePostVotes(postId: string, uid: string, onVotes: (state: PostVoteState) => void, onError: (error: Error) => void, target: CommunityTarget = communityTarget(PUBLIC_ID)): Promise<Unsubscribe> {
+  const { fs } = await bits();
+  return onSnapshot(childCollection(fs, target, postId, "likes"), (snapshot) => {
+    const state: PostVoteState = { up: 0, down: 0, reactions: { up: {}, down: {} } };
+    for (const item of snapshot.docs) {
+      const data = item.data();
+      const direction: PostVoteDirection = data.direction === "down" ? "down" : "up";
+      state[direction]++;
+      const reaction = data.reaction as VoteReaction | undefined;
+      if (reaction && ["heart", "fire", "laugh", "surprise", "clap"].includes(reaction)) {
+        state.reactions[direction][reaction] = (state.reactions[direction][reaction] ?? 0) + 1;
+      }
+      if (item.id === uid) state.mine = { direction, reaction };
+    }
+    onVotes(state);
+  }, (error) => onError(friendly(error)));
+}
+
+export async function setPostVote(postId: string, direction: PostVoteDirection | undefined, reaction: VoteReaction | undefined, target: CommunityTarget = communityTarget(PUBLIC_ID)): Promise<void> {
   const user = requireUser();
   const { fs } = await bits();
   const reference = postDoc(fs, target, postId, "likes", user.uid);
-  await write(() => (liked ? deleteDoc(reference) : setDoc(reference, { uid: user.uid, createdAt: Date.now() })));
+  await write(() => direction
+    ? setDoc(reference, { uid: user.uid, direction, ...(reaction ? { reaction } : {}), updatedAt: Date.now() })
+    : deleteDoc(reference));
 }
 
 export async function subscribePollVotes(postId: string, onVotes: (votes: Record<string, number>) => void, onError: (error: Error) => void, target: CommunityTarget = communityTarget(PUBLIC_ID)): Promise<Unsubscribe> {

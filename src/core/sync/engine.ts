@@ -21,7 +21,7 @@ import { ensureSignedIn, loadFirebase, useSync, watchAuth } from "./firebase";
 const LS_PUSHED = "comik.sync.pushedAt";
 const SYNCED_SETTINGS: (keyof ReturnType<typeof useSettings.getState>)[] = [
   "theme", "userThemes", "customCss", "customCssOn", "librarySort", "librarySortAsc", "libraryDensity", "libraryGridColumns", "globalSearchGridColumns", "libraryUnreadBadge", "readerMode", "fit", "webtoonGap", "webtoonSidePadding",
-  "doublePages", "smartSpreads", "cropBorders", "splitTall", "preload", "tapZones", "invertTaps", "showPageNumber", "brightness", "grayscale",
+  "doublePages", "smartSpreads", "cropBorders", "splitTall", "preload", "tapZones", "invertTaps", "showPageNumber", "brightness", "grayscale", "communityProfile", "tastePreferences",
   "invert", "sepia", "autoNextChapter", "skipReadChapters", "updateSkipCompleted", "autoUpdateHours",
 ];
 

@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { lookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { Readable } from "node:stream";
 import { isIP } from "node:net";
 
 /**
@@ -18,6 +21,7 @@ import { isIP } from "node:net";
 
 const MAX_HTML_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const TIMEOUT_MS = 25_000;
 const UA =
@@ -32,13 +36,20 @@ const hostAllowlist = (process.env.HOST_ALLOWLIST ?? "")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
-function isPrivateAddress(ip: string): boolean {
+export function isPrivateAddress(ip: string): boolean {
   if (ip.includes(":")) {
     const v = ip.toLowerCase();
-    if (v === "::1" || v === "::") return true;
-    if (v.startsWith("fe80") || v.startsWith("fc") || v.startsWith("fd")) return true;
-    if (v.startsWith("::ffff:")) return isPrivateAddress(v.slice(7));
-    return false;
+    const mapped = /^(?:::ffff:|0:0:0:0:0:ffff:)(.+)$/.exec(v)?.[1];
+    if (mapped) {
+      if (mapped.includes(".")) return isPrivateAddress(mapped);
+      const parts = mapped.split(":");
+      if (parts.length !== 2 || parts.some((part) => !/^[0-9a-f]{1,4}$/.test(part))) return true;
+      const high = Number.parseInt(parts[0]!, 16), low = Number.parseInt(parts[1]!, 16);
+      return isPrivateAddress([high >>> 8, high & 255, low >>> 8, low & 255].join("."));
+    }
+    const first = Number.parseInt(v.split(":")[0] || "0", 16);
+    if (!Number.isFinite(first) || first < 0x2000 || first > 0x3fff) return true;
+    return v.startsWith("2001:db8:") || v.startsWith("2001:10:") || v.startsWith("2001:20:") || v.startsWith("2002:") || v.startsWith("3fff:");
   }
   const p = ip.split(".").map(Number);
   if (p.length !== 4 || p.some((n) => Number.isNaN(n))) return true;
@@ -52,11 +63,14 @@ function isPrivateAddress(ip: string): boolean {
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
     (a === 192 && b === 0) ||
+    (a === 198 && (b === 18 || b === 19)) ||
     a >= 224
   );
 }
 
-async function assertPublicUrl(raw: string): Promise<URL> {
+type PublicUrl = URL & { comikResolvedAddress: string };
+
+async function assertPublicUrl(raw: string): Promise<PublicUrl> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -74,7 +88,8 @@ async function assertPublicUrl(raw: string): Promise<URL> {
   const addrs = isIP(host) ? [{ address: host }] : await lookup(host, { all: true }).catch(() => []);
   if (!addrs.length) throw new HttpError(502, "dns lookup failed");
   if (addrs.some((a) => isPrivateAddress(a.address))) throw new HttpError(403, "private address blocked");
-  return url;
+  Object.defineProperty(url, "comikResolvedAddress", { value: addrs[0]!.address });
+  return url as PublicUrl;
 }
 
 class HttpError extends Error {
@@ -98,13 +113,7 @@ async function guardedFetch(
   let body = init.body ?? undefined;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const url = await assertPublicUrl(current);
-    const res = await fetch(url, {
-      method,
-      headers: init.headers,
-      body,
-      redirect: "manual",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    const res = await fetchPinned(url, method, init.headers, body);
     if (res.status >= 300 && res.status < 400 && res.headers.has("location")) {
       current = new URL(res.headers.get("location")!, url).toString();
       if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === "POST")) {
@@ -116,6 +125,38 @@ async function guardedFetch(
     return { res, finalUrl: url.toString() };
   }
   throw new HttpError(508, "too many redirects");
+}
+
+function fetchPinned(url: PublicUrl, method: string, headers: Record<string, string>, body?: BodyInit): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const address = url.comikResolvedAddress;
+    const family = isIP(address);
+    const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
+      method,
+      headers,
+      lookup: (_hostname, options, callback) => {
+        if (typeof options === "object" && options !== null && "all" in options && options.all) {
+          (callback as (error: null, addresses: { address: string; family: number }[]) => void)(null, [{ address, family }]);
+        } else {
+          (callback as (error: null, address: string, family: number) => void)(null, address, family);
+        }
+      },
+    }, (incoming) => {
+      const responseHeaders = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (value !== undefined) responseHeaders.set(name, Array.isArray(value) ? value.join(", ") : String(value));
+      }
+      resolve(new Response(Readable.toWeb(incoming) as ReadableStream, {
+        status: incoming.statusCode ?? 502,
+        statusText: incoming.statusMessage,
+        headers: responseHeaders,
+      }));
+    });
+    request.setTimeout(TIMEOUT_MS, () => request.destroy(new HttpError(504, "upstream timeout")));
+    request.on("error", reject);
+    if (body !== undefined && body !== null) request.write(Buffer.from(body as ArrayBuffer));
+    request.end();
+  });
 }
 
 async function readCapped(res: Response, cap: number): Promise<Uint8Array> {
@@ -199,7 +240,10 @@ app.all("/api/fetch", async (c) => {
     }
 
     const method = c.req.method === "OPTIONS" ? "GET" : c.req.method;
+    const declaredLength = Number(c.req.header("content-length") ?? 0);
+    if (declaredLength > MAX_REQUEST_BYTES) throw new HttpError(413, "request too large");
     const body = method === "GET" || method === "HEAD" ? undefined : await c.req.arrayBuffer();
+    if (body && body.byteLength > MAX_REQUEST_BYTES) throw new HttpError(413, "request too large");
     const { res, finalUrl } = await guardedFetch(url.toString(), { method, headers, body });
     const bytes = await readCapped(res, MAX_HTML_BYTES);
 

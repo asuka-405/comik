@@ -28,6 +28,7 @@ export function Series() {
   const id = decodeURIComponent(useParams().id ?? "");
   const nav = useNavigate();
   const safeMode = useSettings((s) => s.safeMode);
+  const searchTolerance = useSettings((s) => s.globalSearchTolerance);
   const disabledSourceIds = useSettings((s) => s.disabledSourceIds);
   const manga = useLiveQuery(() => db.manga.get(id), [id]);
   const chapters = useLiveQuery(() => db.chapters.where("mangaId").equals(id).toArray(), [id], [] as ChapterRow[]);
@@ -45,6 +46,7 @@ export function Series() {
   const [chapterPage, setChapterPage] = useState(0);
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [migrateMatches, setMigrateMatches] = useState<MigrationMatch[]>([]);
+  const [migrateSelected, setMigrateSelected] = useState("");
   const [migrateBusy, setMigrateBusy] = useState(false);
   const [migrateError, setMigrateError] = useState("");
   const [migrateProgress, setMigrateProgress] = useState({ done: 0, total: 0, term: "" });
@@ -156,12 +158,14 @@ export function Series() {
     setMigrateBusy(true);
     setMigrateError("");
     setMigrateMatches([]);
+    setMigrateSelected("");
     setMigrateProgress({ done: 0, total: sources.length, term: manga.title });
     setMigrateBlocked(0);
     const found = new Map<string, MigrationMatch>();
     const blocked = new Set<string>();
     const failures: string[] = [];
     const queue = [...sources];
+    const sortedMatches = () => [...found.values()].sort((a, b) => a.rank - b.rank || a.source.name.localeCompare(b.source.name) || a.manga.title.localeCompare(b.manga.title));
     const originalSource = getSource(manga.sourceId);
     if (originalSource) {
       try {
@@ -181,12 +185,17 @@ export function Series() {
           for (let pageNumber = 1; pageNumber <= 3; pageNumber++) {
             try {
               const page = await candidateSource.search(pageNumber, query, candidateSource.getFilterList());
+              let changed = false;
               for (const result of page.mangas) {
                 const key = `${candidateSource.id}::${result.url}`;
-                const rank = migrationMatchRank(result, queries, query);
+                const rank = migrationMatchRank(result, queries, query, manga.description ?? "", searchTolerance);
                 const previous = found.get(key);
-                if (!previous || rank < previous.rank) found.set(key, { source: candidateSource, manga: result, rank, matchedQuery: query });
+                if (!previous || rank < previous.rank) {
+                  found.set(key, { source: candidateSource, manga: result, rank, matchedQuery: query });
+                  changed = true;
+                }
               }
+              if (changed) setMigrateMatches(sortedMatches());
               if (!page.hasNext) break;
             } catch (cause) {
               if (cause instanceof ChallengeError) hadChallenge = true;
@@ -202,7 +211,7 @@ export function Series() {
       }
     };
     await Promise.all(Array.from({ length: Math.min(MIGRATION_SEARCH_PARALLEL, sources.length) }, worker));
-    setMigrateMatches([...found.values()].sort((a, b) => a.rank - b.rank || a.source.name.localeCompare(b.source.name) || a.manga.title.localeCompare(b.manga.title)));
+    setMigrateMatches(sortedMatches());
     if (!found.size && failures.length && !blocked.size) setMigrateError(failures[0]!);
     setMigrateBusy(false);
   };
@@ -224,6 +233,24 @@ export function Series() {
     } finally {
       setMigrateBusy(false);
     }
+  };
+
+  const checkMigrationMatch = (match: MigrationMatch) => {
+    const preview = window.open("about:blank", "_blank");
+    if (!preview) {
+      toast("Allow pop-ups to open this entry in a new tab.", true);
+      return;
+    }
+    void (async () => {
+      try {
+        const details = await match.source.getMangaDetails(match.manga).catch(() => match.manga);
+        const row = await upsertManga(match.source.id, details);
+        preview.location.replace(`${window.location.origin}/series/${encodeURIComponent(row.id)}`);
+      } catch (cause) {
+        preview.close();
+        toast((cause as Error).message || "Could not open this source entry.", true);
+      }
+    })();
   };
 
   let prev: ChapterRow | undefined;
@@ -367,13 +394,19 @@ export function Series() {
           {migrateBusy && <div className="migration-progress" role="status"><span>Searching {migrateProgress.done} of {migrateProgress.total} sources</span><progress max={migrateProgress.total || 1} value={migrateProgress.done} /></div>}
           {migrateError && <div className="err" role="alert">{migrateError}</div>}
           {!!migrateBlocked && <p className="muted" role="status">{migrateBlocked} protected source{migrateBlocked === 1 ? " was" : "s were"} skipped because it requested a browser check.</p>}
-          {migrateMatches.length > 0 && <ul className="migrate-results">
+          {migrateMatches.length > 0 && <>
+            <ul className="migrate-results">
             {migrateMatches.map((match) => <li key={`${match.source.id}::${match.manga.url}`}>
               {match.manga.cover && <img src={match.manga.cover} alt="" loading="lazy" />}
-              <span><strong>{match.manga.title}</strong><small>{match.source.name} · {match.rank === 0 ? "Exact title" : match.rank === 1 ? "Exact alternate title" : `Matched “${match.matchedQuery}”`}</small></span>
-              <button className="btn sm" disabled={migrateBusy} onClick={() => void migrateTo(match)}>Move here</button>
+              <label className="migrate-choice"><input type="radio" name="migrate-target" checked={migrateSelected === `${match.source.id}::${match.manga.url}`} onChange={() => setMigrateSelected(`${match.source.id}::${match.manga.url}`)} /><span><strong>{match.manga.title}</strong><small>{match.source.name} · {match.rank === 0 ? "Exact title" : match.rank === 1 ? "Exact alternate title" : match.rank >= 6 ? "Description match" : `Matched “${match.matchedQuery}”`}</small></span></label>
+              <button className="btn sm" onClick={() => checkMigrationMatch(match)}>Check entry</button>
             </li>)}
-          </ul>}
+            </ul>
+            <div className="dialog-actions"><button className="btn primary" disabled={migrateBusy || !migrateSelected} onClick={() => {
+              const match = migrateMatches.find((item) => `${item.source.id}::${item.manga.url}` === migrateSelected);
+              if (match) void migrateTo(match);
+            }}>Migrate selected</button></div>
+          </>}
           {!migrateBusy && !migrateMatches.length && !migrateError && <p className="muted" style={{ marginTop: 12 }}>Search all sources to see possible matches.</p>}
           {!migrateBusy && !migrateMatches.length && !!migrateBlocked && <p className="muted">Some sources could not be searched because they require a browser check.</p>}
         </Sheet>
@@ -382,3 +415,4 @@ export function Series() {
     </>
   );
 }
+

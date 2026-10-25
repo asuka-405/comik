@@ -2,6 +2,29 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.7.0-alpha
+
+### Search and discovery
+- Global search now groups exact title and alternate-title matches into one work, with each source listed separately, an on-demand chapter/episode count, direct source navigation, and the option to add several providers to the shelf.
+- Search matches titles and alternate titles by default. Optional tag and description matching can be enabled per search. A configurable 50–95% fuzzy match threshold defaults to 75% and also guides migration ranking.
+- Migration results stream in as sources respond. Check an entry in a separate Comik tab, return to the still-open candidate list, select a destination, then confirm migration. Titles rank ahead of descriptions.
+
+### Reading and Community
+- Reader discussions are optional and off by default. Comic pages can have page-anchored comments; episode discussion keys work across sources with matching normalized titles and episode numbers.
+- Community post reactions are now directional upvotes and downvotes, with an optional emoji attached to the chosen direction.
+- Community posts, replies, reader comments and chat messages have an 8-second per-user cooldown enforced by Firestore rules, not only by the interface.
+
+### Personalization and transparency
+- Set a Community username and display name, build genre preferences from your shelf and recent reading, adjust preferred/avoided genres, or reset them. These preferences stay in private user sync data and can influence Discover ordering.
+- `/data` provides a read-only view of recent public-feed posts, public communities and the Firestore/IndexedDB schema. Personal user records and private-community content are not listed.
+
+### Reliability and security
+- The fixed 3D scene no longer disappears due to intersection culling and recovers from WebGL context loss. Shelf startup queries only chapters belonging to shelf titles.
+- The local proxy binds to loopback by default, requires a token for remote binding, pins outbound sockets to validated DNS results, rejects private/special-use addresses and caps request sizes. The Firebase proxy verifies ID tokens, limits request size and rate-limits each UID per function instance.
+- Firestore rules restrict user sync writes to bounded series, meta and membership schemas; public/community writes stop when the trusted `system/capacity` status is closed or either reported capacity reaches 95%. Reads and cleanup remain available.
+- The production Firebase dependency audit is clear. The Functions UUID advisory is fixed with a patched transitive override.
+- **Capacity percentages require an operator-side monitor.** This release does not deploy a Cloud Monitoring scheduler, and Firestore rules cannot block direct Firebase Auth account creation. See `docs/FIREBASE.md` for the trusted status-document procedure and limits.
+
 ## 0.6.6-beta
 
 ### Cloudflare checks

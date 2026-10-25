@@ -5,8 +5,12 @@ import { CheckSquare, MagnifyingGlass, Plus, Tag } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { allSources, onSourcesChange } from "@/core/sources/registry";
 import { createCategory, editCategoriesOf, upsertManga } from "@/core/repo";
+import { setInLibrary } from "@/core/repo";
 import type { Source } from "@/core/types";
+import { groupDiscoveredWorks, type DiscoveredSourceEntry } from "@/core/discover";
 import { filterSources } from "@/core/sources/filter";
+import { matchesSearch, type SearchFields } from "@/core/searchMatch";
+import { inferGenrePreferences } from "@/core/preferences";
 import { ChallengeError, verifySite } from "@/core/http";
 import { cached, DISCOVER_TTL } from "@/core/cache";
 import { isNativeShell } from "@/core/platform";
@@ -40,7 +44,9 @@ export function Browse() {
   const [lang, setLang] = useState(() => localStorage.getItem("comik.lang") ?? "en");
   const initialMedia = params.get("media");
   const [mediaTab, setMediaTab] = useState<MediaTab>(initialMedia === "novels" || initialMedia === "anime" ? initialMedia : "comics");
+  const [searchFields, setSearchFields] = useState<SearchFields>({ tags: false, description: false });
   const gridColumns = useSettings((s) => s.globalSearchGridColumns);
+  const tolerance = useSettings((s) => s.globalSearchTolerance);
 
   useEffect(() => {
     setParams(dq ? { q: dq } : {}, { replace: true });
@@ -76,13 +82,17 @@ export function Browse() {
           {[2, 3, 4, 5, 6].map((columns) => <option key={columns} value={columns}>{columns} columns</option>)}
         </select>}
       </div>
+      {q && <div className="chips" role="group" aria-label="Additional search fields">
+        <label className="chip"><input type="checkbox" checked={searchFields.tags} onChange={(event) => setSearchFields((fields) => ({ ...fields, tags: event.target.checked }))} /> Match tags</label>
+        <label className="chip"><input type="checkbox" checked={searchFields.description} onChange={(event) => setSearchFields((fields) => ({ ...fields, description: event.target.checked }))} /> Match description</label>
+      </div>}
       {mediaTab === "comics" && <div className="chips" aria-label="Language">
         {langs.map((l) => <button key={l} className={`chip${l === lang ? " on" : ""}`} onClick={() => { setLang(l); localStorage.setItem("comik.lang", l); }}>{LANG_NAMES[l] ?? l}</button>)}
       </div>
       }
 
       {q ? (
-        searchable.length ? <GlobalSearch sources={searchable} q={q} /> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
+        searchable.length ? <GlobalSearch sources={searchable} q={q} fields={searchFields} tolerance={tolerance} /> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
       ) : (
         <>
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "10px 0 12px" }}>
@@ -119,8 +129,9 @@ interface SearchSnapshot { results: SourceResult[]; blocked: Source[]; done: str
 
 const searchSnapshots = new Map<string, SearchSnapshot>();
 
-const SEARCH_PARALLEL = 6;
+const SEARCH_PARALLEL = 4;
 const PER_SOURCE = 12;
+const chapterCountCache = new Map<string, number>();
 
 /**
  * Searches every enabled source and shows one loader for the whole search. A source joins the list
@@ -129,10 +140,10 @@ const PER_SOURCE = 12;
  * Sites behind a Cloudflare check are never checked automatically, anywhere in the app. They are listed
  * apart here, each with its own button that runs that one check and then searches it.
  */
-function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
-  const gridColumns = useSettings((s) => s.globalSearchGridColumns);
+function GlobalSearch({ sources, q, fields, tolerance }: { sources: Source[]; q: string; fields: SearchFields; tolerance: number }) {
+  const taste = useSettings((s) => s.tastePreferences);
   const ids = sources.map((s) => s.id).join("|");
-  const cacheKey = `${ids}\u0000${q}`;
+  const cacheKey = `${ids}\u0000${q}\u0000${fields.tags ? 1 : 0}${fields.description ? 1 : 0}\u0000${tolerance}`;
   const [results, setResults] = useState<SourceResult[]>(() => searchSnapshots.get(cacheKey)?.results ?? []);
   const [blocked, setBlocked] = useState<Source[]>(() => searchSnapshots.get(cacheKey)?.blocked ?? []);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -140,8 +151,20 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
   const [selecting, setSelecting] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [chapterCounts, setChapterCounts] = useState<Record<string, number | "loading" | "unavailable">>({});
+  const [sourcePicked, setSourcePicked] = useState<Set<string>>(new Set());
+  const [addingSources, setAddingSources] = useState(false);
   const categories = useLiveQuery(() => db.categories.orderBy("order").toArray().then((rows) => rows.filter((row) => !row.deleted)), [], []);
   const lib = useLiveQuery(() => db.manga.filter((m) => m.inLibrary).primaryKeys(), [], [] as string[]);
+  const inferredGenres = useLiveQuery(async () => {
+    const shelf = await db.manga.filter((manga) => manga.inLibrary).toArray();
+    const recentChapters = await db.chapters.where("readAt").above(0).reverse().limit(500).toArray();
+    const ids = [...new Set(recentChapters.map((chapter) => chapter.mangaId))];
+    const recent = (await db.manga.bulkGet(ids)).filter((manga): manga is NonNullable<typeof manga> => !!manga);
+    const items = new Map([...shelf, ...recent].map((manga) => [manga.id, manga]));
+    return inferGenrePreferences([...items.values()], recentChapters);
+  }, [taste.autoBuild], []);
   // The list of sources can change while a search runs; the search itself only restarts on a new query.
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
@@ -150,12 +173,74 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
     searchSnapshots.set(cacheKey, { ...current, ...patch });
   };
 
+  const works = useMemo(() => {
+    const groups = groupDiscoveredWorks(results.flatMap(({ source, rows }) => rows.map((manga) => ({ source, manga }))));
+    const preferred = new Set([...taste.includeGenres, ...(taste.autoBuild ? inferredGenres.map((genre) => genre.name) : [])]);
+    const avoided = new Set(taste.avoidGenres);
+    const score = (work: (typeof groups)[number]) => work.entries.reduce((total, entry) => total + entry.manga.genres.reduce((value, genre) => value + (preferred.has(genre) ? 2 : 0) - (avoided.has(genre) ? 3 : 0), 0), 0);
+    return [...groups].sort((a, b) => score(b) - score(a) || a.title.localeCompare(b.title));
+  }, [results, taste, inferredGenres]);
+  const toggleSource = (id: string) => setSourcePicked((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const addPickedSources = async () => {
+    setAddingSources(true);
+    try {
+      await Promise.all([...sourcePicked].map((id) => setInLibrary(id, true)));
+      toast(`Added ${sourcePicked.size} source${sourcePicked.size === 1 ? "" : "s"} to your shelf`);
+      setSourcePicked(new Set());
+    } catch (cause) {
+      toast((cause as Error).message || "Could not add those sources", true);
+    } finally {
+      setAddingSources(false);
+    }
+  };
+  const loadChapterCounts = (entries: DiscoveredSourceEntry[]) => {
+    setChapterCounts((current) => Object.fromEntries([
+      ...Object.entries(current),
+      ...entries.filter(({ manga }) => !chapterCountCache.has(manga.id)).map(({ manga }) => [manga.id, "loading"] as const),
+    ]));
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < entries.length) {
+        const entry = entries[cursor++]!;
+        const cachedCount = chapterCountCache.get(entry.manga.id);
+        if (cachedCount !== undefined) {
+          setChapterCounts((current) => ({ ...current, [entry.manga.id]: cachedCount }));
+          continue;
+        }
+        try {
+          const details = await entry.source.getMangaDetails(entry.manga);
+          const count = (await entry.source.getChapterList(details)).length;
+          chapterCountCache.set(entry.manga.id, count);
+          setChapterCounts((current) => ({ ...current, [entry.manga.id]: count }));
+        } catch {
+          setChapterCounts((current) => ({ ...current, [entry.manga.id]: "unavailable" }));
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(3, entries.length) }, worker));
+  };
+
+  const toggleWork = (key: string, entries: DiscoveredSourceEntry[]) => {
+    const opening = !expanded.has(key);
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (opening) next.add(key); else next.delete(key);
+      return next;
+    });
+    if (opening) loadChapterCounts(entries);
+  };
+
   /** Search one source and add what it finds. Returns true when it was stopped by a Cloudflare check. */
   const searchOne = async (source: Source, alive: () => boolean): Promise<boolean> => {
     try {
       const page = await cached(`discover:${source.id}:search:1:${q}:`, DISCOVER_TTL, () => source.search(1, q, source.getFilterList()), { staleOnError: true });
-      if (alive() && page.mangas.length) {
-        const rows = await Promise.all(page.mangas.slice(0, PER_SOURCE).map((m) => upsertManga(source.id, m)));
+      const matches = page.mangas.filter((manga) => matchesSearch(manga, q, fields, tolerance)).slice(0, PER_SOURCE);
+      if (alive() && matches.length) {
+        const rows = await Promise.all(matches.map((manga) => upsertManga(source.id, manga)));
         if (alive()) setResults((current) => {
           const next = current.some((r) => r.source.id === source.id) ? current : [...current, { source, rows }];
           saveSnapshot({ results: next });
@@ -194,19 +279,13 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
     for (let i = 0; i < SEARCH_PARALLEL; i++) void worker();
     return () => { dead = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, ids]);
+  }, [q, ids, fields.tags, fields.description, tolerance]);
 
   const verified = (source: Source) => setBlocked((current) => {
     const next = current.filter((s) => s.id !== source.id);
     saveSnapshot({ blocked: next });
     return next;
   });
-  const toggle = (id: string) => setPicked((current) => {
-    const next = new Set(current);
-    if (!next.delete(id)) next.add(id);
-    return next;
-  });
-
   const searching = progress.done < progress.total;
   return (
     <div className="global-search">
@@ -220,31 +299,52 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
       ) : !results.length && !blocked.length ? (
         <div className="empty"><h2>No results for “{q}”</h2><p>Try fewer words or another spelling.</p></div>
       ) : (
-        <div className="global-search-status done" role="status"><span>{results.length} source{results.length === 1 ? "" : "s"} had matches for “{q}”</span></div>
+        <div className="global-search-status done" role="status"><span>{works.length} titles from {results.length} source{results.length === 1 ? "" : "s"} matched “{q}”</span></div>
       )}
       {results.length > 0 && <div className="global-search-tools">
         <button className={`icon-btn${selecting ? " on" : ""}`} onClick={() => { setSelecting((value) => !value); setPicked(new Set()); }} aria-label="Select search results" aria-pressed={selecting} title="Select results"><CheckSquare size={18} /></button>
         {selecting && <>
           <span className="mono muted">{picked.size} selected</span>
           <button className="btn sm" disabled={!picked.size} onClick={() => setCategoriesOpen(true)}><Tag size={15} /> Add to category</button>
-          <button className="btn sm" disabled={!picked.size} onClick={() => setPicked(new Set(results.flatMap((result) => result.rows.map((row) => row.id))))}>All</button>
+          <button className="btn sm" disabled={!results.length} onClick={() => setPicked(new Set(results.flatMap((result) => result.rows.map((row) => row.id))))}>All</button>
           <button className="btn sm" disabled={!picked.size} onClick={() => setPicked(new Set())}>Clear</button>
         </>}
+        {sourcePicked.size > 0 && <>
+          <span className="mono muted">{sourcePicked.size} providers selected</span>
+          <button className="btn sm primary" disabled={addingSources} onClick={() => void addPickedSources()}>{addingSources ? "Adding…" : "Add providers to shelf"}</button>
+        </>}
       </div>}
-      {results.map(({ source, rows }) => (
-        <section key={source.id} className="global-result" data-hue={hueOf(source.id)}>
-          <div className="global-result-head">
-            <h3>{source.name}</h3>
-            <Link className="muted" to={`/browse/${source.id}?q=${encodeURIComponent(q)}`}>See all</Link>
-          </div>
-          <div className="global-result-grid" style={gridColumns === "auto" ? undefined : {
-            ["--search-grid" as string]: `repeat(${gridColumns}, minmax(0, 1fr))`,
-            ["--search-grid-mobile" as string]: `repeat(${Math.min(gridColumns, 3)}, minmax(0, 1fr))`,
-          }}>
-            {rows.map((m) => <Cover key={m.id} m={m} inLibrary={lib?.includes(m.id)} select={selecting ? { selecting, selected: picked.has(m.id), onPick: () => toggle(m.id) } : undefined} onHold={() => { setSelecting(true); setPicked((current) => new Set([...current, m.id])); }} />)}
-          </div>
-        </section>
-      ))}
+      {sourcePicked.size > 0 && <p className="muted discover-source-hint">Adding multiple providers keeps their chapter lists separate and lets library updates check each source independently.</p>}
+      <div className="discover-work-list">
+        {works.map((work) => {
+          const first = work.entries[0]!;
+          const selected = work.entries.every((entry) => picked.has(entry.manga.id));
+          const toggleSelection = () => setPicked((current) => {
+            const next = new Set(current);
+            if (selected) work.entries.forEach((entry) => next.delete(entry.manga.id));
+            else work.entries.forEach((entry) => next.add(entry.manga.id));
+            return next;
+          });
+          return <section key={work.key} className="discover-work" data-hue={hueOf(work.key)}>
+            <Cover m={first.manga} inLibrary={work.entries.some((entry) => lib?.includes(entry.manga.id))} select={selecting ? { selecting, selected, onPick: toggleSelection } : undefined} onHold={() => { setSelecting(true); setPicked((current) => new Set([...current, ...work.entries.map((entry) => entry.manga.id)])); }} />
+            <div className="discover-work-details">
+              <h3>{work.title}</h3>
+              <p className="muted">{work.entries.length} available source{work.entries.length === 1 ? "" : "s"}</p>
+              <button className="btn sm" aria-expanded={expanded.has(work.key)} onClick={() => toggleWork(work.key, work.entries)}>{expanded.has(work.key) ? "Hide sources" : "Show sources"}</button>
+              {expanded.has(work.key) && <div className="discover-providers">
+                {work.entries.map((entry) => {
+                  const count = chapterCounts[entry.manga.id] ?? chapterCountCache.get(entry.manga.id);
+                  const countLabel = typeof count === "number" ? `${count} ${entry.manga.kind === "anime" ? "episodes" : "chapters"}` : count === "loading" ? "Loading count…" : count === "unavailable" ? "Count unavailable" : "Count not loaded";
+                  return <div className="discover-provider" key={entry.manga.id}>
+                    <label><input type="checkbox" checked={sourcePicked.has(entry.manga.id)} onChange={() => toggleSource(entry.manga.id)} /><span>{entry.source.name}</span><small>{countLabel}</small></label>
+                    <Link className="btn sm" to={`/series/${encodeURIComponent(entry.manga.id)}`}>Open chapters</Link>
+                  </div>;
+                })}
+              </div>}
+            </div>
+          </section>;
+        })}
+      </div>
       {categoriesOpen && <Sheet title={`Add ${picked.size} to a category`} onClose={() => setCategoriesOpen(false)} center>
         <div className="chips" style={{ flexWrap: "wrap" }}>
           {categories?.map((category) => <button key={category.id} className="chip" onClick={() => void editCategoriesOf([...picked], { add: [category.id] }).then(() => { toast(`Added to ${category.name}`); setCategoriesOpen(false); setPicked(new Set()); setSelecting(false); })}>{category.name}</button>)}

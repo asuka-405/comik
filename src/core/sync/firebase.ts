@@ -185,6 +185,16 @@ export function readPublicCommunityConfig(): ComikFirebaseOptions | null {
   return parseConfig(ENV_CONFIG) ?? BUILT_IN_CONFIG;
 }
 
+export async function assertPublicCapacityOpen(): Promise<void> {
+  const { fs, fsMod } = await loadPublicCommunityFirebase();
+  const snapshot = await fsMod.getDoc(fsMod.doc(fs, "system", "capacity"));
+  if (!snapshot.exists()) return;
+  const data = snapshot.data();
+  if (data.state === "closed" || Number(data.firestorePercent ?? 0) >= 95 || Number(data.authUsersPercent ?? 0) >= 95) {
+    throw new Error("Comik's public Firestore has become full. Please wait for an update from the Comik team.");
+  }
+}
+
 /** Accepts strict JSON or the JS object literal Firebase's console shows (`const firebaseConfig = {...}`). */
 export function parseFirebaseConfig(input: string): ComikFirebaseOptions {
   const body = input.slice(input.indexOf("{"), input.lastIndexOf("}") + 1);
@@ -284,7 +294,10 @@ const toUser = (u: import("firebase/auth").User | null): SyncUser | null => (u ?
 export async function ensureSignedIn(): Promise<SyncUser> {
   const { auth, authMod } = await loadFirebase();
   await auth.authStateReady();
-  if (!auth.currentUser) await authMod.signInAnonymously(auth);
+  if (!auth.currentUser) {
+    if (!readCustomFirebaseConfig()) await assertPublicCapacityOpen();
+    await authMod.signInAnonymously(auth);
+  }
   const user = toUser(auth.currentUser)!;
   useSync.getState().patch({ user });
   return user;
@@ -304,7 +317,10 @@ export async function connectPublicCommunity(): Promise<SyncUser> {
   try {
     const { auth, authMod } = await loadPublicCommunityFirebase();
     await auth.authStateReady();
-    if (!auth.currentUser) await authMod.signInAnonymously(auth);
+    if (!auth.currentUser) {
+      await assertPublicCapacityOpen();
+      await authMod.signInAnonymously(auth);
+    }
     // A login restored from an earlier session may carry an out-of-date token; renew it so the rules see the real sign-in.
     if (!auth.currentUser!.isAnonymous) await auth.currentUser!.getIdToken(true).catch(() => {});
     const user = toUser(auth.currentUser)!;

@@ -1,6 +1,8 @@
 import { onRequest, type Request } from "firebase-functions/v2/https";
+import { beforeUserCreated } from "firebase-functions/v2/identity";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
 import type { Response } from "express";
 import { app } from "../../server/app";
 
@@ -21,7 +23,11 @@ import { app } from "../../server/app";
  * Optional: set ALLOWED_EMAILS (comma separated) in functions/.env to limit use to those Google accounts.
  */
 
-export type VerifyToken = (token: string) => Promise<{ email?: string; email_verified?: boolean }>;
+export type VerifyToken = (token: string) => Promise<{ uid: string; email?: string; email_verified?: boolean }>;
+
+const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
+const REQUESTS_PER_MINUTE = 600;
+const requestWindows = new Map<string, { startedAt: number; count: number }>();
 
 const allowedEmails = () =>
   (process.env.ALLOWED_EMAILS ?? "")
@@ -49,11 +55,24 @@ export function createHandler(verify: VerifyToken) {
     }
 
     if (req.method !== "OPTIONS" && route !== "/health") {
+      const contentLength = Number(req.headers["content-length"] ?? 0);
+      if (contentLength > MAX_REQUEST_BYTES) return json(res, req.headers.origin, 413, { error: "Request too large." });
       const bearer = /^Bearer\s+(.+)$/i.exec(String(req.headers.authorization ?? ""))?.[1];
       const token = bearer ?? target.searchParams.get("t") ?? "";
       if (!token) return json(res, req.headers.origin, 401, { error: "Sign in to use this proxy." });
       try {
         const claims = await verify(token);
+        const now = Date.now();
+        let window = requestWindows.get(claims.uid);
+        if (!window || now - window.startedAt >= 60_000) {
+          window = { startedAt: now, count: 0 };
+          requestWindows.set(claims.uid, window);
+        }
+        if (requestWindows.size > 1000) {
+          for (const [uid, item] of requestWindows) if (now - item.startedAt >= 120_000) requestWindows.delete(uid);
+        }
+        if (window.count >= REQUESTS_PER_MINUTE) return json(res, req.headers.origin, 429, { error: "Proxy request limit reached. Try again in a minute." });
+        window.count++;
         const allow = allowedEmails();
         if (allow.length && !(claims.email && claims.email_verified && allow.includes(claims.email.toLowerCase()))) {
           return json(res, req.headers.origin, 403, { error: "This account is not allowed to use this proxy." });
@@ -65,6 +84,7 @@ export function createHandler(verify: VerifyToken) {
     }
 
     const body = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS" ? undefined : (req.rawBody ?? undefined);
+    if (body && body.byteLength > MAX_REQUEST_BYTES) return json(res, req.headers.origin, 413, { error: "Request too large." });
     const response = await app.fetch(new Request(target, { method: req.method, headers, body: body as BodyInit | undefined }));
     response.headers.forEach((value, key) => {
       if (key !== "content-length" && key !== "content-encoding") res.setHeader(key, value);
@@ -86,3 +106,13 @@ export const comikProxy = onRequest(
   },
   createHandler((token) => getAuth().verifyIdToken(token)),
 );
+
+/** Block direct Auth API sign-ups when the trusted public capacity flag is closed. */
+export const comikCapacityGuard = beforeUserCreated(async () => {
+  const snapshot = await getFirestore().doc("system/capacity").get();
+  if (!snapshot.exists) return;
+  const data = snapshot.data() ?? {};
+  if (data.state === "closed" || Number(data.firestorePercent ?? 0) >= 95 || Number(data.authUsersPercent ?? 0) >= 95) {
+    throw new Error("Comik's public Firestore has become full. Please wait for an update from the Comik team.");
+  }
+});

@@ -331,8 +331,8 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
     ro.observe(bg ? document.documentElement : canvas);
 
     let visible = true;
-    const io = new IntersectionObserver(([en]) => (visible = !!en?.isIntersecting));
-    io.observe(canvas);
+    const io = bg ? null : new IntersectionObserver(([en]) => (visible = !!en?.isIntersecting));
+    io?.observe(canvas);
 
     let raf = 0, last = performance.now(), t = 0, acc = 0;
     const frameGap = bg ? 1000 / 30 : 1000 / 60;
@@ -356,6 +356,21 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
       lightB.position.set(-ptr.x * 9, ptr.y * 6 - 2, 5);
       renderer.render(scene, camera);
     };
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      cancelAnimationFrame(raf);
+      raf = 0;
+    };
+    const onContextRestored = () => {
+      resize();
+      place(t);
+      renderer.render(scene, camera);
+      last = performance.now();
+      acc = 0;
+      if (!reduce) raf = requestAnimationFrame(tick);
+    };
+    canvas.addEventListener("webglcontextlost", onContextLost);
+    canvas.addEventListener("webglcontextrestored", onContextRestored);
     if (reduce) renderer.render(scene, camera);
     else raf = requestAnimationFrame(tick);
 
@@ -363,7 +378,9 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
       cancelAnimationFrame(raf);
       removeEventListener("pointermove", onMove);
       ro.disconnect();
-      io.disconnect();
+      io?.disconnect();
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
       stopCoverLoading();
       coverTexture.dispose();
       sideMaterial.dispose();

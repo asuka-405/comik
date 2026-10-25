@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ReaderMode } from "./types";
 import type { UserTheme } from "./themes";
+import { DEFAULT_COMMUNITY_PROFILE, DEFAULT_TASTE_PREFERENCES, type CommunityProfile, type TastePreferences } from "./preferences";
 
 /** "system", a built-in preset id, or the id of one of the user's own themes. */
 export type Theme = string;
@@ -23,6 +24,9 @@ export interface Settings {
   safeMode: boolean;
   /** Show the shared Comik public community. */
   publicCommunityEnabled: boolean;
+  readerCommunityEnabled: boolean;
+  communityProfile: CommunityProfile;
+  tastePreferences: TastePreferences;
   /** Where the proxy lives. Empty = same origin (/api). */
   proxyUrl: string;
   /** Source IDs disabled on this device. */
@@ -39,6 +43,7 @@ export interface Settings {
   libraryDensity: LibraryDensity;
   libraryGridColumns: LibraryGridColumns;
   globalSearchGridColumns: LibraryGridColumns;
+  globalSearchTolerance: number;
   libraryUnreadBadge: boolean;
   libraryOnlyUnread: boolean;
   autoUpdateHours: number; // 0 = off
@@ -84,6 +89,9 @@ export const useSettings = create<Settings>()(
       fx: true,
       safeMode: true,
       publicCommunityEnabled: true,
+      readerCommunityEnabled: false,
+      communityProfile: DEFAULT_COMMUNITY_PROFILE,
+      tastePreferences: DEFAULT_TASTE_PREFERENCES,
       proxyUrl: "",
       disabledSourceIds: [],
       analyticsConsent: false,
@@ -94,6 +102,7 @@ export const useSettings = create<Settings>()(
       libraryDensity: "cozy",
       libraryGridColumns: "auto",
       globalSearchGridColumns: "auto",
+      globalSearchTolerance: 0.75,
       libraryUnreadBadge: true,
       libraryOnlyUnread: false,
       autoUpdateHours: 12,
