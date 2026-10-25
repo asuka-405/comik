@@ -3,7 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { PlugsConnected, ShieldWarning, BookOpenText, Books, CaretLeft, CaretRight, CloudArrowUp, Compass, DownloadSimple, Info, Palette, ShieldCheck, type Icon } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/core/db";
-import { useSettings, type FitMode, type LibraryDensity, type LibrarySort } from "@/core/settings";
+import { MAX_CORNER_RADIUS, useSettings, type FitMode, type LibraryDensity, type LibrarySort } from "@/core/settings";
 import { proxyBase } from "@/core/http";
 import { isNativeShell } from "@/core/platform";
 import { useChallenges } from "@/core/challenges";
@@ -105,6 +105,13 @@ export function AppearanceSettings() {
     <Detail title="Appearance" intro="Themes, your own colours, and CSS for anything else.">
       <Section title="Theme" hue={0}>
         <ThemeStudio />
+      </Section>
+      <Section title="Corners" hue={0}>
+        <Row title="Corner roundness" hint="Sharp at 0, rounder as you slide. Applies to every theme, cards, buttons, inputs and covers.">
+          <span className="mono muted" style={{ minWidth: 38, textAlign: "right" }}>{s.cornerRadius === 0 ? "Sharp" : `${s.cornerRadius}px`}</span>
+          <input type="range" min={0} max={MAX_CORNER_RADIUS} step={1} value={s.cornerRadius} onChange={(e) => s.set({ cornerRadius: Number(e.target.value) })} aria-label="Corner roundness" style={{ width: 180 }} />
+        </Row>
+        <div className="corner-preview" aria-hidden="true"><span className="btn primary">Button</span><span className="chip on">Chip</span><span className="panel">Card</span></div>
       </Section>
       <Section title="Motion" hue={0}>
         <Row title="3D panel backdrop" hint="Turn off to save battery. Reduced-motion users get a still frame."><Toggle label="3D backdrop" on={s.fx} onChange={(v) => s.set({ fx: v })} /></Row>

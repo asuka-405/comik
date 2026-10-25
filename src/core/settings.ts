@@ -25,6 +25,9 @@ export const DEFAULT_DISABLED_SOURCE_IDS = [
 /** Bump when the list above changes so existing installs get the new entries once. */
 const SOURCE_DEFAULTS_VERSION = 1;
 
+export const MAX_CORNER_RADIUS = 28;
+export const DEFAULT_CORNER_RADIUS = 8;
+
 export type LibrarySort = "title" | "unread" | "lastRead" | "added" | "lastUpdate";
 export type LibraryDensity = "cozy" | "compact" | "list";
 export type LibraryGridColumns = "auto" | 2 | 3 | 4 | 5 | 6;
@@ -36,6 +39,8 @@ export interface Settings {
   /** Stylesheet applied on top of everything, for changes the colour editor cannot make. */
   customCss: string;
   customCssOn: boolean;
+  /** Corner radius in px for panels, buttons, inputs and covers: 0 is sharp, higher is rounder. Independent of the theme. */
+  cornerRadius: number;
   /** three.js backdrop + hero scenes. */
   fx: boolean;
   /** Hide content from sources marked as adult. */
@@ -110,6 +115,7 @@ export const useSettings = create<Settings>()(
       userThemes: [],
       customCss: "",
       customCssOn: true,
+      cornerRadius: DEFAULT_CORNER_RADIUS,
       fx: true,
       safeMode: true,
       publicCommunityEnabled: true,

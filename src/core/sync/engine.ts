@@ -20,7 +20,7 @@ import { ensureSignedIn, loadFirebase, useSync, watchAuth } from "./firebase";
 
 const LS_PUSHED = "comik.sync.pushedAt";
 const SYNCED_SETTINGS: (keyof ReturnType<typeof useSettings.getState>)[] = [
-  "theme", "userThemes", "customCss", "customCssOn", "librarySort", "librarySortAsc", "libraryDensity", "libraryGridColumns", "globalSearchGridColumns", "libraryUnreadBadge", "readerMode", "fit", "webtoonGap", "webtoonSidePadding",
+  "theme", "userThemes", "customCss", "customCssOn", "cornerRadius", "librarySort", "librarySortAsc", "libraryDensity", "libraryGridColumns", "globalSearchGridColumns", "libraryUnreadBadge", "readerMode", "fit", "webtoonGap", "webtoonSidePadding",
   "doublePages", "smartSpreads", "cropBorders", "splitTall", "preload", "tapZones", "invertTaps", "showPageNumber", "brightness", "grayscale", "communityProfile", "tastePreferences",
   "invert", "sepia", "novelFontSize", "novelLineHeight", "novelFont", "autoNextChapter", "skipReadChapters", "updateSkipCompleted", "autoUpdateHours",
 ];
@@ -82,7 +82,7 @@ function applySettings(values: Record<string, unknown>, modifiedAt: number) {
 
 async function clearLocalSyncData() {
   await db.transaction("rw", db.manga, db.chapters, db.categories, db.pendingStates, async () => {
-    await Promise.all([db.manga.clear(), db.chapters.clear(), db.categories.clear(), db.pendingStates.clear()]);
+    await Promise.all([db.manga.clear(), db.chapters.clear(), db.categories.clear(), db.pendingStates.clear(), db.shelfStats.clear()]);
   });
   await db.transaction("rw", db.downloads, db.pageCache, db.pageBlobs, db.localFiles, async () => {
     await Promise.all([db.downloads.clear(), db.pageCache.clear(), db.pageBlobs.clear(), db.localFiles.clear()]);

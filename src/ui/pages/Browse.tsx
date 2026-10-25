@@ -156,9 +156,9 @@ function GlobalSearch({ sources, q, fields, tolerance, kind }: { sources: Source
   const [sourcePicked, setSourcePicked] = useState<Set<string>>(new Set());
   const [addingSources, setAddingSources] = useState(false);
   const categories = useLiveQuery(() => db.categories.where("kind").equals(kind).sortBy("order").then((rows) => rows.filter((row) => !row.deleted)), [kind], []);
-  const lib = useLiveQuery(() => db.manga.filter((m) => m.inLibrary).primaryKeys(), [], [] as string[]);
+  const lib = useLiveQuery(() => db.manga.where("libraryFlag").equals(1).primaryKeys(), [], [] as string[]);
   const inferredGenres = useLiveQuery(async () => {
-    const shelf = await db.manga.filter((manga) => manga.inLibrary).toArray();
+    const shelf = await db.manga.where("libraryFlag").equals(1).toArray();
     const recentChapters = await db.chapters.where("readAt").above(0).reverse().limit(500).toArray();
     const ids = [...new Set(recentChapters.map((chapter) => chapter.mangaId))];
     const recent = (await db.manga.bulkGet(ids)).filter((manga): manga is NonNullable<typeof manga> => !!manga);

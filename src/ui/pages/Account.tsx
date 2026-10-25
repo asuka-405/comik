@@ -19,7 +19,7 @@ export function AccountPage() {
   const mode = getFirebaseMode();
   const data = useLiveQuery(async () => {
     const [series, chapters, read, bookmarked, categories, downloads] = await Promise.all([
-      db.manga.filter((item) => item.inLibrary).count(),
+      db.manga.where("libraryFlag").equals(1).count(),
       db.chapters.count(),
       db.chapters.filter((item) => item.read).count(),
       db.chapters.filter((item) => item.bookmark).count(),

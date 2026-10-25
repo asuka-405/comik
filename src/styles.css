@@ -449,8 +449,8 @@ h1,h2,h3,p{margin:0}
 .aside-link .social-avatar{width:22px;height:22px;font-size:11px;flex:none}
 
 /* ---------- theme studio ---------- */
-/* Corner roundness comes from the theme. 0 keeps the default square look. */
-.panel,.btn,.chip,.input,.icon-btn,.tag,.toast,.sheet,.seg,.seg button,.cover .art,.list-row,.resume>*,.src-grid>*,.source-card,.community-post,.community-compose,.community-quick,.community-quick-input,.community-reference,.community-comment,.community-empty,.cat-row,.tl-sub-link,.selbar,.theme-card,.theme-editor,.poll-option,.chap,.verify-panel,.settings-item,.scrim .sheet,.social-avatar,textarea,select{border-radius:var(--radius)}
+/* Corner roundness is the Corners setting (Settings, Appearance), not part of the theme. */
+.panel,.btn,.chip,.input,.icon-btn,.tag,.toast,.sheet,.seg,.seg button,.cover .art,.list-row,.resume>*,.src-grid>*,.source-card,.community-post,.community-compose,.community-quick,.community-quick-input,.community-reference,.community-comment,.community-empty,.cat-row,.tl-sub-link,.selbar,.theme-card,.theme-editor,.poll-option,.chap,.verify-panel,.settings-item,.scrim .sheet,.social-avatar,textarea,select,.shell-searchbar,.hero3d,.account-menu-list,.cm-card,.cm-banner,.tour-card,.reading-notice,.public-capacity-notice,.community-feed-filters button,.community-kind,.community-poll,.community-action,.community-aside-intro,.community-vote-reaction,.community-search,.doc-code{border-radius:var(--radius)}.community-image{border-radius:var(--radius)}
 .cover .art img,.list-row img{border-radius:max(0px,calc(var(--radius) - 2px))}
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px}
 .theme-card{display:grid;gap:7px;padding:8px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:var(--radius)}
@@ -704,3 +704,4 @@ button.cm-row:hover{border-color:var(--cm,var(--accent))}.cm-row.static{cursor:d
 @media(max-width:700px){.data-schema-list,.data-community-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:560px){.community-profile-fields{grid-template-columns:minmax(0,1fr)}.taste-preference-row{grid-template-columns:minmax(0,1fr) auto auto;gap:8px}}
 @media(max-width:520px){.discover-work-list{grid-template-columns:minmax(0,1fr)}.discover-work{grid-template-columns:100px minmax(0,1fr)}}
+.corner-preview{display:flex;align-items:center;gap:12px;padding:14px 0 4px}.corner-preview .panel{padding:10px 18px;font-weight:700;color:var(--ink)}

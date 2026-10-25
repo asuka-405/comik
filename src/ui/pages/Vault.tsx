@@ -31,7 +31,7 @@ export function Vault() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const entries = useLiveQuery(async () => {
-    const manga = await db.manga.filter((m) => m.inLibrary && !!m.vault).toArray();
+    const manga = await db.manga.where("libraryFlag").equals(1).filter((m) => !!m.vault).toArray();
     const ids = new Set(manga.map((m) => m.id));
     const chapters = (await db.chapters.toArray()).filter((c) => ids.has(c.mangaId));
     return manga.map((m) => ({ m, s: statsOf(chapters.filter((c) => c.mangaId === m.id)) }));

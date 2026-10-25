@@ -31,7 +31,7 @@ export interface UserTheme {
   name: string;
   base: ThemeBase;
   colors: ThemeColors;
-  /** Corner radius in px. 0 is the default square look. */
+  /** Kept so theme files from older versions still load. Corners are now their own setting and this is ignored. */
   radius: number;
   font: string;
 }
@@ -88,7 +88,6 @@ export function themeCss(t: ResolvedTheme): string {
     decl.push("--accent-soft:color-mix(in srgb,var(--accent) 16%,transparent)", "--accent-hover:color-mix(in srgb,var(--accent) 86%,#000)", "--focus:0 0 0 3px color-mix(in srgb,var(--accent) 34%,transparent)", "--warm:var(--accent)");
   }
   if (c.ink && isHex(c.ink)) decl.push("--line:color-mix(in srgb,var(--ink) 15%,transparent)");
-  decl.push(`--radius:${Math.max(0, Math.min(24, t.radius))}px`);
   const font = FONTS.find((f) => f.id === t.font)?.stack;
   if (font) decl.push(`--font:${font}`);
   return `:root[data-theme]{${decl.join(";")}}`;

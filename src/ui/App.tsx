@@ -3,7 +3,7 @@ import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-d
 import { useLiveQuery } from "dexie-react-hooks";
 import { BookBookmark, BookOpenText, ChatCircleText, Clock, Compass, FilmSlate, MagnifyingGlass } from "@phosphor-icons/react";
 import { db } from "@/core/db";
-import { useSettings } from "@/core/settings";
+import { DEFAULT_CORNER_RADIUS, MAX_CORNER_RADIUS, useSettings } from "@/core/settings";
 import { isNativeShell } from "@/core/platform";
 import { loadConnectors } from "@/core/connectors/registry";
 import { pruneCache } from "@/core/cache";
@@ -14,6 +14,8 @@ import { maybeAutoUpdate } from "@/core/updater";
 import { loadPublicCommunityFirebase, readFirebaseConfig, readPublicCommunityConfig } from "@/core/sync/firebase";
 import { startSync } from "@/core/sync/engine";
 import { Backdrop } from "./Backdrop";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { startShelfStats } from "@/core/shelfStats";
 import { Toasts } from "./common";
 import { Palette } from "./Palette";
 import { Shelf } from "./pages/Shelf";
@@ -41,6 +43,9 @@ import { proxyToken } from "@/core/http";
 import { Onboarding } from "./Onboarding";
 import { AccountMenu } from "./AccountMenu";
 import { BASE_COLORS, resolveTheme, themeCss } from "@/core/themes";
+
+/** How far back a chapter still counts as new for the Timeline badge. */
+const NEW_WINDOW = 30 * 24 * 36e5;
 
 declare const __APP_VERSION__: string;
 const APP_VERSION = __APP_VERSION__;
@@ -73,6 +78,7 @@ function useTheme() {
   const userThemes = useSettings((s) => s.userThemes);
   const customCss = useSettings((s) => s.customCss);
   const customCssOn = useSettings((s) => s.customCssOn);
+  const cornerRadius = useSettings((s) => s.cornerRadius);
   const [systemDark, setSystemDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
 
   useEffect(() => {
@@ -86,10 +92,11 @@ function useTheme() {
     const resolved = resolveTheme(theme, userThemes, systemDark);
     document.documentElement.dataset.theme = resolved.base;
     document.documentElement.dataset.skin = resolved.id;
-    styleElement("comik-theme").textContent = themeCss(resolved);
+    const corners = Math.max(0, Math.min(MAX_CORNER_RADIUS, Number.isFinite(cornerRadius) ? cornerRadius : DEFAULT_CORNER_RADIUS));
+    styleElement("comik-theme").textContent = `${themeCss(resolved)}:root[data-theme]{--radius:${corners}px}`;
     const canvas = resolved.colors.canvas ?? BASE_COLORS[resolved.base].canvas;
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", canvas);
-  }, [theme, userThemes, systemDark]);
+  }, [theme, userThemes, systemDark, cornerRadius]);
 
   useEffect(() => {
     styleElement("comik-custom-css").textContent = customCssOn ? customCss : "";
@@ -116,6 +123,7 @@ export function App() {
   const analyticsConsent = useSettings((s) => s.analyticsConsent);
 
   useEffect(() => {
+    startShelfStats();
     void loadCustomSources();
     void loadConnectors();
     void pruneCache();
@@ -150,18 +158,23 @@ export function App() {
     return () => removeEventListener("keydown", k);
   }, []);
 
+  // The badge on Timeline. Only recent chapters can be new, so this never walks the whole chapter table, and it
+  // re-counts when chapters change or after the Timeline is opened (which marks things seen), not on every click.
+  const onTimeline = loc.pathname === "/timeline";
   const newCount = useLiveQuery(async () => {
-    const since = Number(localStorage.getItem("comik.timeline.seen") ?? 0);
-    const vaulted = new Set(await db.manga.filter((m) => !!m.vault).primaryKeys());
-    return db.chapters.where("fetchedAt").above(Math.max(since, 1)).filter((c) => !c.read && !vaulted.has(c.mangaId)).count();
-  }, [loc.pathname], 0);
+    const since = Math.max(Number(localStorage.getItem("comik.timeline.seen") ?? 0), Date.now() - NEW_WINDOW, 1);
+    const fresh = await db.chapters.where("fetchedAt").above(since).filter((c) => !c.read).toArray();
+    if (!fresh.length) return 0;
+    const vaulted = new Set(await db.manga.where("id").anyOf([...new Set(fresh.map((c) => c.mangaId))]).filter((m) => !!m.vault).primaryKeys());
+    return fresh.reduce((n, c) => n + (vaulted.has(c.mangaId) ? 0 : 1), 0);
+  }, [onTimeline], 0);
 
   if (loc.pathname === "/setup") return <><WebSetup /><PublicCapacityNotice /></>;
 
   if (reading) {
     return (
       <>
-        <Routes><Route path="/read/:chapterId" element={<Reader />} /></Routes>
+        <ErrorBoundary key={loc.pathname}><Routes><Route path="/read/:chapterId" element={<Reader />} /></Routes></ErrorBoundary>
         <PublicCapacityNotice />
         <Toasts />
       </>
@@ -195,6 +208,7 @@ export function App() {
             </form>
             <AccountMenu />
           </div>
+          <ErrorBoundary key={loc.pathname}>
           <Routes>
             <Route path="/" element={<Shelf onSearch={() => setPalette(true)} />} />
             <Route path="/novels" element={<Shelf kind="novel" onSearch={() => setPalette(true)} />} />
@@ -229,6 +243,7 @@ export function App() {
             <Route path="/source-studio" element={<SourceStudioPage />} />
             <Route path="*" element={<div className="page"><div className="empty"><h2>Lost page</h2><button className="btn primary" onClick={() => nav("/")}>Back to shelf</button></div></div>} />
           </Routes>
+          </ErrorBoundary>
         </main>
       </div>
       {palette && <Palette onClose={() => setPalette(false)} />}

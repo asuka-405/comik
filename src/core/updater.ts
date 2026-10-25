@@ -20,7 +20,7 @@ const LS = "comik.lastUpdateRun";
 /** Which library entries are worth polling. Mirrors Mihon's "update restrictions". */
 export async function updateTargets(): Promise<MangaRow[]> {
   const s = getSettings();
-  const all = await db.manga.filter((m) => m.inLibrary).toArray();
+  const all = await db.manga.where("libraryFlag").equals(1).toArray();
   const started = new Set<string>();
   if (s.updateSkipStarted) {
     for (const c of await db.chapters.filter((c) => c.read).toArray()) started.add(c.mangaId);

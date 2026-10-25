@@ -334,11 +334,19 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
     const io = bg ? null : new IntersectionObserver(([en]) => (visible = !!en?.isIntersecting));
     io?.observe(canvas);
 
-    let raf = 0, last = performance.now(), t = 0, acc = 0;
+    let raf = 0, last = performance.now(), t = 0, acc = 0, lag = 0, lastFrame = performance.now();
     const frameGap = bg ? 1000 / 30 : 1000 / 60;
     const speed = bg ? 0.16 : 0.32;
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
+      // A device that cannot keep this up (software rendering, a busy GPU) gets a still canvas instead of a stalled
+      // page: after about 40 slow frames the animation stops. Long gaps are a hidden tab, not slowness.
+      const gap = now - lastFrame;
+      lastFrame = now;
+      if (visible && !document.hidden) {
+        if (gap > 90 && gap < 1000) lag++; else if (lag > 0) lag -= 0.25;
+        if (lag >= 40) { cancelAnimationFrame(raf); raf = 0; if (bg) canvas.style.display = "none"; return; }
+      }
       const dt = now - last;
       if (!visible || document.hidden || dt < 4) return;
       acc += dt;

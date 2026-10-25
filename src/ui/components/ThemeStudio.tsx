@@ -145,10 +145,6 @@ export function ThemeStudio() {
             })}
           </div>
           <div className="theme-editor-row">
-            <span>Corner roundness <span className="mono muted">{active.radius}px</span></span>
-            <input type="range" min={0} max={24} step={1} value={active.radius} onChange={(e) => update({ radius: Number(e.target.value) })} aria-label="Corner roundness" />
-          </div>
-          <div className="theme-editor-row">
             <span>Font</span>
             <select className="input" style={{ width: "auto" }} value={active.font} onChange={(e) => update({ font: e.target.value })} aria-label="Font">
               {FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}

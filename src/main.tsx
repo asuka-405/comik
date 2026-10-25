@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, HashRouter } from "react-router-dom";
 import "./styles.css";
 import { App } from "./ui/App";
+import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { isNativeShell } from "./core/platform";
 
 if (import.meta.env.PROD && !isNativeShell && "serviceWorker" in navigator) {
@@ -16,4 +17,4 @@ const application = isNativeShell
   ? <HashRouter><App /></HashRouter>
   : <BrowserRouter basename="/web"><App /></BrowserRouter>;
 
-createRoot(document.getElementById("root")!).render(<StrictMode>{application}</StrictMode>);
+createRoot(document.getElementById("root")!).render(<StrictMode><ErrorBoundary scope="app">{application}</ErrorBoundary></StrictMode>);

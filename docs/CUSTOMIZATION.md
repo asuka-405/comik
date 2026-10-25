@@ -4,7 +4,7 @@ Comik is drawn with CSS variables, so you can change it at three levels: pick a 
 
 ## Built-in themes
 
-Pick one in Settings, Appearance, Theme. The dark themes have rounded corners by default; the light ones are square unless you change the radius.
+Pick one in Settings, Appearance, Theme. Every theme uses the same corner roundness, which you set separately (see Corners below).
 
 - **Moss dark** and **Moss light**: the default look.
 - **Midnight**, **Pure black**, **Nord**, **Dracula**, **Deep forest**, **Ocean**: calm dark themes.
@@ -14,11 +14,10 @@ Pick one in Settings, Appearance, Theme. The dark themes have rounded corners by
 
 ## Make your own theme
 
-Choose New theme. A new theme starts as a copy of whatever is showing, so you never start from a blank page. A theme is four things:
+Choose New theme. A new theme starts as a copy of whatever is showing, so you never start from a blank page. A theme is three things:
 
 - **Base**: dark or light. This picks the default colors and tells the browser which form controls and scrollbars to draw.
 - **Colors**: any of the fourteen colors below. A color you leave alone keeps the base value.
-- **Corner radius**: 0 to 24 pixels. 0 is square, 8 to 12 is soft, 24 is pill-like.
 - **Font**: Plus Jakarta Sans (the default), System UI, Serif, Rounded or Monospace.
 
 | Color | Variable | What it paints |
@@ -36,6 +35,10 @@ Choose New theme. A new theme starts as a copy of whatever is showing, so you ne
 
 Colors must be hex values such as `#ff4d94` or `#f4d`. Anything else is ignored. Borders, the soft accent, the hover accent and the focus ring are worked out from your colors with `color-mix`, so changing the accent recolors all of them together.
 
+## Corners
+
+Corners are their own setting, not part of a theme. In Settings, Appearance, Corners, a slider goes from sharp (0) to very round (28 pixels) and applies to every theme: cards, buttons, inputs, chips and covers. It is stored as the `--radius` variable, so custom CSS can use it too, for example `border-radius: calc(var(--radius) * 2)`. The default is 8 pixels.
+
 ## Share a theme
 
 The Copy to share button on an open theme puts it on your clipboard as a small JSON file (or downloads it if the clipboard is blocked). Import file and Paste theme add one to your list. Duplicate makes an editable copy of any theme. If the file carries custom CSS, Comik turns custom CSS on and fills the box with it, so read it first.
@@ -46,13 +49,12 @@ The Copy to share button on an open theme puts it on your clipboard as a small J
   "name": "Bubblegum night",
   "base": "dark",
   "colors": { "canvas": "#1a1024", "accent": "#ff4d94", "accent-2": "#ff8cc0" },
-  "radius": 16,
   "font": "rounded",
   "css": "body { --gold: #ffd166; }"
 }
 ```
 
-The importer checks every field: unknown colors and non-hex values are dropped, the radius is clamped to 0 to 24, an unknown font becomes the default, the name is cut to 40 characters and the CSS to 60,000.
+The importer checks every field: unknown colors and non-hex values are dropped, a radius from an older theme file is accepted and ignored, an unknown font becomes the default, the name is cut to 40 characters and the CSS to 60,000.
 
 ## Custom CSS
 
@@ -114,7 +116,7 @@ Class names can change between releases. Variables are the stable part, so prefe
 ### Recipes
 
 ```css
-/* Pill-shaped buttons and chips */
+/* Pill-shaped buttons and chips (or just slide Corners up) */
 .btn, .chip, .tag, .seg, .seg button { border-radius: 999px; }
 
 /* Flat look: remove the offset shadows on hover */

@@ -6,7 +6,7 @@ import { DEFAULT_COMMUNITY_PROFILE, DEFAULT_TASTE_PREFERENCES, inferGenrePrefere
 export function ProfilePreferences() {
   const settings = useSettings();
   const inferredGenres = useLiveQuery(async () => {
-    const shelf = await db.manga.filter((manga) => manga.inLibrary).toArray();
+    const shelf = await db.manga.where("libraryFlag").equals(1).toArray();
     const recentChapters = await db.chapters.where("readAt").above(0).reverse().limit(500).toArray();
     const recentIds = [...new Set(recentChapters.map((chapter) => chapter.mangaId))];
     const recentManga = (await db.manga.bulkGet(recentIds)).filter((manga): manga is NonNullable<typeof manga> => !!manga);

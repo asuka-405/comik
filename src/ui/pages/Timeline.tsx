@@ -71,7 +71,7 @@ export function Timeline() {
 
   const updates = useLiveQuery(async () => {
     const chapters = await db.chapters.where("fetchedAt").above(0).reverse().sortBy("fetchedAt");
-    const manga = new Map((await db.manga.filter((m) => m.inLibrary).toArray()).map((m) => [m.id, m]));
+    const manga = new Map((await db.manga.where("libraryFlag").equals(1).toArray()).map((m) => [m.id, m]));
     return chapters.filter((c) => manga.has(c.mangaId)).slice(0, 150).map((c) => ({ c, m: manga.get(c.mangaId)! }));
   }, [], []);
 

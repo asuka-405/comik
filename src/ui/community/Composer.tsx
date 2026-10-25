@@ -68,7 +68,7 @@ export function CommunityNewPostPage() {
 
 function CommunityComposer({ communityId, name, onPublished }: { communityId: string; name: string; onPublished: () => void }) {
   // Vault titles are never offered, so a post cannot give them away.
-  const library = useLiveQuery(() => db.manga.filter((item) => item.inLibrary && !item.vault).toArray(), [], []);
+  const library = useLiveQuery(() => db.manga.where("libraryFlag").equals(1).filter((item) => !item.vault).toArray(), [], []);
   const [params] = useSearchParams();
   const [kind, setKind] = useState<CommunityKind>(() => (params.get("comic") ? "recommendation" : "discussion"));
   const [title, setTitle] = useState("");

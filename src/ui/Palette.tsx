@@ -15,7 +15,7 @@ export function Palette({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  const library = useLiveQuery(() => db.manga.filter((m) => m.inLibrary).toArray(), [], []);
+  const library = useLiveQuery(() => db.manga.where("libraryFlag").equals(1).toArray(), [], []);
   useEffect(() => input.current?.focus(), []);
 
   const items = useMemo<Item[]>(() => {

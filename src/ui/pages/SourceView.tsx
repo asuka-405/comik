@@ -36,7 +36,7 @@ export function SourceView() {
   const [error, setError] = useState("");
   const run = useRef(0);
   const sentinel = useRef<HTMLDivElement>(null);
-  const lib = useLiveQuery(() => db.manga.filter((m) => m.inLibrary).primaryKeys(), [], [] as string[]);
+  const lib = useLiveQuery(() => db.manga.where("libraryFlag").equals(1).primaryKeys(), [], [] as string[]);
 
   useEffect(() => {
     if (!source) return;

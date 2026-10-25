@@ -2,6 +2,23 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.7.2-alpha
+
+A quality update: a faster, steadier library and a corners control.
+
+### Corners
+- Corner roundness is now its own setting: Settings, Appearance, Corners has a slider from sharp (0) to very round (28 px) with a live preview. It applies to every theme and to cards, buttons, inputs, chips, community posts and covers. The default is 8 px. Themes no longer carry their own radius; theme files from older versions still import.
+
+### Library loads from the device, instantly
+- The shelf no longer reads every chapter of every title when it opens. Per-title reading numbers (unread, total, last read, what Continue opens) are kept in a small table on the device and updated in the background whenever chapters change: reading, a refresh, sync or a restore. The library, its counts and Continue now draw from that table straight away.
+- Library titles keep their saved details and chapters until you refresh a title, refresh a category or the scheduled update runs. Opening the app or a title does not fetch them again.
+- Shelf, Discover, Timeline, Vault, Account and search now look up your library through an index instead of scanning every saved title. The Timeline badge counts only chapters from the last 30 days and no longer recounts on every click.
+
+### Fewer freezes and blank screens
+- A screen that fails to draw now shows a message with Reload and Try again, instead of leaving the whole window blank. Leaving the screen resets it.
+- When an update needs to change the saved library while another Comik tab or window is still open on the old version, the old one now steps aside and reloads, instead of leaving the new one waiting on a library that never opens.
+- The animated 3D background stops itself on devices that cannot keep up, so it can no longer stall the page.
+
 ## 0.7.1-alpha
 
 ### Themes and customization

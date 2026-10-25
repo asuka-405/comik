@@ -2,6 +2,7 @@ import Dexie, { type Table } from "dexie";
 import type { Backup } from "./backup";
 import type { CategoryRow, ChapterRow, MangaRow } from "./types";
 import { splitLegacyCategories } from "./categoryMigration";
+import type { ShelfStatsRow } from "./shelfStats";
 
 export interface PageCacheRow {
   chapterId: string;
@@ -99,6 +100,7 @@ class ComikDB extends Dexie {
   accountArchives!: Table<AccountArchiveRow, string>;
   connectors!: Table<ConnectorRow, string>;
   apiCache!: Table<ApiCacheRow, string>;
+  shelfStats!: Table<ShelfStatsRow, string>;
 
   constructor() {
     super("comik");
@@ -127,6 +129,13 @@ class ComikDB extends Dexie {
     this.version(6).stores({ manga: "id, sourceId, lastUpdateAt, modifiedAt, title, libraryFlag" }).upgrade(async (tx) => {
       const manga = await tx.table("manga").toArray() as MangaRow[];
       await tx.table("manga").bulkPut(manga.map((item) => ({ ...item, libraryFlag: item.inLibrary ? 1 : 0 })));
+    });
+    this.version(7).stores({ shelfStats: "mangaId" });
+    // Another tab or window still on an older version would block an upgrade forever and leave this one waiting on
+    // a database that never opens, which looks like a blank or frozen page. Let go of the old connection and reload.
+    this.on("versionchange", () => {
+      this.close();
+      if (typeof location !== "undefined") location.reload();
     });
   }
 }

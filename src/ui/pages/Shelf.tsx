@@ -7,15 +7,17 @@ import { useSettings, type LibraryGridColumns, type LibrarySort } from "@/core/s
 import { createCategory, deleteCategory, editCategoriesOf, moveCategory, removeFromLibrary, renameCategory, setSeriesRead, setVault } from "@/core/repo";
 import { importNovel } from "@/core/novels";
 import { getSource } from "@/core/sources/registry";
-import { resumeTarget, statsOf, type LibraryStats } from "@/core/progress";
+import type { LibraryStats } from "@/core/progress";
+import { markShelfStatsDirty, shelfStatsOf, type ShelfStatsRow } from "@/core/shelfStats";
 import { updateLibrary, useUpdater } from "@/core/updater";
-import { mediaOf, type CategoryRow, type ChapterRow, type MangaRow, type MediaKind } from "@/core/types";
+import { mediaOf, type CategoryRow, type MangaRow, type MediaKind } from "@/core/types";
 import { MEDIA } from "../media";
 import { PanelField } from "../PanelField";
 import { ConfirmDialog, Cover, Empty, Sheet, TextDialog, coverSrc, hueOf, timeAgo, toast, useLongPress } from "../common";
 import { formatChapterNumber } from "@/core/chapterRecognition";
 
-interface Entry { m: MangaRow; s: LibraryStats; chapters: ChapterRow[] }
+interface Entry { m: MangaRow; s: LibraryStats; resume?: ShelfStatsRow["resume"] }
+const EMPTY_STATS: LibraryStats = { unread: 0, total: 0, lastReadAt: 0, progress: 0 };
 const shelfSnapshots = new Map<MediaKind, { entries: Entry[]; cats: CategoryRow[] }>();
 
 const SORTS: [LibrarySort, string][] = [["lastRead", "Last read"], ["lastUpdate", "Latest update"], ["unread", "Unread"], ["title", "Title"], ["added", "Date added"]];
@@ -34,14 +36,19 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
   // Each media shelf starts clean: the tab and filter of the comic shelf mean nothing on the anime shelf.
   useEffect(() => { setCat("all"); setFilter(""); setSelecting(false); setPicked(new Set()); }, [kind]);
 
+  // The shelf reads the small per-title numbers table, not every chapter, so it opens as fast as the disk answers.
   const data = useLiveQuery(async () => {
     const manga = (await db.manga.where("libraryFlag").equals(1).toArray()).filter((item) => mediaOf(item) === kind);
-    const ids = new Set(manga.map((m) => m.id));
-    const chapters = ids.size ? await db.chapters.where("mangaId").anyOf([...ids]).toArray() : [];
-    const by = new Map<string, ChapterRow[]>();
-    for (const c of chapters) (by.get(c.mangaId) ?? by.set(c.mangaId, []).get(c.mangaId)!).push(c);
+    const stored = await db.shelfStats.bulkGet(manga.map((m) => m.id));
+    const missing = manga.filter((_, i) => !stored[i]);
+    // A few titles without numbers yet (just added) are worked out now; a whole library is filled in behind the scenes.
+    const worked = new Map<string, ShelfStatsRow>();
+    if (missing.length && missing.length <= 25) {
+      for (const m of missing) worked.set(m.id, shelfStatsOf(m.id, await db.chapters.where("mangaId").equals(m.id).toArray()));
+    }
+    if (missing.length) markShelfStatsDirty(...missing.map((m) => m.id));
     const cats = (await db.categories.where("kind").equals(kind).sortBy("order")).filter((c) => !c.deleted);
-    const result = { entries: manga.map<Entry>((m) => ({ m, chapters: by.get(m.id) ?? [], s: statsOf(by.get(m.id) ?? []) })), cats };
+    const result = { entries: manga.map<Entry>((m, i) => { const row = stored[i] ?? worked.get(m.id); return { m, s: row ?? EMPTY_STATS, resume: row?.resume }; }), cats };
     shelfSnapshots.set(kind, result);
     return result;
   }, [kind], shelfSnapshots.get(kind));
@@ -63,7 +70,7 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
   }, [data, safeEntries, cat, filter, st.libraryOnlyUnread, st.librarySort, st.librarySortAsc]);
 
   const resume = useMemo(
-    () => safeEntries.filter((e) => e.s.lastReadAt > 0).sort((a, b) => b.s.lastReadAt - a.s.lastReadAt).map((e) => ({ e, r: resumeTarget(e.chapters) })).filter((x) => x.r).slice(0, 10),
+    () => safeEntries.filter((e) => e.s.lastReadAt > 0).sort((a, b) => b.s.lastReadAt - a.s.lastReadAt).filter((e) => e.resume).map((e) => ({ e, r: e.resume! })).slice(0, 10),
     [safeEntries],
   );
 
@@ -139,13 +146,13 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
           <div className="kicker" style={{ marginBottom: 10 }}>Continue</div>
           <div className="resume">
             {resume.map(({ e, r }) => (
-              <Link key={e.m.id} to={`/read/${encodeURIComponent(r!.chapter.id)}`} className="panel" data-hue={hueOf(e.m.id)}>
+              <Link key={e.m.id} to={`/read/${encodeURIComponent(r.id)}`} className="panel" data-hue={hueOf(e.m.id)}>
                 <img src={coverSrc(e.m.sourceId, e.m.cover)} alt="" />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="t">{e.m.title}</div>
                   <div className="meter"><i style={{ width: `${Math.round(e.s.progress * 100)}%` }} /></div>
                   <div className="muted mono" style={{ fontSize: 12 }}>
-                    {words.short} {formatChapterNumber(r!.chapter.number)}{kind === "comic" && r!.started && r!.chapter.lastPage > 0 ? `, page ${r!.chapter.lastPage + 1}` : ""}
+                    {words.short} {formatChapterNumber(r.number)}{kind === "comic" && r.started && r.lastPage > 0 ? `, page ${r.lastPage + 1}` : ""}
                   </div>
                   <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{timeAgo(e.s.lastReadAt)}</div>
                 </div>
