@@ -2,6 +2,23 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.5.1-alpha
+
+### Shelves
+- **Web novels and anime now have the same shelf as comics**: cover grid or list, shelf tabs, sort, filter, only-unread, density, multi-select, Continue row and an Update button. Novels keep their Import button.
+- **The shelf tools are tucked away.** Under the tabs there is now one compact row with "Filter and sort" and "Update". Filter, sort, columns, only-unread, density and Select all open from the first button, closed by default. The separate select checkbox is gone; long-press or right-click a title, or press Select all, to start selecting.
+
+### Timeline
+- History and Updates each have separate **Comics, Web novels and Anime** tabs, with chapter or episode wording to match.
+
+### Vault
+- New **Vault** for titles you want kept apart, with Comics, Web novels and Anime sections. Move a title in from its page or from a shelf's selection bar. Vault titles are left out of the shelf, timeline, update badge and community suggestions, and they keep updating and syncing.
+- An optional PIN hides the Vault page. It keeps casual eyes out; it is not encryption.
+
+### Community
+- **Reference a title** is split into Comics, Web novels and Anime, each listing only your titles of that kind. Vault titles are never offered.
+- The reference box no longer runs off the edge of small screens.
+
 ## 0.5.0-alpha
 
 ### Updates

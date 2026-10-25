@@ -14,6 +14,13 @@ Updated: 2026-10-24 (global search, source ordering, MangaDex removal)
 - Keep these chapter actions in 0.4.0-alpha, not the 0.3.5-alpha bug-fix release.
 - Improve series migration to search all eligible sources by the exact title and alternate names, then list every possible match with exact matches ranked first.
 
+## Shelves, Vault, timeline tabs (0.5.1-alpha, not yet released)
+
+- `Shelf` takes a `kind` (comic, novel, anime) and is used for `/`, `/novels` and `/anime`; the old Novels and Anime pages are gone. Words per kind live in `src/ui/media.ts`. Its tools row is collapsed by default (`#shelf-tools`), and Select all lives inside it.
+- `MangaRow.vault` (synced with the library) hides a title from the shelves, `Timeline`, the dock badge in `App.tsx`, the community composer and `QuickCompose`. The Vault page is `src/ui/pages/Vault.tsx`; the optional PIN is `settings.vaultPin` (a hash, local only) and the unlocked state lives in `sessionStorage`.
+- `Timeline` filters by `mediaOf(manga)`; the choice is remembered in `localStorage` (`comik.timeline.kind`).
+- Checked in a browser at 360 px with seeded titles: shelves, tools panel, vault listing, timeline tabs and the reference picker. Not checked: the PIN flow and bulk move to the Vault by hand.
+
 ## Updates and web novels (0.5.0-alpha)
 
 - **OTA is removed.** `src/core/appUpdates.ts` now only finds the newest GitHub release (newer than the running version, any major) and downloads the installer for this platform. Android: `ComikAndroidUpdates.downloadApk` hands the file to `DownloadManager`, which saves to Downloads and posts its own notification. Desktop: `/api/update/save`, `/progress`, `/reveal` in `desktop/main.cjs` stream the file to `app.getPath("downloads")`. The release list itself is fetched by the native side (`fetchUpdateInfo` on Android, `/api/update/download` on desktop) because the page could not always reach GitHub. Untested on a device: the Android download and the desktop download.

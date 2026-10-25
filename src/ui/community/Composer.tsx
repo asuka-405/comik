@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, EyeSlash } from "@phosphor-icons/react";
@@ -7,7 +7,9 @@ import { trackAnalytics } from "@/core/analytics";
 import { getSource } from "@/core/sources/registry";
 import { comicReference, communityTarget, publishPost, PUBLIC_ID, type CommunityKind } from "@/core/community";
 import { INLINE_LIMIT, shrinkToDataUrl, uploadToImgbb } from "@/core/communityImage";
+import { mediaOf, type MediaKind } from "@/core/types";
 import { Sheet, toast } from "../common";
+import { MEDIA, MEDIA_KINDS } from "../media";
 import { wrapSpoiler } from "./Feed";
 import { PUBLIC_COMMUNITY, SocialAvatar, useCommunity, useCommunityUser, useDirectory } from "./shared";
 
@@ -65,7 +67,8 @@ export function CommunityNewPostPage() {
 }
 
 function CommunityComposer({ communityId, name, onPublished }: { communityId: string; name: string; onPublished: () => void }) {
-  const library = useLiveQuery(() => db.manga.filter((item) => item.inLibrary).toArray(), [], []);
+  // Vault titles are never offered, so a post cannot give them away.
+  const library = useLiveQuery(() => db.manga.filter((item) => item.inLibrary && !item.vault).toArray(), [], []);
   const [params] = useSearchParams();
   const [kind, setKind] = useState<CommunityKind>(() => (params.get("comic") ? "recommendation" : "discussion"));
   const [title, setTitle] = useState("");
@@ -78,6 +81,10 @@ function CommunityComposer({ communityId, name, onPublished }: { communityId: st
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const selectedManga = library?.find((item) => item.id === mangaId);
+  const [refKind, setRefKind] = useState<MediaKind>("comic");
+  // A title chosen elsewhere (Share on its page) opens in its own section.
+  useEffect(() => { if (selectedManga) setRefKind(mediaOf(selectedManga)); }, [selectedManga?.id]);
+  const refOptions = (library ?? []).filter((item) => mediaOf(item) === refKind).sort((a, b) => a.title.localeCompare(b.title));
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -135,10 +142,15 @@ function CommunityComposer({ communityId, name, onPublished }: { communityId: st
       </div>
       {kind === "poll" && <textarea className="input" value={options} onChange={(event) => setOptions(event.target.value)} maxLength={500} rows={3} placeholder="One poll option per line" aria-label="Poll options" required />}
       <div className="community-compose-tools">
-        <select className="input" value={mangaId} onChange={(event) => setMangaId(event.target.value)} aria-label="Reference a title">
-          <option value="">Reference a title (optional)</option>
-          {library?.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-        </select>
+        <div className="community-ref">
+          <div className="seg" role="tablist" aria-label="Type of title to reference">
+            {MEDIA_KINDS.map((value) => <button type="button" key={value} role="tab" aria-selected={refKind === value} className={refKind === value ? "on" : ""} onClick={() => { setRefKind(value); if (selectedManga && mediaOf(selectedManga) !== value) setMangaId(""); }}>{MEDIA[value].plural}</button>)}
+          </div>
+          <select className="input" value={selectedManga && mediaOf(selectedManga) === refKind ? mangaId : ""} onChange={(event) => setMangaId(event.target.value)} aria-label={`Reference a ${MEDIA[refKind].one} (optional)`}>
+            <option value="">{refOptions.length ? `Reference a ${MEDIA[refKind].one} (optional)` : `No ${MEDIA[refKind].plural.toLowerCase()} on your shelf`}</option>
+            {refOptions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+          </select>
+        </div>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(event) => { setPicked(event.target.files?.[0] ?? null); event.target.value = ""; }} />
         {image ? (
           <span className="attach-chip"><span>{image.name} · {image.mode === "upload" ? "ImgBB" : `${(image.size / 1024).toFixed(0)} KB`}</span><button type="button" aria-label="Remove image" onClick={() => setImage(null)}>×</button></span>

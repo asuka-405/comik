@@ -557,3 +557,14 @@ button.cm-row:hover{border-color:var(--cm,var(--accent))}.cm-row.static{cursor:d
   .community-compose-tools .btn.primary{width:100%}
 }
 .attach-chip{display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:8px 10px;border:1px solid var(--line);background:var(--surface-2);font-size:13px;font-weight:700}.attach-chip>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attach-chip button{flex:none;color:var(--muted);font-size:18px;line-height:1}.attach-chip button:hover{color:var(--warm)}
+
+/* ---------- shelves for every media kind, vault, timeline tabs ---------- */
+.shelf-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}.shelf-bar>.btn:last-child{margin-left:auto}
+.shelf-tools-toggle .tag{min-width:20px;text-align:center}.shelf-tools-toggle.on{border-color:var(--accent)}
+#shelf-tools{padding:12px;background:var(--surface);border:1px solid var(--line)}
+.timeline-media{display:flex;width:max-content;max-width:100%;overflow-x:auto;margin-bottom:12px;scrollbar-width:none}.timeline-media button{flex:none}
+.vault-actions{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}.vault-note{max-width:70ch;margin:-8px 0 16px;font-size:13px}.vault-tabs{display:flex;width:max-content;max-width:100%;overflow-x:auto;margin-bottom:16px;scrollbar-width:none}.vault-tabs button{flex:none}
+.vault-gate{display:grid;justify-items:center;gap:12px;max-width:320px;margin:12vh auto 0;text-align:center}.vault-gate .input{text-align:center;letter-spacing:.3em}
+.community-ref{display:grid;gap:8px;flex:1 1 100%;min-width:0}.community-ref .seg{width:max-content;max-width:100%;overflow-x:auto;scrollbar-width:none}.community-ref .seg button{flex:none}
+.community-ref select,.community-compose-tools select{width:100%;min-width:0;max-width:100%;text-overflow:ellipsis}
+@media(max-width:600px){.shelf-bar>.btn{flex:1 1 auto}#shelf-tools{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}#shelf-tools .shelf-filter-wrap{grid-column:1/-1}}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookBookmark, BookOpenText, ChatCircleText, Clock, Compass, FilmSlate, MagnifyingGlass } from "@phosphor-icons/react";
+import { BookBookmark, BookOpenText, ChatCircleText, Clock, Compass, FilmSlate, LockKey, MagnifyingGlass } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { useSettings } from "@/core/settings";
 import { isNativeShell } from "@/core/platform";
@@ -15,8 +15,7 @@ import { Backdrop } from "./Backdrop";
 import { Toasts } from "./common";
 import { Palette } from "./Palette";
 import { Shelf } from "./pages/Shelf";
-import { Novels } from "./pages/Novels";
-import { Anime } from "./pages/Anime";
+import { Vault } from "./pages/Vault";
 import { Browse } from "./pages/Browse";
 import { SourceView } from "./pages/SourceView";
 import { Series } from "./pages/Series";
@@ -123,7 +122,8 @@ export function App() {
 
   const newCount = useLiveQuery(async () => {
     const since = Number(localStorage.getItem("comik.timeline.seen") ?? 0);
-    return db.chapters.where("fetchedAt").above(Math.max(since, 1)).filter((c) => !c.read).count();
+    const vaulted = new Set(await db.manga.filter((m) => !!m.vault).primaryKeys());
+    return db.chapters.where("fetchedAt").above(Math.max(since, 1)).filter((c) => !c.read && !vaulted.has(c.mangaId)).count();
   }, [loc.pathname], 0);
 
   if (loc.pathname === "/setup") return <WebSetup />;
@@ -146,6 +146,7 @@ export function App() {
           <NavLink to="/" end className="nav-btn" aria-label="Shelf"><BookBookmark size={24} /><span className="tip">Shelf</span></NavLink>
           <NavLink to="/novels" className="nav-btn" aria-label="Novels"><BookOpenText size={24} /><span className="tip">Novels</span></NavLink>
           <NavLink to="/anime" className="nav-btn" aria-label="Anime"><FilmSlate size={24} /><span className="tip">Anime</span></NavLink>
+          <NavLink to="/vault" className="nav-btn" aria-label="Vault"><LockKey size={24} /><span className="tip">Vault</span></NavLink>
           <NavLink to="/browse" className="nav-btn" aria-label="Discover"><Compass size={24} /><span className="tip">Discover</span></NavLink>
           <NavLink to="/timeline" className="nav-btn" aria-label="Timeline"><Clock size={24} />{!!newCount && <span className="dot">{newCount > 99 ? "99+" : newCount}</span>}<span className="tip">Timeline</span></NavLink>
           <NavLink to="/community" className="nav-btn" aria-label="Community"><ChatCircleText size={24} /><span className="tip">Community</span></NavLink>
@@ -165,8 +166,9 @@ export function App() {
           </div>
           <Routes>
             <Route path="/" element={<Shelf onSearch={() => setPalette(true)} />} />
-            <Route path="/novels" element={<Novels />} />
-            <Route path="/anime" element={<Anime />} />
+            <Route path="/novels" element={<Shelf kind="novel" onSearch={() => setPalette(true)} />} />
+            <Route path="/anime" element={<Shelf kind="anime" onSearch={() => setPalette(true)} />} />
+            <Route path="/vault" element={<Vault />} />
             <Route path="/browse" element={<Browse />} />
             <Route path="/browse/:sourceId" element={<SourceView />} />
             <Route path="/series/:id" element={<Series />} />

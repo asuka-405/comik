@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowDown, ArrowUp, ArrowsClockwise, Check, CheckSquare, FunnelSimple, MagnifyingGlass, PencilSimple, Plus, Rows, SquaresFour, Tag, Trash, X } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, ArrowsClockwise, CaretDown, CaretUp, Check, FunnelSimple, LockKey, MagnifyingGlass, PencilSimple, Plus, Rows, SlidersHorizontal, SquaresFour, Tag, Trash, X } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { useSettings, type LibraryGridColumns, type LibrarySort } from "@/core/settings";
-import { createCategory, deleteCategory, editCategoriesOf, moveCategory, removeFromLibrary, renameCategory, setSeriesRead } from "@/core/repo";
+import { createCategory, deleteCategory, editCategoriesOf, moveCategory, removeFromLibrary, renameCategory, setSeriesRead, setVault } from "@/core/repo";
+import { importNovel } from "@/core/novels";
 import { getSource } from "@/core/sources/registry";
 import { resumeTarget, statsOf, type LibraryStats } from "@/core/progress";
 import { updateLibrary, useUpdater } from "@/core/updater";
-import type { CategoryRow, ChapterRow, MangaRow } from "@/core/types";
+import { mediaOf, type CategoryRow, type ChapterRow, type MangaRow, type MediaKind } from "@/core/types";
+import { MEDIA } from "../media";
 import { PanelField } from "../PanelField";
 import { ConfirmDialog, Cover, Empty, Sheet, TextDialog, coverSrc, hueOf, timeAgo, toast, useLongPress } from "../common";
 import { formatChapterNumber } from "@/core/chapterRecognition";
@@ -17,12 +19,19 @@ interface Entry { m: MangaRow; s: LibraryStats; chapters: ChapterRow[] }
 
 const SORTS: [LibrarySort, string][] = [["lastRead", "Last read"], ["lastUpdate", "Latest update"], ["unread", "Unread"], ["title", "Title"], ["added", "Date added"]];
 
-export function Shelf({ onSearch }: { onSearch: () => void }) {
+export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind?: MediaKind }) {
+  const words = MEDIA[kind];
   const st = useSettings();
   const nav = useNavigate();
   const [cat, setCat] = useState<string>("all");
   const [filter, setFilter] = useState("");
+  const [tools, setTools] = useState(false);
   const up = useUpdater();
+  const picker = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  // Each media shelf starts clean: the tab and filter of the comic shelf mean nothing on the anime shelf.
+  useEffect(() => { setCat("all"); setFilter(""); setSelecting(false); setPicked(new Set()); }, [kind]);
 
   const data = useLiveQuery(async () => {
     const manga = await db.manga.filter((m) => m.inLibrary).toArray();
@@ -34,7 +43,7 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
     return { entries: manga.map<Entry>((m) => ({ m, chapters: by.get(m.id) ?? [], s: statsOf(by.get(m.id) ?? []) })), cats };
   }, []);
 
-  const safeEntries = useMemo(() => (data?.entries ?? []).filter((entry) => (!entry.m.kind || entry.m.kind === "comic") && (!st.safeMode || !getSource(entry.m.sourceId)?.isNsfw)), [data, st.safeMode]);
+  const safeEntries = useMemo(() => (data?.entries ?? []).filter((entry) => mediaOf(entry.m) === kind && !entry.m.vault && (!st.safeMode || !getSource(entry.m.sourceId)?.isNsfw)), [data, st.safeMode, kind]);
 
   const view = useMemo(() => {
     if (!data) return [];
@@ -85,15 +94,29 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
   }, [selecting, dialog]);
 
   const done = (msg: string) => { toast(msg); setDialog(null); stopSelecting(); };
-  const count = (n: number) => `${n} ${n === 1 ? "series" : "series"}`;
+  const count = (n: number) => `${n} ${n === 1 ? "title" : "titles"}`;
+  const activeTools = (filter ? 1 : 0) + (st.libraryOnlyUnread ? 1 : 0);
+  const importFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setImporting(true);
+    try {
+      for (const file of Array.from(files)) await importNovel(file);
+      toast(`Imported ${files.length} novel${files.length === 1 ? "" : "s"}`);
+    } catch (cause) {
+      toast((cause as Error).message || "Could not import that novel.", true);
+    } finally {
+      setImporting(false);
+      if (picker.current) picker.current.value = "";
+    }
+  };
 
   return (
     <div className="page">
-      <section className="hero3d" aria-label="Your shelf">
+      <section className="hero3d" aria-label={words.shelfKicker}>
         {st.fx && <PanelField mode="hero" />}
         <div className="copy">
-          <div className="kicker">Your shelf</div>
-          <h2>{total ? `${total} ${total === 1 ? "series" : "series"}, ${unreadTotal} unread` : "An empty shelf"}</h2>
+          <div className="kicker">{words.shelfKicker}</div>
+          <h2>{total ? `${total} ${total === 1 ? "title" : "titles"}, ${unreadTotal} ${kind === "anime" ? "unwatched" : "unread"}` : kind === "comic" ? "An empty shelf" : `No ${words.plural.toLowerCase()} yet`}</h2>
           <p>{total ? "Pick up where you stopped, or check what dropped overnight." : "Find something in Discover and keep it here. Everything stays on this device unless you turn on sync."}</p>
         </div>
       </section>
@@ -109,7 +132,7 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
                   <div className="t">{e.m.title}</div>
                   <div className="meter"><i style={{ width: `${Math.round(e.s.progress * 100)}%` }} /></div>
                   <div className="muted mono" style={{ fontSize: 12 }}>
-                    Ch. {formatChapterNumber(r!.chapter.number)}{r!.started && r!.chapter.lastPage > 0 ? `, page ${r!.chapter.lastPage + 1}` : ""}
+                    {words.short} {formatChapterNumber(r!.chapter.number)}{kind === "comic" && r!.started && r!.chapter.lastPage > 0 ? `, page ${r!.chapter.lastPage + 1}` : ""}
                   </div>
                   <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{timeAgo(e.s.lastReadAt)}</div>
                 </div>
@@ -130,41 +153,52 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
         </div>
           <button className="icon-btn" onClick={() => setDialog("manage")} aria-label="Manage shelf tabs" title="Manage tabs"><PencilSimple size={17} /></button>
         </div>
-        <div className="shelf-controls">
-        <button className={`icon-btn${selecting ? " on" : ""}`} onClick={() => (selecting ? stopSelecting() : startSelecting())} aria-label="Select series" aria-pressed={selecting} title="Select series"><CheckSquare size={18} /></button>
-        <div className="shelf-filter-wrap">
-          <MagnifyingGlass size={16} style={{ position: "absolute", left: 11, top: 12, color: "var(--muted)" }} />
-          <input className="input shelf-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter shelf" aria-label="Filter shelf" />
+        <div className="shelf-bar">
+          <button className={`btn shelf-tools-toggle${tools ? " on" : ""}`} onClick={() => setTools((v) => !v)} aria-expanded={tools} aria-controls="shelf-tools">
+            <SlidersHorizontal size={16} />Filter and sort{activeTools > 0 && <span className="tag">{activeTools}</span>}{tools ? <CaretUp size={14} /> : <CaretDown size={14} />}
+          </button>
+          {kind === "novel" && <>
+            <input ref={picker} type="file" accept=".epub,.txt,application/epub+zip,text/plain" multiple hidden onChange={(event) => void importFiles(event.target.files)} />
+            <button className="btn" disabled={importing} onClick={() => picker.current?.click()}><Plus size={16} />{importing ? "Importing…" : "Import"}</button>
+          </>}
+          <button className="btn" disabled={up.running || !total} onClick={async () => { await updateLibrary(safeEntries.map((e) => e.m).filter((m) => m.sourceId !== "local")); const r = useUpdater.getState(); toast(r.failed.length ? `${r.failed.length} failed, ${r.newChapters} new ${words.units}` : `${r.newChapters} new ${words.units}`, r.failed.length > 0); }}>
+            <ArrowsClockwise size={16} className={up.running ? "spin" : ""} />{up.running ? `${up.done}/${up.total}` : "Update"}
+          </button>
         </div>
-        <select className="input shelf-sort" value={st.librarySort} onChange={(e) => st.set({ librarySort: e.target.value as LibrarySort })} aria-label="Sort">
-          {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        {st.libraryDensity !== "list" && <select className="input shelf-grid-columns" value={st.libraryGridColumns} onChange={(e) => st.set({ libraryGridColumns: e.target.value === "auto" ? "auto" : Number(e.target.value) as LibraryGridColumns })} aria-label="Grid columns">
-          <option value="auto">Auto columns</option>
-          {[2, 3, 4, 5, 6].map((columns) => <option key={columns} value={columns}>{columns} columns</option>)}
-        </select>}
-        <button className={`icon-btn${st.libraryOnlyUnread ? " on" : ""}`} onClick={() => st.set({ libraryOnlyUnread: !st.libraryOnlyUnread })} aria-label="Only unread" title="Only unread"><FunnelSimple size={18} /></button>
-        <button className="icon-btn" onClick={() => st.set({ libraryDensity: st.libraryDensity === "cozy" ? "compact" : st.libraryDensity === "compact" ? "list" : "cozy" })} aria-label="Change density" title={`Density: ${st.libraryDensity}`}>
-          {st.libraryDensity === "list" ? <Rows size={18} /> : <SquaresFour size={18} />}
-        </button>
-        <button className="btn" disabled={up.running || !total} onClick={async () => { await updateLibrary(); const r = useUpdater.getState(); toast(r.failed.length ? `${r.failed.length} failed, ${r.newChapters} new chapters` : `${r.newChapters} new chapters`, r.failed.length > 0); }}>
-          <ArrowsClockwise size={16} className={up.running ? "spin" : ""} />{up.running ? `${up.done}/${up.total}` : "Update"}
-        </button>
-        </div>
+        {tools && (
+          <div className="shelf-controls" id="shelf-tools">
+            <div className="shelf-filter-wrap">
+              <MagnifyingGlass size={16} style={{ position: "absolute", left: 11, top: 12, color: "var(--muted)" }} />
+              <input className="input shelf-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Filter ${words.plural.toLowerCase()}`} aria-label="Filter shelf" />
+            </div>
+            <select className="input shelf-sort" value={st.librarySort} onChange={(e) => st.set({ librarySort: e.target.value as LibrarySort })} aria-label="Sort">
+              {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            {st.libraryDensity !== "list" && <select className="input shelf-grid-columns" value={st.libraryGridColumns} onChange={(e) => st.set({ libraryGridColumns: e.target.value === "auto" ? "auto" : Number(e.target.value) as LibraryGridColumns })} aria-label="Grid columns">
+              <option value="auto">Auto columns</option>
+              {[2, 3, 4, 5, 6].map((columns) => <option key={columns} value={columns}>{columns} columns</option>)}
+            </select>}
+            <button className={`icon-btn${st.libraryOnlyUnread ? " on" : ""}`} onClick={() => st.set({ libraryOnlyUnread: !st.libraryOnlyUnread })} aria-label="Only unread" title="Only unread"><FunnelSimple size={18} /></button>
+            <button className="icon-btn" onClick={() => st.set({ libraryDensity: st.libraryDensity === "cozy" ? "compact" : st.libraryDensity === "compact" ? "list" : "cozy" })} aria-label="Change density" title={`Density: ${st.libraryDensity}`}>
+              {st.libraryDensity === "list" ? <Rows size={18} /> : <SquaresFour size={18} />}
+            </button>
+            <button className="btn" disabled={!view.length} onClick={() => { setSelecting(true); selectAllShown(); setTools(false); }}><Check size={16} /> Select all</button>
+          </div>
+        )}
       </div>
       {up.running && <div className="progress-line" style={{ marginBottom: 14 }}><i style={{ width: `${(up.done / Math.max(up.total, 1)) * 100}%` }} /></div>}
 
       {!data && <div className="grid" style={gridStyle}>{Array.from({ length: 10 }, (_, i) => <div key={i} className="skel" style={{ aspectRatio: "2/3" }} />)}</div>}
       {data && !view.length && (
         total === 0 ? (
-          <Empty title="Nothing here yet" body="Browse a source and press Add to shelf on anything you want to follow. You can also import CBZ files from Settings." action={<div style={{ display: "flex", gap: 10 }}><button className="btn primary" onClick={() => nav("/browse")}>Discover</button><button className="btn" onClick={onSearch}>Search</button></div>} />
+          <Empty title={`No ${words.plural.toLowerCase()} here yet`} body={kind === "comic" ? "Browse a source and press Add to shelf on anything you want to follow. You can also import CBZ files from Settings." : kind === "novel" ? "Add a web novel from Discover, or import an EPUB or TXT file." : "Add an anime from Discover to track episodes and find where to watch."} action={<div style={{ display: "flex", gap: 10 }}><button className="btn primary" onClick={() => nav(words.discover)}>Discover</button><button className="btn" onClick={onSearch}>Search</button></div>} />
         ) : (
           <Empty title="No match" body="Nothing on this shelf fits the current category or filter." />
         )
       )}
       {st.libraryDensity === "list" ? (
         <div className="stack" style={{ gap: 10 }}>
-          {view.map(({ m, s }) => <ListRow key={m.id} m={m} s={s} badge={st.libraryUnreadBadge} sel={selecting ? select(m.id) : undefined} onHold={() => startSelecting(m.id)} />)}
+          {view.map(({ m, s }) => <ListRow key={m.id} m={m} s={s} words={words} badge={st.libraryUnreadBadge} sel={selecting ? select(m.id) : undefined} onHold={() => startSelecting(m.id)} />)}
         </div>
       ) : (
         <div className={`grid${st.libraryDensity === "compact" ? " compact" : ""}`} style={gridStyle}>
@@ -181,6 +215,7 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
           <button className="btn sm" disabled={!picked.size} onClick={() => setDialog("categories")}><Tag size={15} /> Tabs</button>
           <button className="btn sm" disabled={!picked.size} onClick={() => setDialog("move")}>Move to</button>
           <button className="btn sm" disabled={!picked.size} onClick={() => void setSeriesRead(pickedIds, true).then(() => done(`Marked ${count(picked.size)} as read`))}><Check size={15} /> Read</button>
+          <button className="btn sm" disabled={!picked.size} onClick={() => void setVault(pickedIds, true).then(() => done(`Moved ${count(picked.size)} to the Vault`))}><LockKey size={15} /> Vault</button>
           <button className="btn sm danger" disabled={!picked.size} onClick={() => setDialog("remove")}><Trash size={15} /> Remove</button>
           <button className="icon-btn" onClick={stopSelecting} aria-label="Done selecting" title="Done"><X size={17} /></button>
         </div>
@@ -245,7 +280,7 @@ export function Shelf({ onSearch }: { onSearch: () => void }) {
   );
 }
 
-function ListRow({ m, s, badge, sel, onHold }: { m: MangaRow; s: LibraryStats; badge: boolean; sel?: { selecting: boolean; selected: boolean; onPick: () => void }; onHold: () => void }) {
+function ListRow({ m, s, badge, words, sel, onHold }: { m: MangaRow; s: LibraryStats; badge: boolean; words: (typeof MEDIA)[MediaKind]; sel?: { selecting: boolean; selected: boolean; onPick: () => void }; onHold: () => void }) {
   const press = useLongPress(onHold);
   return (
     <Link
@@ -262,7 +297,7 @@ function ListRow({ m, s, badge, sel, onHold }: { m: MangaRow; s: LibraryStats; b
       <img src={coverSrc(m.sourceId, m.cover)} alt="" loading="lazy" draggable={false} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 800, color: "var(--ink)" }}>{m.title}</div>
-        <div className="muted" style={{ fontSize: 12.5 }}>{s.total} chapters, {timeAgo(s.lastReadAt) || "not started"}</div>
+        <div className="muted" style={{ fontSize: 12.5 }}>{s.total} {s.total === 1 ? words.unit : words.units}, {timeAgo(s.lastReadAt) || "not started"}</div>
       </div>
       {s.unread > 0 && badge && <span className="tag">{s.unread}</span>}
     </Link>
@@ -273,7 +308,7 @@ function ListRow({ m, s, badge, sel, onHold }: { m: MangaRow; s: LibraryStats; b
 function CategorySheet({ cats, entries, onNew, onClose }: { cats: CategoryRow[]; entries: Entry[]; onNew: () => void; onClose: () => void }) {
   const ids = entries.map((e) => e.m.id);
   return (
-    <Sheet title={`Tabs for ${entries.length} ${entries.length === 1 ? "series" : "series"}`} onClose={onClose} center>
+    <Sheet title={`Tabs for ${entries.length} ${entries.length === 1 ? "title" : "titles"}`} onClose={onClose} center>
       {!cats.length && <p className="muted" style={{ marginBottom: 12 }}>No tabs yet. Make one to start grouping.</p>}
       <ul className="cat-list">
         {cats.map((c) => {

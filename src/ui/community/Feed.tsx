@@ -57,7 +57,7 @@ function QuickCompose({ name, communityId, canPost }: { name: string; communityI
     const seen: string[] = [];
     for (const c of read) if (!seen.includes(c.mangaId)) seen.push(c.mangaId);
     const rows = await Promise.all(seen.slice(0, 6).map((id) => db.manga.get(id)));
-    return rows.filter((m): m is NonNullable<typeof m> => !!m && !(useSettings.getState().safeMode && getSource(m.sourceId)?.isNsfw)).slice(0, 3);
+    return rows.filter((m): m is NonNullable<typeof m> => !!m && !m.vault && !(useSettings.getState().safeMode && getSource(m.sourceId)?.isNsfw)).slice(0, 3);
   }, [], []);
   if (!canPost) return null;
   const to = (extra = "") => `/community/new?c=${encodeURIComponent(communityId)}${extra}`;

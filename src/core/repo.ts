@@ -354,6 +354,18 @@ export async function editCategoriesOf(mangaIds: string[], edit: CategoryEdit) {
   emitLocalChange();
 }
 
+/** Move titles into the Vault, or back out of it. Vault titles stay in the library and keep updating. */
+export async function setVault(mangaIds: string[], vault: boolean) {
+  const t = now();
+  await db.transaction("rw", db.manga, async () => {
+    for (const id of mangaIds) {
+      const m = await db.manga.get(id);
+      if (m) await db.manga.put({ ...m, vault, modifiedAt: t });
+    }
+  });
+  emitLocalChange();
+}
+
 export async function removeFromLibrary(mangaIds: string[]) {
   const t = now();
   await db.transaction("rw", db.manga, async () => {

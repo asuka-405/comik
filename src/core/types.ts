@@ -2,6 +2,8 @@
 
 export type MangaStatus = "unknown" | "ongoing" | "completed" | "hiatus" | "cancelled";
 export type MediaKind = "comic" | "novel" | "anime";
+/** A title with no kind is a comic: only novels and anime were added later. */
+export const mediaOf = (item: { kind?: MediaKind }): MediaKind => item.kind ?? "comic";
 
 export interface SManga {
   /** Source-relative identity. Stable across sessions (usually a path or id). */
@@ -106,6 +108,8 @@ export interface MangaRow {
   description?: string;
   genres: string[];
   status: MangaStatus;
+  /** Kept apart from the shelf, history and community suggestions, in the Vault. */
+  vault?: boolean;
   inLibrary: boolean;
   categoryIds: string[];
   addedAt: number;

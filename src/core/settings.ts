@@ -30,6 +30,9 @@ export interface Settings {
   /** Firebase Analytics is explicitly opt-in. */
   analyticsConsent: boolean;
 
+  /** Hash of the Vault PIN, or empty for no lock. Stays on this device. */
+  vaultPin: string;
+
   // library
   librarySort: LibrarySort;
   librarySortAsc: boolean;
@@ -87,6 +90,7 @@ export const useSettings = create<Settings>()(
 
       librarySort: "lastRead",
       librarySortAsc: false,
+      vaultPin: "",
       libraryDensity: "cozy",
       libraryGridColumns: "auto",
       globalSearchGridColumns: "auto",

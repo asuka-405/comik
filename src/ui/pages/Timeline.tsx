@@ -8,7 +8,8 @@ import { getSource } from "@/core/sources/registry";
 import { clearHistory, historyIdsSince, removeFromHistory } from "@/core/repo";
 import { formatChapterNumber } from "@/core/chapterRecognition";
 import { ConfirmDialog, Empty, Sheet, coverSrc, dayLabel, hueOf, timeAgo, toast } from "../common";
-import type { ChapterRow, MangaRow } from "@/core/types";
+import { mediaOf, type ChapterRow, type MangaRow, type MediaKind } from "@/core/types";
+import { MEDIA, MEDIA_KINDS } from "../media";
 
 type Item = { c: ChapterRow; m: MangaRow };
 /** Consecutive entries of one comic inside a day, newest first. */
@@ -36,16 +37,17 @@ function clubRuns(items: Item[]): Run[] {
   return runs;
 }
 
-function chapterLabel(c: ChapterRow, history: boolean) {
-  const extra = c.name && !/^\s*(ch|chapter|ep)/i.test(c.name) ? `, ${c.name}` : "";
-  return `Ch. ${formatChapterNumber(c.number)}${history && !c.read && c.lastPage > 0 ? `, page ${c.lastPage + 1}` : ""}${extra}`;
+function chapterLabel(c: ChapterRow, history: boolean, kind: MediaKind) {
+  const extra = c.name && !/^\s*(ch|chapter|ep|episode)/i.test(c.name) ? `, ${c.name}` : "";
+  return `${MEDIA[kind].short} ${formatChapterNumber(c.number)}${history && kind === "comic" && !c.read && c.lastPage > 0 ? `, page ${c.lastPage + 1}` : ""}${extra}`;
 }
 
-function rangeLabel(items: Item[]) {
+function rangeLabel(items: Item[], kind: MediaKind) {
+  const words = MEDIA[kind];
   const nums = items.map((i) => i.c.number).filter((n) => Number.isFinite(n));
-  if (nums.length < 2) return `${items.length} chapters`;
+  if (nums.length < 2) return `${items.length} ${words.units}`;
   const lo = Math.min(...nums), hi = Math.max(...nums);
-  return lo === hi ? `${items.length} chapters` : `Ch. ${formatChapterNumber(lo)} to ${formatChapterNumber(hi)}, ${items.length} chapters`;
+  return lo === hi ? `${items.length} ${words.units}` : `${words.short} ${formatChapterNumber(lo)} to ${formatChapterNumber(hi)}, ${items.length} ${words.units}`;
 }
 
 const WINDOWS: [string, number | undefined][] = [
@@ -58,6 +60,8 @@ const WINDOWS: [string, number | undefined][] = [
 
 export function Timeline() {
   const [tab, setTab] = useState<"updates" | "history">("updates");
+  const [kind, setKind] = useState<MediaKind>(() => (localStorage.getItem("comik.timeline.kind") as MediaKind | null) ?? "comic");
+  const pickKind = (next: MediaKind) => { setKind(next); localStorage.setItem("comik.timeline.kind", next); };
   const [clearing, setClearing] = useState<null | "pick" | { label: string; since?: number; count: number }>(null);
   const safeMode = useSettings((s) => s.safeMode);
 
@@ -79,7 +83,8 @@ export function Timeline() {
 
   const isHistory = tab === "history";
   const items = isHistory ? history : updates;
-  const visibleItems = (items ?? []).filter(({ m }) => !safeMode || !getSource(m.sourceId)?.isNsfw);
+  // Vault titles never show up here, and each media kind has its own timeline.
+  const visibleItems = (items ?? []).filter(({ m }) => mediaOf(m) === kind && !m.vault && (!safeMode || !getSource(m.sourceId)?.isNsfw));
   const groups = group(visibleItems, (i) => (isHistory ? i.c.readAt : i.c.fetchedAt));
 
   const pickWindow = async (label: string, span?: number) => {
@@ -95,8 +100,11 @@ export function Timeline() {
   return (
     <div className="page">
       <div className="topbar">
-        <div><div className="kicker">Timeline</div><h1>{isHistory ? "What you read" : "What dropped"}</h1></div>
+        <div><div className="kicker">Timeline</div><h1>{isHistory ? (kind === "anime" ? "What you watched" : "What you read") : "What dropped"}</h1></div>
         {isHistory && visibleItems.length > 0 && <button className="btn" onClick={() => setClearing("pick")}><Trash size={16} /> Clear history</button>}
+      </div>
+      <div className="seg timeline-media" role="tablist" aria-label="Media type">
+        {MEDIA_KINDS.map((value) => <button key={value} role="tab" aria-selected={kind === value} className={kind === value ? "on" : ""} onClick={() => pickKind(value)}>{MEDIA[value].plural}</button>)}
       </div>
       <div className="tabs" role="tablist">
         <button className={`tab${tab === "updates" ? " on" : ""}`} role="tab" onClick={() => setTab("updates")}>Updates</button>
@@ -104,15 +112,15 @@ export function Timeline() {
       </div>
       {!visibleItems.length && (
         <Empty
-          title={isHistory ? "No reading history" : "No new chapters yet"}
-          body={isHistory ? "Chapters you open show up here, newest first." : "When the shelf finds new chapters during an update, they land here."}
+          title={isHistory ? `No ${MEDIA[kind].plural.toLowerCase()} history` : `No new ${MEDIA[kind].units} yet`}
+          body={isHistory ? `${kind === "anime" ? "Episodes you open" : "Chapters you open"} show up here, newest first.` : `When an update finds new ${MEDIA[kind].units}, they land here.`}
         />
       )}
       {groups.map(([label, list]) => (
         <section key={label}>
           <div className="day">{label}</div>
           <div className="stack" style={{ gap: 8 }}>
-            {clubRuns(list).map((run) => <RunRow key={run.items[0]!.c.id} run={run} history={isHistory} />)}
+            {clubRuns(list).map((run) => <RunRow key={run.items[0]!.c.id} run={run} history={isHistory} kind={kind} />)}
           </div>
         </section>
       ))}
@@ -144,7 +152,7 @@ export function Timeline() {
 }
 
 /** One comic's neighbouring chapters. A single chapter is a plain row; several fold into one that opens. */
-function RunRow({ run, history }: { run: Run; history: boolean }) {
+function RunRow({ run, history, kind }: { run: Run; history: boolean; kind: MediaKind }) {
   const [open, setOpen] = useState(false);
   const { m, items } = run;
   const newest = items[0]!.c;
@@ -161,22 +169,22 @@ function RunRow({ run, history }: { run: Run; history: boolean }) {
           <img src={coverSrc(m.sourceId, m.cover)} alt="" loading="lazy" />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, color: "var(--ink)" }}>{m.title}</div>
-            <div className="muted" style={{ fontSize: 13 }}>{clubbed ? rangeLabel(items) : chapterLabel(newest, history)}</div>
+            <div className="muted" style={{ fontSize: 13 }}>{clubbed ? rangeLabel(items, kind) : chapterLabel(newest, history, kind)}</div>
           </div>
           <span className="mono muted" style={{ fontSize: 12 }}>{timeAgo(at(newest))}</span>
         </Link>
-        {clubbed && <button className="icon-btn" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? `Hide chapters of ${m.title}` : `Show ${items.length} chapters of ${m.title}`} title={open ? "Hide chapters" : "Show chapters"}>{open ? <CaretUp size={16} /> : <CaretDown size={16} />}</button>}
-        {history && <button className="icon-btn" onClick={() => drop(items.map((i) => i.c.id))} aria-label={clubbed ? `Remove ${items.length} chapters of ${m.title} from history` : `Remove ${m.title} from history`} title="Remove from history"><Trash size={16} /></button>}
+        {clubbed && <button className="icon-btn" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? `Hide ${MEDIA[kind].units} of ${m.title}` : `Show ${items.length} ${MEDIA[kind].units} of ${m.title}`} title={open ? `Hide ${MEDIA[kind].units}` : `Show ${MEDIA[kind].units}`}>{open ? <CaretUp size={16} /> : <CaretDown size={16} />}</button>}
+        {history && <button className="icon-btn" onClick={() => drop(items.map((i) => i.c.id))} aria-label={clubbed ? `Remove ${items.length} ${MEDIA[kind].units} of ${m.title} from history` : `Remove ${m.title} from history`} title="Remove from history"><Trash size={16} /></button>}
       </div>
       {clubbed && open && (
         <ul className="tl-sub">
           {items.map(({ c }) => (
             <li key={c.id}>
               <Link to={`/read/${encodeURIComponent(c.id)}`} className="tl-sub-link">
-                <span>{chapterLabel(c, history)}</span>
+                <span>{chapterLabel(c, history, kind)}</span>
                 <span className="mono muted">{timeAgo(at(c))}</span>
               </Link>
-              {history && <button className="icon-btn" onClick={() => drop([c.id])} aria-label={`Remove ${chapterLabel(c, history)} from history`} title="Remove from history"><Trash size={14} /></button>}
+              {history && <button className="icon-btn" onClick={() => drop([c.id])} aria-label={`Remove ${chapterLabel(c, history, kind)} from history`} title="Remove from history"><Trash size={14} /></button>}
             </li>
           ))}
         </ul>
