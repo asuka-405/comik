@@ -7,7 +7,8 @@ import { allSources, getSource } from "@/core/sources/registry";
 import { useSettings } from "@/core/settings";
 import { setVault, findDuplicates, markPreviousRead, migrateManga, setBookmark, setInLibrary, setMangaCategories, setRead, patchManga, syncChapters, upsertManga } from "@/core/repo";
 import { refreshManga } from "@/core/updater";
-import { ChallengeError, silenceChallenges } from "@/core/http";
+import { DISCOVER_TTL } from "@/core/cache";
+import { ChallengeError } from "@/core/http";
 import { resumeTarget, readingOrder, dedupeByNumber, chaptersAround, nextUnreadChapters } from "@/core/progress";
 import { migrationMatchRank, migrationQueries } from "@/core/migrationSearch";
 import { formatChapterNumber, missingBetween } from "@/core/chapterRecognition";
@@ -15,6 +16,7 @@ import { deleteDownloads, enqueueDownloads } from "@/core/downloads";
 import type { ChapterRow, SManga, Source } from "@/core/types";
 import { Empty, FloatBack, ReadingNotice, Sheet, coverSrc, hueOf, timeAgo, toast } from "../common";
 import { dominantColor } from "../color";
+import { ChallengeFix } from "../ChallengeFix";
 
 type Filt = "unread" | "bookmarked" | "downloaded";
 const CHAPTERS_PER_PAGE = 50;
@@ -68,7 +70,9 @@ export function Series() {
 
   useEffect(() => {
     if (safeMode && source?.isNsfw) return;
-    if (manga && Date.now() - manga.lastFetchedAt > 10 * 60_000 && manga.sourceId !== "local") void refresh();
+    // A library title keeps its saved details and chapters until the next library refresh (the Update button, the
+    // automatic update, or Refresh on this page). A title that is only being browsed is fetched again after an hour.
+    if (manga && manga.sourceId !== "local" && (manga.lastFetchedAt === 0 || (!manga.inLibrary && Date.now() - manga.lastFetchedAt > DISCOVER_TTL))) void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manga?.id, safeMode, source?.isNsfw]);
 
@@ -160,15 +164,12 @@ export function Series() {
     const queue = [...sources];
     const originalSource = getSource(manga.sourceId);
     if (originalSource) {
-      const releaseChallenge = silenceChallenges(originalSource.baseUrl);
       try {
         const details = await originalSource.getMangaDetails({ url: manga.url, title: manga.title });
         queries = migrationQueries({ ...manga, ...details });
         await upsertManga(manga.sourceId, details);
       } catch (cause) {
         if (cause instanceof ChallengeError) blocked.add(originalSource.id);
-      } finally {
-        releaseChallenge();
       }
     }
     let done = 0;
@@ -178,7 +179,6 @@ export function Series() {
         let hadChallenge = false;
         for (const query of queries) {
           for (let pageNumber = 1; pageNumber <= 3; pageNumber++) {
-            const releaseChallenge = silenceChallenges(candidateSource.baseUrl);
             try {
               const page = await candidateSource.search(pageNumber, query, candidateSource.getFilterList());
               for (const result of page.mangas) {
@@ -192,8 +192,6 @@ export function Series() {
               if (cause instanceof ChallengeError) hadChallenge = true;
               else failures.push(`${candidateSource.name}: ${(cause as Error).message}`);
               break;
-            } finally {
-              releaseChallenge();
             }
           }
         }
@@ -268,7 +266,7 @@ export function Series() {
         </div>
       </section>
 
-      {error && <div className="err" style={{ marginBottom: 14 }}>{error}</div>}
+      {error && <div className="err" style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><span style={{ flex: "1 1 240px" }}>{error}</span><ChallengeFix message={error} onDone={() => void refresh()} /></div>}
 
       <div className="topbar" style={{ marginBottom: 12 }}>
         <div className="kicker" style={{ flex: 1 }}>{isAnime ? "Episodes" : "Chapters"}</div>

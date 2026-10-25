@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
+import { ArrowClockwise, FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
 import { db } from "@/core/db";
 import { useSettings } from "@/core/settings";
 import { getSource } from "@/core/sources/registry";
 import { upsertManga } from "@/core/repo";
+import { cached, DISCOVER_TTL } from "@/core/cache";
 import { cloneFilters, hasActiveFilters } from "@/core/filters";
 import type { Filter, MangaRow } from "@/core/types";
 import { Cover, CoverSkeletons, Empty, FloatBack, ReadingNotice, useDebounced } from "../common";
 import { FilterSheet } from "../components_filters";
+import { ChallengeFix } from "../ChallengeFix";
 
 type Mode = "popular" | "latest" | "search";
 
@@ -51,13 +53,15 @@ export function SourceView() {
   const effective: Mode = searching && mode !== "latest" ? "search" : mode;
 
   const load = useCallback(
-    async (p: number, reset: boolean) => {
+    async (p: number, reset: boolean, force = false) => {
       if (!source) return;
       const token = ++run.current;
       setLoading(true);
       setError("");
       try {
-        const res = effective === "popular" ? await source.getPopular(p) : effective === "latest" ? await source.getLatest(p) : await source.search(p, dq, filterKey ? filtersRef.current : source.getFilterList());
+        const ask = () => (effective === "popular" ? source.getPopular(p) : effective === "latest" ? source.getLatest(p) : source.search(p, dq, filterKey ? filtersRef.current : source.getFilterList()));
+        // Discover keeps a source's answer for an hour. Imported files live on this device and need no cache.
+        const res = source.id === "local" ? await ask() : await cached(`discover:${source.id}:${effective}:${p}:${effective === "search" ? `${dq}:${filterKey}` : ""}`, DISCOVER_TTL, ask, { force, staleOnError: !force });
         const saved = await Promise.all(res.mangas.map((m) => upsertManga(source.id, m)));
         if (token !== run.current) return;
         setRows((prev) => {
@@ -110,9 +114,10 @@ export function SourceView() {
         <button className={effective === "popular" ? "on" : ""} onClick={() => { setQuery(""); setFilters(cloneFilters(source.getFilterList())); setMode("popular"); }}>Popular</button>
         {source.supportsLatest && <button className={effective === "latest" ? "on" : ""} onClick={() => { setQuery(""); setMode("latest"); }}>Latest</button>}
         <button className={effective === "search" ? "on" : ""} onClick={() => setMode("search")}>Search</button>
+        {source.id !== "local" && <button onClick={() => { setRows([]); setHasNext(true); void load(1, true, true); }} disabled={loading} title="Ask the site again instead of using what Comik saved in the last hour"><ArrowClockwise size={14} /> Refresh</button>}
       </div>
 
-      {error && <div className="err" style={{ marginBottom: 16 }}>{error} <button className="btn sm" style={{ marginLeft: 10 }} onClick={() => void load(page + (rows.length ? 1 : 0), rows.length === 0)}>Retry</button></div>}
+      {error && <div className="err" style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><span style={{ flex: "1 1 240px" }}>{error}</span><ChallengeFix message={error} onDone={() => void load(page + (rows.length ? 1 : 0), rows.length === 0)} /><button className="btn sm" onClick={() => void load(page + (rows.length ? 1 : 0), rows.length === 0)}>Retry</button></div>}
       {rows.length === 0 && loading && <CoverSkeletons />}
       {rows.length === 0 && !loading && !error && <Empty title="No results" body="Try a different word, or loosen the filters." />}
       <div className="grid">{rows.map((m) => <Cover key={m.id} m={m} inLibrary={lib?.includes(m.id)} />)}</div>

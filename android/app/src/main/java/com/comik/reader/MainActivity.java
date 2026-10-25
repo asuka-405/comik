@@ -460,7 +460,7 @@ public final class MainActivity extends Activity {
             String rawTarget = endpoint.getQueryParameter("url");
             if (rawTarget == null) return textResponse("text/plain", 400, "Bad Request", "missing url");
             connection = openResolved(rawTarget, "GET", endpoint.getQueryParameter("ref"), null,
-                    "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", userAgent, false);
+                    "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", userAgent, true);
             int status = connection.getResponseCode();
             String contentType = connection.getContentType();
             if (status < 400 && contentType != null && !contentType.startsWith("image/")

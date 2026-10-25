@@ -45,3 +45,7 @@ Android and desktop wrappers make source and image requests from the reader's de
 ## Known limits
 
 - Sites behind Cloudflare challenges or logins cannot be fetched by the proxy.
+
+## License
+
+Comik is source-available under the [Comik Source-Available License](LICENSE). Anyone can read the code, run it, fork it and contribute. Any copy or clone must credit Comik and link back to this repository where its users can see it, and a copy or clone that shows ads needs written permission first. Contributions are accepted under the terms in section 6 of the license.

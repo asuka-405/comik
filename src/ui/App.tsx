@@ -6,6 +6,7 @@ import { db } from "@/core/db";
 import { useSettings } from "@/core/settings";
 import { isNativeShell } from "@/core/platform";
 import { loadConnectors } from "@/core/connectors/registry";
+import { pruneCache } from "@/core/cache";
 import { checkForAppUpdate } from "@/core/appUpdates";
 import { trackAnalytics } from "@/core/analytics";
 import { loadCustomSources } from "@/core/sources/registry";
@@ -17,6 +18,7 @@ import { Toasts } from "./common";
 import { Palette } from "./Palette";
 import { Shelf } from "./pages/Shelf";
 import { Vault } from "./pages/Vault";
+import { BrowserChecks } from "./pages/BrowserChecks";
 import { ConnectorSettings } from "./pages/ConnectorSettings";
 import { Browse } from "./pages/Browse";
 import { SourceView } from "./pages/SourceView";
@@ -92,6 +94,7 @@ export function App() {
   useEffect(() => {
     void loadCustomSources();
     void loadConnectors();
+    void pruneCache();
     void maybeAutoUpdate();
     if (isNativeShell) {
       void checkForAppUpdate(APP_VERSION);
@@ -189,6 +192,7 @@ export function App() {
               <Route path="reader" element={<ReaderSettingsPage />} />
               <Route path="downloads" element={<DownloadsSettings />} />
               <Route path="proxy" element={<ProxySettings />} />
+              <Route path="checks" element={<BrowserChecks />} />
               <Route path="connectors" element={<ConnectorSettings />} />
               <Route path="firebase" element={<FirebaseSettings />} />
               <Route path="privacy" element={<PrivacySettings />} />

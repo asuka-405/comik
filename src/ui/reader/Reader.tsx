@@ -15,6 +15,7 @@ import { processImage, looksLikeStrip, type Piece } from "./imageProcessing";
 import { ReaderSettings } from "./ReaderSettings";
 import { NovelReader } from "./NovelReader";
 import { AnimeReader } from "./AnimeReader";
+import { ChallengeFix } from "../ChallengeFix";
 
 type Mode = Exclude<ReaderMode, "auto">;
 const STRIP_GENRES = /webtoon|long strip|manhwa|manhua|full color|web comic/i;
@@ -327,7 +328,8 @@ function ReaderBody({ chapter, manga, siblings }: { chapter: ChapterRow; manga: 
         <div className="interstitial">
           <h2>Could not load chapter</h2>
           <p className="muted" style={{ maxWidth: 480 }}>{error}</p>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <ChallengeFix message={error} onDone={() => setTries((t) => t + 1)} />
             <button className="btn primary" onClick={() => setTries((t) => t + 1)}>Try again</button>
             <button className="btn" onClick={() => nav(`/series/${encodeURIComponent(manga.id)}`)}>Back</button>
           </div>
@@ -525,7 +527,7 @@ function ContinuousChapter({ chapter, manga, rootRef, crop, preload, onActive, g
           {pages.map((page) => <ScrollPage key={`${chapter.id}-${page.index}`} chapterId={chapter.id} page={page} crop={crop} preload={preload} />)}
         </div>
       ) : error ? (
-        <div className="chapter-loading" role="alert"><span>{error}</span><button className="btn sm" onClick={() => setTries((value) => value + 1)}>Retry chapter</button></div>
+        <div className="chapter-loading" role="alert"><span>{error}</span><ChallengeFix message={error} onDone={() => setTries((value) => value + 1)} /><button className="btn sm" onClick={() => setTries((value) => value + 1)}>Retry chapter</button></div>
       ) : <ChapterLoading label={label} />}
       {next ? <><div className="reader-boundary" data-stream-prefetch /><ChapterDivider chapter={chapter} next={next} gap={gap} /></> : <div className="chapter-divider"><span className="kicker">End of available chapters</span><strong>{label}</strong><span>Check back after the next update.</span></div>}
       <div className="reader-boundary" data-stream-end />

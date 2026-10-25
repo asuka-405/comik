@@ -263,7 +263,7 @@ async function fetchSource(request, target, referer) {
     method,
     headers: upstreamHeaders(request, target, referer),
     body,
-    // Global search asks not to open check windows for every site; see silenceChallenges in the web code.
+    // The web code asks for a check window only when the person pressed a verify button.
     noChallenge: request.headers.get("x-comik-no-challenge") === "1",
   });
   const bytes = await readBounded(upstream, HTML_LIMIT);
@@ -285,6 +285,8 @@ async function fetchImage(target, referer) {
       accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
       referer: referer || `${target.origin}/`,
     },
+    // A page full of covers must never open a check window per image. A check the person ran by hand still applies through the cookie jar.
+    noChallenge: true,
   });
   if (!upstream.ok && upstream.status !== 206) return jsonResponse({ error: `upstream ${upstream.status}` }, upstream.status);
   const contentType = upstream.headers.get("content-type") || "";

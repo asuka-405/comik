@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
-import { PlugsConnected, BookOpenText, Books, CaretLeft, CaretRight, CloudArrowUp, Compass, DownloadSimple, Info, Palette, ShieldCheck, type Icon } from "@phosphor-icons/react";
+import { PlugsConnected, ShieldWarning, BookOpenText, Books, CaretLeft, CaretRight, CloudArrowUp, Compass, DownloadSimple, Info, Palette, ShieldCheck, type Icon } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/core/db";
 import { useSettings, type FitMode, type LibraryDensity, type LibrarySort } from "@/core/settings";
 import { proxyBase } from "@/core/http";
 import { isNativeShell } from "@/core/platform";
+import { useChallenges } from "@/core/challenges";
 import { addCustomSource, allSources, isCustom, onSourcesChange, removeCustomSource } from "@/core/sources/registry";
 import { importLocal } from "@/core/sources/local";
 import { createBackup, downloadBackup, restoreBackup } from "@/core/backup";
@@ -39,6 +40,7 @@ const CATEGORIES: Category[] = [
   { slug: "reader", title: "Reader", icon: BookOpenText, hue: 4, summary: (s) => `${s.readerMode === "auto" ? "Auto mode" : s.readerMode.replace("paged-", "").replace("rtl", "right to left").replace("ltr", "left to right")}, ${s.fit} fit` },
   { slug: "downloads", title: "Downloads and storage", icon: DownloadSimple, hue: 6, summary: (s) => `${s.downloadConcurrency} at a time, backup and restore` },
   { slug: "proxy", title: "Sources and proxy", icon: Compass, hue: 5, summary: (s) => `${s.disabledSourceIds.length ? `${s.disabledSourceIds.length} disabled` : "All enabled"}, custom sources, file import` },
+  { slug: "checks", title: "Browser checks", icon: ShieldWarning, hue: 2, summary: () => { const waiting = useChallenges.getState().sites.length; return waiting ? `${waiting} site${waiting === 1 ? "" : "s"} waiting for a check` : "Run Cloudflare checks yourself"; } },
   { slug: "connectors", title: "Anime connectors", icon: PlugsConnected, hue: 5, summary: () => "Connect licensed sites with your own code" },
   { slug: "firebase", title: "Firebase and sync", icon: CloudArrowUp, hue: 3, summary: () => (getFirebaseMode() === "custom" ? "Your own Firebase" : "Comik Firebase") },
   { slug: "privacy", title: "Privacy and community", icon: ShieldCheck, hue: 1, summary: (s) => `Safe mode ${s.safeMode ? "on" : "off"}, analytics ${s.analyticsConsent ? "on" : "off"}` },

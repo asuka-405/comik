@@ -44,6 +44,14 @@ export interface LocalMangaFile {
 }
 
 /** An anime connector the person installed: code that tells Comik how to read one licensed site. */
+/** A stored answer from a source, kept so Discover does not ask the site again within its lifetime. */
+export interface ApiCacheRow {
+  key: string;
+  /** When it was fetched, epoch ms. */
+  at: number;
+  value: unknown;
+}
+
 export interface ConnectorRow {
   /** The id from the connector's manifest. */
   id: string;
@@ -89,6 +97,7 @@ class ComikDB extends Dexie {
   pendingStates!: Table<PendingStates, string>;
   accountArchives!: Table<AccountArchiveRow, string>;
   connectors!: Table<ConnectorRow, string>;
+  apiCache!: Table<ApiCacheRow, string>;
 
   constructor() {
     super("comik");
@@ -105,6 +114,7 @@ class ComikDB extends Dexie {
     });
     this.version(2).stores({ accountArchives: "id, createdAt" });
     this.version(3).stores({ connectors: "id" });
+    this.version(4).stores({ apiCache: "key, at" });
   }
 }
 

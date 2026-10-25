@@ -7,7 +7,8 @@ import { allSources, onSourcesChange } from "@/core/sources/registry";
 import { createCategory, editCategoriesOf, upsertManga } from "@/core/repo";
 import type { Source } from "@/core/types";
 import { filterSources } from "@/core/sources/filter";
-import { ChallengeError, silenceChallenges, verifySite } from "@/core/http";
+import { ChallengeError, verifySite } from "@/core/http";
+import { cached, DISCOVER_TTL } from "@/core/cache";
 import { isNativeShell } from "@/core/platform";
 import { Cover, CoverSkeletons, ReadingNotice, Sheet, TextDialog, hueOf, toast, useDebounced } from "../common";
 import { PanelField } from "../PanelField";
@@ -125,8 +126,8 @@ const PER_SOURCE = 12;
  * Searches every enabled source and shows one loader for the whole search. A source joins the list
  * below as soon as it has results. Sources with no match, or that fail, simply never appear.
  *
- * Sites behind a Cloudflare check are never checked automatically here: that would open a window per
- * site. They are listed apart, each with its own button that runs that one check and then searches it.
+ * Sites behind a Cloudflare check are never checked automatically, anywhere in the app. They are listed
+ * apart here, each with its own button that runs that one check and then searches it.
  */
 function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
   const gridColumns = useSettings((s) => s.globalSearchGridColumns);
@@ -150,10 +151,9 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
   };
 
   /** Search one source and add what it finds. Returns true when it was stopped by a Cloudflare check. */
-  const searchOne = async (source: Source, alive: () => boolean, quiet: boolean): Promise<boolean> => {
-    const release = quiet ? silenceChallenges(source.baseUrl) : () => {};
+  const searchOne = async (source: Source, alive: () => boolean): Promise<boolean> => {
     try {
-      const page = await source.search(1, q, source.getFilterList());
+      const page = await cached(`discover:${source.id}:search:1:${q}:`, DISCOVER_TTL, () => source.search(1, q, source.getFilterList()), { staleOnError: true });
       if (alive() && page.mangas.length) {
         const rows = await Promise.all(page.mangas.slice(0, PER_SOURCE).map((m) => upsertManga(source.id, m)));
         if (alive()) setResults((current) => {
@@ -165,8 +165,6 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
       return false;
     } catch (error) {
       return error instanceof ChallengeError;
-    } finally {
-      release();
     }
   };
 
@@ -181,7 +179,7 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
       while (!dead) {
         const source = queue.shift();
         if (!source) return;
-        const needsCheck = await searchOne(source, () => !dead, true);
+        const needsCheck = await searchOne(source, () => !dead);
         if (!dead) {
           if (needsCheck) setBlocked((current) => {
             const next = current.some((item) => item.id === source.id) ? current : [...current, source];
@@ -265,7 +263,7 @@ function GlobalSearch({ sources, q }: { sources: Source[]; q: string }) {
         <section className="panel verify-panel" data-hue="5">
           <h3>{blocked.length} source{blocked.length === 1 ? "" : "s"} need a quick check</h3>
           <p className="muted">{isNativeShell ? "These sites ask for a browser check before they answer. Run the ones you want, one at a time. Each search result appears above once its check passes." : "These sites are protected by Cloudflare, which the browser version cannot pass. The Android, Linux and Windows apps can."}</p>
-          {isNativeShell && <ul className="verify-list">{blocked.map((source) => <VerifyRow key={source.id} source={source} onVerify={() => searchOne(source, () => true, false).then((stillBlocked) => { if (!stillBlocked) verified(source); return stillBlocked; })} />)}</ul>}
+          {isNativeShell && <ul className="verify-list">{blocked.map((source) => <VerifyRow key={source.id} source={source} onVerify={() => searchOne(source, () => true).then((stillBlocked) => { if (!stillBlocked) verified(source); return stillBlocked; })} />)}</ul>}
         </section>
       )}
     </div>

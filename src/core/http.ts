@@ -1,5 +1,6 @@
 import { getSettings } from "./settings";
 import { isNativeShell } from "./platform";
+import { clearChallenge, hostOf, noteChallenge } from "./challenges";
 import { getProxyIdToken, ownProxyUrl } from "./sync/firebase";
 
 /**
@@ -35,32 +36,12 @@ export function readingNeedsOwnFirebase(): boolean {
 const usesOwnProxy = () => !getSettings().proxyUrl.trim() && !isNativeShell && !import.meta.env.DEV && ownProxyUrl() !== null;
 
 /**
- * Sites whose Cloudflare checks must not open on their own. Global search queries about a hundred
- * sites, and a check window per site would bury the person, so it marks each site silent while it
- * asks. A site that needs a check is reported instead, with a button to run that one check by hand.
+ * Run a site's Cloudflare check now, because the person asked. This is the only request that may open a check
+ * window; every other request fails with a ChallengeError instead. Resolves once the site answers normally.
  */
-const silent = new Map<string, number>();
-
-export function silenceChallenges(siteUrl: string): () => void {
-  const host = new URL(siteUrl).hostname.replace(/^www\./, "");
-  silent.set(host, (silent.get(host) ?? 0) + 1);
-  return () => {
-    const left = (silent.get(host) ?? 1) - 1;
-    if (left <= 0) silent.delete(host);
-    else silent.set(host, left);
-  };
-}
-
-function isSilent(url: string): boolean {
-  if (!silent.size) return false;
-  const host = new URL(url).hostname.replace(/^www\./, "");
-  for (const quiet of silent.keys()) if (host === quiet || host.endsWith(`.${quiet}`)) return true;
-  return false;
-}
-
-/** Run a site's Cloudflare check now, on request. Resolves once the site answers normally, throws if it still will not. */
 export async function verifySite(siteUrl: string): Promise<void> {
-  await request(siteUrl, { retries: 0 });
+  await request(siteUrl, { retries: 0, challenge: true });
+  clearChallenge(hostOf(siteUrl));
 }
 
 /** A Cloudflare check the proxy could not pass. Only a real browser window can, which the apps have and the website does not. */
@@ -68,7 +49,7 @@ export class ChallengeError extends Error {
   constructor(public url: string) {
     const host = new URL(url).host;
     super(isNativeShell
-      ? `${host} asked for a browser check that did not finish. Try again, and complete the check if a window opens.`
+      ? `${host} wants a Cloudflare browser check first. Run it with the button, or from Settings > Browser checks.`
       : `${host} is protected by Cloudflare, which the browser version cannot pass. Open it in the Android, Linux or Windows app.`);
     this.name = "ChallengeError";
   }
@@ -122,6 +103,8 @@ export interface FetchOpts {
   minGapMs?: number;
   signal?: AbortSignal;
   retries?: number;
+  /** Let the app open a Cloudflare check window for this request. Only a person's own button press sets it. */
+  challenge?: boolean;
 }
 
 export class HttpError extends Error {
@@ -149,14 +132,14 @@ export async function request(url: string, opts: FetchOpts = {}): Promise<Respon
       if (opts.headers) headers["x-comik-headers"] = JSON.stringify(opts.headers);
       const token = await proxyToken();
       if (token) headers.authorization = `Bearer ${token}`;
-      if (isSilent(url)) headers["x-comik-no-challenge"] = "1";
+      if (!opts.challenge) headers["x-comik-no-challenge"] = "1";
       const res = await fetch(`${proxyBase()}/fetch?${qs}`, {
         method: opts.method ?? "GET",
         headers,
         body: opts.body,
         signal: opts.signal,
       });
-      if (res.headers.get("x-comik-challenge")) throw new ChallengeError(url);
+      if (res.headers.get("x-comik-challenge")) { noteChallenge(url); throw new ChallengeError(url); }
       if (res.status === 429 || res.status >= 502) {
         lastErr = new HttpError(res.status, `HTTP ${res.status}`, url);
         await sleep(600 * (attempt + 1));

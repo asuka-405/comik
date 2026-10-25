@@ -1,7 +1,8 @@
 {
   "name": "comik",
   "private": true,
-  "version": "0.6.5-beta",
+  "license": "SEE LICENSE IN LICENSE",
+  "version": "0.6.6-beta",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,proxy -c auto \"vite\" \"tsx watch server/index.ts\"",

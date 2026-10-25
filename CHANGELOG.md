@@ -2,6 +2,20 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.6.6-beta
+
+### Cloudflare checks
+- **Checks never open on their own.** Comik used to open a browser check window whenever a site asked for one, including for each cover image on a page, which could bury you in windows. Now a site that asks for a check just fails with a clear message, and nothing opens until you press a button.
+- **A button where the error is.** When a source, a series page or the reader cannot load because of a check, a "Check this site" button appears next to the error. Press it, finish the check if asked, and the page loads again.
+- **A menu for checks.** Settings > Browser checks lists the sites that are waiting for a check, with a button for each, and lets you check any source or address by hand.
+
+### Faster browsing
+- **Discover remembers for an hour.** Popular, Latest and search results are kept for an hour, so opening a source, switching tabs or coming back later no longer asks the site again. They survive restarts. If a site is down or asks for a check, the last answer is shown instead of an error. A Refresh button on each source asks again straight away.
+- **Your library keeps what it has.** Opening a title from your library no longer fetches it every time. Its details and chapters stay as they were until the next library refresh: the Update button, the automatic update, or Refresh on the title's page. Titles you are only browsing are fetched again after an hour.
+
+### License
+- Comik now has a license. The source is open to read, run, fork and contribute to. Copies and clones must credit Comik, and ones that show ads need written permission first. See `LICENSE`.
+
 ## 0.6.5-beta
 
 ### Connector debugger

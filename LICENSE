@@ -1,0 +1,79 @@
+Comik Source-Available License, version 1.0
+
+Copyright (c) 2026 Suryansh Kapil ("the Licensor")
+Project: Comik, https://github.com/asuka-405/comik
+
+This license applies to the Comik source code, documentation and build scripts in this repository, and to
+every copy and derivative of them. It is not an open source license as the Open Source Initiative defines
+the term, because it restricts advertising. The source is open for anyone to read, use, modify, share and
+contribute to, on the conditions below.
+
+1. Definitions
+
+"Comik" means the software and documentation in this repository, in source or built form.
+
+"Derivative" means any fork, clone, port, modification or other work that contains or is based on a
+substantial part of Comik, including a rebuilt or rebranded copy.
+
+"Ads" means advertising of any kind: display, banner, video or native ads, sponsored or promoted content,
+affiliate or referral links added for revenue, paid placements, and advertising or ad-tracking SDKs, whether
+shown inside an app, on a website, or on a hosted service.
+
+2. What you may do
+
+Subject to sections 3 to 5, you may:
+
+a. read and study the source code;
+b. run Comik for any purpose, personal or commercial;
+c. copy, modify and distribute Comik and your Derivatives, in source or built form;
+d. contribute changes back to Comik, as described in section 6.
+
+3. Attribution (required)
+
+Every copy and every Derivative of Comik that you distribute or host must:
+
+a. keep this license file and every copyright notice that is in the code;
+b. state clearly, where a person using it can see it, that it is based on Comik by Suryansh Kapil, with a
+   link to https://github.com/asuka-405/comik. In an app or website, that means its About page, settings
+   screen or footer. In a repository, it means the README. A hidden source comment does not satisfy this;
+c. say that you changed it, if you did, and not present your changes as the Licensor's;
+d. not suggest that the Licensor endorses, sponsors or is responsible for your Derivative, and not use the
+   name "Comik" or its logo as the name of a different product in a way that could confuse people about who
+   makes it.
+
+4. Advertising (permission required)
+
+You may not show, serve or include Ads in or with Comik or any Derivative, and may not distribute or host a
+copy of Comik or a Derivative that does, unless the Licensor has given you permission in writing first.
+The Licensor may refuse, or may grant permission with conditions, such as revenue sharing or a notice to
+users. A permission applies only to the person and the project it names. Contact the Licensor through the
+repository's issue tracker or the address on the Licensor's GitHub profile.
+
+5. Other terms
+
+a. All rights not granted here are reserved by the Licensor.
+b. This license does not cover third-party software that Comik depends on. Those packages keep their own
+   licenses, and you must follow them.
+c. Comik is a tool for reading and watching content you are allowed to use. It ships no content, and you
+   are responsible for the sources and connectors you add and for following the law and the rules of the
+   sites you use.
+
+6. Contributions
+
+If you submit a change to Comik, such as a pull request, you keep the copyright in it, and you grant the
+Licensor a perpetual, worldwide, royalty-free, irrevocable license to use, copy, modify, distribute and
+sublicense it as part of Comik, under this license or any other license the Licensor chooses, including
+granting permissions under section 4. You confirm that you have the right to submit it.
+
+7. Termination
+
+If you break this license, your rights under it end automatically. They are restored if you fix the breach
+within 30 days of becoming aware of it, for example by adding the missing attribution or removing the Ads.
+A second breach ends your rights for good unless the Licensor agrees otherwise in writing. Anyone who has
+received a copy from you keeps their own rights as long as they follow this license.
+
+8. No warranty and no liability
+
+COMIK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. TO THE FULLEST EXTENT THE LAW
+ALLOWS, THE LICENSOR IS NOT LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM COMIK OR ITS USE.
