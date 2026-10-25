@@ -1,0 +1,6 @@
+/assets/webtoon-covers/*
+  Cache-Control: public, max-age=604800
+
+# The service worker must be re-checked on every visit so updates reach people.
+/sw.js
+  Cache-Control: no-cache

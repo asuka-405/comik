@@ -5,3 +5,6 @@ release
 *.log
 functions/index.js
 functions/.env
+
+# Local Netlify folder
+.netlify
