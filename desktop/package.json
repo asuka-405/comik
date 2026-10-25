@@ -1,6 +1,6 @@
 {
   "name": "comik-desktop",
-  "version": "0.7.2-alpha",
+  "version": "0.7.3-beta",
   "private": true,
   "main": "main.cjs",
   "build": {

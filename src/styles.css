@@ -178,7 +178,10 @@ h1,h2,h3,p{margin:0}
 .facts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
 @media(max-width:700px){.series-hero{grid-template-columns:116px 1fr;gap:16px}.series-hero .art{box-shadow:5px 5px 0 color-mix(in srgb,var(--series,var(--accent)) 28%,transparent)}}
-@media(max-width:560px){.series-hero .actions{display:grid;grid-template-columns:minmax(0,1fr)}.series-hero .actions>.btn{width:100%;justify-content:center}.chapter-download-menu{max-width:160px}}
+/* The action row is a child of the hero grid: beside the cover on wide screens, the full width below cover and description on narrow ones. */
+.series-hero{grid-template-rows:auto 1fr}.series-hero .art{grid-row:1/3}.series-hero .actions{grid-column:2;align-self:start;margin-top:-12px}
+@media(max-width:700px){.series-hero{grid-template-rows:auto auto}.series-hero .art{grid-row:auto;align-self:start}.series-hero .actions{grid-column:1/-1;margin-top:0}.series-hero .actions>.btn{flex:1 1 auto;justify-content:center}}
+@media(max-width:560px){.chapter-download-menu{max-width:160px}}
 .chap{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);background:var(--surface);margin-bottom:-1px;transition:background .2s,border-color .2s;position:relative}
 .chap:hover{background:var(--surface-2);z-index:1;border-color:color-mix(in srgb,var(--series,var(--accent)) 55%,transparent)}
 .chap.read .nm{color:var(--muted)}

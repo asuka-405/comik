@@ -278,18 +278,18 @@ export function Series() {
           </div>
           {isAnime && (manga.year || manga.studios?.length || manga.rating) ? <div className="muted" style={{ fontSize: 13 }}>{[manga.year, manga.studios?.join(", "), manga.rating ? `★ ${manga.rating}` : "", manga.contentRating].filter(Boolean).join(" · ")}</div> : null}
           {manga.description && <p className={`desc${open ? " open" : ""}`} onClick={() => setOpen(!open)} style={{ cursor: "pointer" }}>{manga.description}</p>}
-          <div className="actions">
-            {target ? (
-              <Link className="btn primary" style={{ background: "var(--series)", borderColor: "var(--series)", color: "#101018" }} to={`/read/${encodeURIComponent(target.chapter.id)}`}>
-                <Play size={16} weight="fill" />{target.started ? "Continue" : "Start"} Ch. {formatChapterNumber(target.chapter.number)}
-              </Link>
-            ) : (chapters?.length ?? 0) > 0 ? <span className="btn" style={{ pointerEvents: "none" }}><Check size={16} /> Caught up</span> : null}
-            <button className="btn" onClick={toggleLibrary}>{manga.inLibrary ? <><Check size={16} /> On shelf</> : <><Plus size={16} /> Add to shelf</>}</button>
-            {manga.inLibrary && !isNovel && !isAnime && <button className="btn" onClick={() => { setMigrateMatches([]); setMigrateError(""); setMigrateOpen(true); }}><ArrowsLeftRight size={16} /> Migrate</button>}
-            {manga.inLibrary && <button className="btn" onClick={() => void setVault([manga.id], !manga.vault).then(() => toast(manga.vault ? "Back on your shelf" : "Moved to the Vault"))}><LockKey size={16} /> {manga.vault ? "Take out of Vault" : "Move to Vault"}</button>}
-            {manga.inLibrary && !!cats?.length && <button className="btn" onClick={() => setCatSheet(true)}><Tag size={16} /> Categories</button>}
-            {manga.inLibrary && <Link className="btn" to={`/community/new?comic=${encodeURIComponent(manga.id)}`}><ShareNetwork size={16} /> Share</Link>}
-          </div>
+        </div>
+        <div className="actions">
+          {target ? (
+            <Link className="btn primary" style={{ background: "var(--series)", borderColor: "var(--series)", color: "#101018" }} to={`/read/${encodeURIComponent(target.chapter.id)}`}>
+              <Play size={16} weight="fill" />{target.started ? "Continue" : "Start"} Ch. {formatChapterNumber(target.chapter.number)}
+            </Link>
+          ) : (chapters?.length ?? 0) > 0 ? <span className="btn" style={{ pointerEvents: "none" }}><Check size={16} /> Caught up</span> : null}
+          <button className="btn" onClick={toggleLibrary}>{manga.inLibrary ? <><Check size={16} /> On shelf</> : <><Plus size={16} /> Add to shelf</>}</button>
+          {manga.inLibrary && !isNovel && !isAnime && <button className="btn" onClick={() => { setMigrateMatches([]); setMigrateError(""); setMigrateOpen(true); }}><ArrowsLeftRight size={16} /> Migrate</button>}
+          {manga.inLibrary && <button className="btn" onClick={() => void setVault([manga.id], !manga.vault).then(() => toast(manga.vault ? "Back on your shelf" : "Moved to the Vault"))}><LockKey size={16} /> {manga.vault ? "Take out of Vault" : "Move to Vault"}</button>}
+          {manga.inLibrary && !!cats?.length && <button className="btn" onClick={() => setCatSheet(true)}><Tag size={16} /> Categories</button>}
+          {manga.inLibrary && <Link className="btn" to={`/community/new?comic=${encodeURIComponent(manga.id)}`}><ShareNetwork size={16} /> Share</Link>}
         </div>
       </section>
 

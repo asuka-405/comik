@@ -2,7 +2,7 @@
   "name": "comik",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "version": "0.7.2-alpha",
+  "version": "0.7.3-beta",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,proxy -c auto \"vite\" \"tsx watch server/index.ts\"",

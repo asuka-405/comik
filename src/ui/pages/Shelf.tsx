@@ -18,6 +18,8 @@ import { formatChapterNumber } from "@/core/chapterRecognition";
 
 interface Entry { m: MangaRow; s: LibraryStats; resume?: ShelfStatsRow["resume"] }
 const EMPTY_STATS: LibraryStats = { unread: 0, total: 0, lastReadAt: 0, progress: 0 };
+/** Covers drawn at first and added each time the end of the grid comes near. Drawing hundreds at once is what makes a big shelf stall. */
+const GRID_CHUNK = 48;
 const shelfSnapshots = new Map<MediaKind, { entries: Entry[]; cats: CategoryRow[] }>();
 
 const SORTS: [LibrarySort, string][] = [["lastRead", "Last read"], ["lastUpdate", "Latest update"], ["unread", "Unread"], ["title", "Title"], ["added", "Date added"]];
@@ -68,6 +70,18 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
     const k = key[st.librarySort];
     return [...list].sort((a, b) => (k(a) > k(b) ? dir : k(a) < k(b) ? -dir : 0));
   }, [data, safeEntries, cat, filter, st.libraryOnlyUnread, st.librarySort, st.librarySortAsc]);
+
+  const [shown, setShown] = useState(GRID_CHUNK);
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => setShown(GRID_CHUNK), [kind, cat, filter, st.libraryOnlyUnread, st.librarySort, st.librarySortAsc, st.libraryDensity]);
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || shown >= view.length) return;
+    const observer = new IntersectionObserver(([entry]) => { if (entry?.isIntersecting) setShown((n) => n + GRID_CHUNK); }, { rootMargin: "1400px 0px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [shown, view.length]);
+  const drawn = useMemo(() => view.slice(0, shown), [view, shown]);
 
   const resume = useMemo(
     () => safeEntries.filter((e) => e.s.lastReadAt > 0).sort((a, b) => b.s.lastReadAt - a.s.lastReadAt).filter((e) => e.resume).map((e) => ({ e, r: e.resume! })).slice(0, 10),
@@ -218,15 +232,16 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
       )}
       {st.libraryDensity === "list" ? (
         <div className="stack" style={{ gap: 10 }}>
-          {view.map(({ m, s }) => <ListRow key={m.id} m={m} s={s} words={words} badge={st.libraryUnreadBadge} sel={selecting ? select(m.id) : undefined} onHold={() => startSelecting(m.id)} />)}
+          {drawn.map(({ m, s }) => <ListRow key={m.id} m={m} s={s} words={words} badge={st.libraryUnreadBadge} sel={selecting ? select(m.id) : undefined} onHold={() => startSelecting(m.id)} />)}
         </div>
       ) : (
         <div className={`grid${st.libraryDensity === "compact" ? " compact" : ""}`} style={gridStyle}>
-          {view.map(({ m, s }) => (
+          {drawn.map(({ m, s }) => (
             <Cover key={m.id} m={m} unread={st.libraryUnreadBadge ? s.unread : 0} progress={s.progress} sub={s.lastReadAt ? timeAgo(s.lastReadAt) : undefined} select={selecting ? select(m.id) : undefined} onHold={() => startSelecting(m.id)} />
           ))}
         </div>
       )}
+      {shown < view.length && <div ref={sentinel} style={{ height: 1 }} aria-hidden="true" />}
 
       {selecting && (
         <div className="selbar shelf-selbar" role="toolbar" aria-label="Selected series">

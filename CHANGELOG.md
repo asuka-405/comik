@@ -2,6 +2,15 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.7.3-beta
+
+### Freezes
+- Fixed the app stalling when you scroll a large library quickly and open a title. The animated 3D background was drawing while the page scrolled and was clicked, and its setup blocked the first paint. It now starts only once the page is idle, rests while you scroll, click or type, draws at a lower resolution, and is skipped on devices without GPU acceleration, where it was the slowest thing on the page.
+- The shelf draws its covers in batches as you scroll instead of all at once, so a library of hundreds of titles opens and scrolls smoothly.
+
+### Series page
+- The action buttons (Continue, On shelf, Migrate, Vault, Categories, Share) now fill the whole row on small screens, below the cover and description, and wrap to fit their content, instead of one button per row inside the narrow column beside the cover.
+
 ## 0.7.2-alpha
 
 A quality update: a faster, steadier library and a corners control.

@@ -218,6 +218,17 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    // The scene starts once the page has drawn and the browser is idle, so it never delays the first paint or the library.
+    let stop: (() => void) | undefined;
+    const start = () => { stop = boot(); };
+    const idle = "requestIdleCallback" in window;
+    const handle = idle ? window.requestIdleCallback(start, { timeout: 2500 }) : window.setTimeout(start, 700);
+    return () => {
+      if (idle) window.cancelIdleCallback(handle); else window.clearTimeout(handle);
+      stop?.();
+    };
+
+    function boot(): (() => void) | undefined {
     const canvas = ref.current;
     if (!canvas) return;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -229,7 +240,14 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
     } catch {
       return; // no WebGL, the CSS grid still carries the look
     }
-    renderer.setPixelRatio(Math.min(devicePixelRatio, bg ? 1 : 1.75));
+    // Software rendering (no GPU) would make this decoration the slowest thing on the page, so it is skipped there.
+    const gl = renderer.getContext();
+    const debug = gl.getExtension("WEBGL_debug_renderer_info");
+    if (debug && /swiftshader|llvmpipe|software|basic render/i.test(String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)))) {
+      renderer.dispose();
+      return;
+    }
+    renderer.setPixelRatio(Math.min(devicePixelRatio, bg ? 0.75 : 1.75));
     renderer.setClearColor(0x000000, 0);
 
     const scene = new THREE.Scene();
@@ -335,7 +353,12 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
     io?.observe(canvas);
 
     let raf = 0, last = performance.now(), t = 0, acc = 0, lag = 0, lastFrame = performance.now();
-    const frameGap = bg ? 1000 / 30 : 1000 / 60;
+    const frameGap = bg ? 1000 / 24 : 1000 / 60;
+    // The backdrop sits under the whole page, so drawing it while the page scrolls or is being clicked competes with
+    // the page itself. It rests until the pointer and scroll have been quiet for a moment.
+    let quietAt = 0;
+    const busy = () => { quietAt = performance.now() + 350; };
+    if (bg) for (const type of ["scroll", "wheel", "touchmove", "pointerdown", "keydown"]) addEventListener(type, busy, { passive: true, capture: true });
     const speed = bg ? 0.16 : 0.32;
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
@@ -347,6 +370,7 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
         if (gap > 90 && gap < 1000) lag++; else if (lag > 0) lag -= 0.25;
         if (lag >= 40) { cancelAnimationFrame(raf); raf = 0; if (bg) canvas.style.display = "none"; return; }
       }
+      if (bg && now < quietAt) { last = now; return; }
       const dt = now - last;
       if (!visible || document.hidden || dt < 4) return;
       acc += dt;
@@ -384,6 +408,7 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
 
     return () => {
       cancelAnimationFrame(raf);
+      if (bg) for (const type of ["scroll", "wheel", "touchmove", "pointerdown", "keydown"]) removeEventListener(type, busy, { capture: true });
       removeEventListener("pointermove", onMove);
       ro.disconnect();
       io?.disconnect();
@@ -397,6 +422,7 @@ export function PanelField({ mode = "hero", className }: { mode?: "bg" | "hero";
       mesh.dispose();
       renderer.dispose();
     };
+    }
   }, [mode]);
 
   return <canvas ref={ref} className={className} aria-hidden="true" />;
