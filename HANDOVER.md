@@ -14,7 +14,15 @@ Updated: 2026-10-24 (global search, source ordering, MangaDex removal)
 - Keep these chapter actions in 0.4.0-alpha, not the 0.3.5-alpha bug-fix release.
 - Improve series migration to search all eligible sources by the exact title and alternate names, then list every possible match with exact matches ranked first.
 
-## Shelves, Vault, timeline tabs (0.5.1-alpha, not yet released)
+## Anime connectors (0.6.0-beta)
+
+- **Interface.** `src/core/connectors/schema.ts` is the contract: manifest rules, the host allowlist, and validators that turn what a connector returns into `SManga`, `SChapter` and `StreamSet` (episodes get one running number across seasons, streams must be https on an allowed host). `sandbox.ts` runs the code in a `sandbox="allow-scripts"` iframe with CSP `default-src 'none'` and answers its `ctx.http` calls (allowlist, https only, size, rate and redirect checks, through the proxy or directly when `manifest.direct`). `source.ts` adapts a connector to a normal `Source` (with `getStreams`); `registry.ts` stores them in the `connectors` table (Dexie v3), installs from code or a raw URL, and exposes them through `allSources()`.
+- **UI.** Settings > Anime connectors (`ui/pages/ConnectorSettings.tsx`) lists, tests, configures, edits, updates and removes them, and renders `docs/CONNECTORS.md` (the one source for the docs, the template and the demo; fenced blocks tagged `template` and `demo` are picked out). Playback is `ui/reader/AnimePlayer.tsx` with hls.js. Episode thumbnails and descriptions show on the series page.
+- **Verified in a browser:** install from the demo, Test, Discover listing, series page with seasons, HLS playback from two hosts, MP4 playback, skip intro, progress saved, quality switch. A hostile connector could not use fetch, XHR, dynamic import, the parent page, storage, cookies or IndexedDB, and `ctx.http` refused off-list and http addresses. **Not verified:** proxy-routed HLS with headers, `direct` mode against a real CORS site, Android WebView and Electron playback, and installing from a real raw URL.
+- Connector code and settings stay local; library entries from a connector sync, and show as unavailable on a device without it.
+- Releases: only the three newest are kept on GitHub (older ones and their tags are deleted). Commit history was rewritten once to drop tool attribution lines; do not add trailers to commits.
+
+## Shelves, Vault, timeline tabs (0.5.1-alpha)
 
 - `Shelf` takes a `kind` (comic, novel, anime) and is used for `/`, `/novels` and `/anime`; the old Novels and Anime pages are gone. Words per kind live in `src/ui/media.ts`. Its tools row is collapsed by default (`#shelf-tools`), and Select all lives inside it.
 - `MangaRow.vault` (synced with the library) hides a title from the shelves, `Timeline`, the dock badge in `App.tsx`, the community composer and `QuickCompose`. The Vault page is `src/ui/pages/Vault.tsx`; the optional PIN is `settings.vaultPin` (a hash, local only) and the unlocked state lives in `sessionStorage`.

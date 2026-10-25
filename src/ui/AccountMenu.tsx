@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { GearSix, UserCircle } from "@phosphor-icons/react";
+import { GearSix, LockKey, UserCircle } from "@phosphor-icons/react";
 import { useSync } from "@/core/sync/firebase";
 
 /** Account button at the end of the top bar. Opens a small menu with the account page and app settings. */
@@ -45,6 +45,7 @@ export function AccountMenu() {
       {open && (
         <div className="account-menu-list" role="menu">
           <Link role="menuitem" to="/account"><UserCircle size={19} /><span><strong>My account</strong><small>{user ? (user.isAnonymous ? "Guest session" : user.email ?? "Signed in") : "Sign in and sync"}</small></span></Link>
+          <Link role="menuitem" to="/vault"><LockKey size={19} /><span><strong>Vault</strong><small>Titles kept apart from your shelf</small></span></Link>
           <Link role="menuitem" to="/settings"><GearSix size={19} /><span><strong>App settings</strong><small>Appearance, reader, Firebase</small></span></Link>
         </div>
       )}

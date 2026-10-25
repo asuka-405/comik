@@ -13,6 +13,14 @@ export interface SManga {
   externalUrl?: string;
   episodeCount?: number;
   externalLinks?: { site: string; url: string }[];
+  /** Anime detail a connector can supply. */
+  banner?: string;
+  year?: number;
+  studios?: string[];
+  /** 0 to 10. */
+  rating?: number;
+  trailerUrl?: string;
+  contentRating?: string;
   /** Alternate titles supplied by the source, used for cross-source migration matching. */
   aliases?: string[];
   cover?: string;
@@ -31,7 +39,29 @@ export interface SChapter {
   scanlator?: string;
   /** Number the source reports, if it has one. Recognition fills the rest. */
   number?: number;
+  /** Anime episode detail a connector can supply. */
+  description?: string;
+  thumbnail?: string;
+  season?: number;
+  seasonTitle?: string;
+  /** Seconds. */
+  duration?: number;
+  filler?: boolean;
 }
+
+/** One playable file or playlist of an episode. */
+export interface StreamSource {
+  url: string;
+  type: "hls" | "mp4" | "webm";
+  /** "1080p", "720p", "Auto" ... shown in the quality menu. */
+  label?: string;
+  /** Send this stream's requests through Comik's proxy, with `headers`. Only HLS can be proxied. */
+  proxy?: boolean;
+  headers?: Record<string, string>;
+}
+export interface SubtitleTrack { url: string; label: string; lang: string; format: "vtt" | "srt"; default?: boolean }
+export interface SkipRange { kind: "intro" | "outro" | "recap"; start: number; end: number }
+export interface StreamSet { streams: StreamSource[]; subtitles: SubtitleTrack[]; skips: SkipRange[] }
 
 export interface SPage {
   index: number;
@@ -87,6 +117,10 @@ export interface Source {
   getChapterList(manga: SManga): Promise<SChapter[]>;
   getPageList(chapter: SChapter, manga: SManga): Promise<SPage[]>;
   getNovelText?(chapter: SChapter, manga: SManga): Promise<string>;
+  /** Anime: where the episode can be played. Only connector sources provide it. */
+  getStreams?(chapter: SChapter, manga: SManga): Promise<StreamSet>;
+  /** Installed by the person through the connector interface rather than built in. */
+  isConnector?: boolean;
 }
 
 /* ---------------------------------- stored ---------------------------------- */
@@ -101,6 +135,12 @@ export interface MangaRow {
   externalUrl?: string;
   episodeCount?: number;
   externalLinks?: { site: string; url: string }[];
+  banner?: string;
+  year?: number;
+  studios?: string[];
+  rating?: number;
+  trailerUrl?: string;
+  contentRating?: string;
   aliases?: string[];
   cover?: string;
   author?: string;
@@ -135,6 +175,12 @@ export interface ChapterRow {
   name: string;
   number: number;
   scanlator?: string;
+  description?: string;
+  thumbnail?: string;
+  season?: number;
+  seasonTitle?: string;
+  duration?: number;
+  filler?: boolean;
   dateUpload: number;
   /** Position in the source's list (0 = newest first as reported). */
   sourceOrder: number;

@@ -568,3 +568,23 @@ button.cm-row:hover{border-color:var(--cm,var(--accent))}.cm-row.static{cursor:d
 .community-ref{display:grid;gap:8px;flex:1 1 100%;min-width:0}.community-ref .seg{width:max-content;max-width:100%;overflow-x:auto;scrollbar-width:none}.community-ref .seg button{flex:none}
 .community-ref select,.community-compose-tools select{width:100%;min-width:0;max-width:100%;text-overflow:ellipsis}
 @media(max-width:600px){.shelf-bar>.btn{flex:1 1 auto}#shelf-tools{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}#shelf-tools .shelf-filter-wrap{grid-column:1/-1}}
+
+/* ---------- anime player and connectors ---------- */
+.player{display:grid;gap:10px;width:100%;min-width:0}.player-frame{position:relative;background:#000;aspect-ratio:16/9;max-height:72dvh;width:100%}.player-frame video{width:100%;height:100%;display:block;background:#000}
+.player-skip{position:absolute;right:12px;bottom:64px;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;background:rgba(0,0,0,.72);color:#fff;border:1px solid rgba(255,255,255,.5);font-weight:700;font-size:13px}.player-skip:hover{background:var(--accent);border-color:var(--accent)}
+.player-next{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:rgba(0,0,0,.78);color:#fff;font-size:13px}.player-next span{flex:1}
+.player-loading,.player-error{display:grid;place-items:center;gap:12px;aspect-ratio:16/9;background:var(--surface);border:1px solid var(--line);text-align:center;padding:20px}.player-loading{grid-auto-flow:column;justify-content:center}
+.player-quality{display:flex;align-items:center;gap:10px;font-size:13px}.player-quality select{width:auto;min-width:120px}
+.anime-episode-info{display:grid;gap:8px;max-width:78ch}.anime-episode-info p{color:var(--text);line-height:1.6;font-size:14px}.anime-autonext{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.connector-grid{display:grid;gap:14px}.connector-card{display:grid;gap:10px;padding:16px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent-2,var(--accent));min-width:0}.connector-card h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--ink);font-size:16px}.connector-card .muted{font-size:13px;overflow-wrap:anywhere}
+.connector-meta{display:flex;gap:6px;flex-wrap:wrap}.connector-meta .tag{max-width:100%;overflow:hidden;text-overflow:ellipsis}.connector-actions{display:flex;gap:8px;flex-wrap:wrap}
+.connector-code{width:100%;min-height:260px;font:12.5px/1.5 var(--mono);white-space:pre;tab-size:2;resize:vertical}
+.connector-review{display:grid;gap:12px}.connector-review ul{margin:0;padding-left:18px;font:13px var(--mono)}.connector-attest{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--warm);background:color-mix(in srgb,var(--warm) 8%,var(--surface));font-size:13px;line-height:1.5}
+.connector-log{max-height:140px;overflow:auto;padding:8px 10px;background:var(--surface-2);font:12px var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.episode-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.episode-thumb{width:120px;aspect-ratio:16/9;object-fit:cover;background:var(--surface-2)}.episode-desc{color:var(--muted);font-size:12.5px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@media(max-width:600px){.player-frame{max-height:56dvh}.episode-thumb{width:96px}.player-skip{bottom:56px}}
+.connector-docs{display:grid;gap:12px;min-width:0}.connector-docs h2{margin-top:10px;font-size:20px}.connector-docs h3{margin-top:6px;font-size:16px;color:var(--ink)}.connector-docs p,.connector-docs li{font-size:14px;line-height:1.65;overflow-wrap:anywhere}.connector-docs ul{display:grid;gap:5px;padding-left:20px}.connector-docs code{font:12.5px var(--mono);background:var(--surface-2);padding:1px 5px}
+.doc-code{min-width:0;border:1px solid var(--line);background:var(--surface-2)}.doc-code-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line)}.doc-code-bar .mono{flex:1;font-size:11px;text-transform:uppercase}
+.doc-code pre{margin:0;padding:12px;overflow:auto;max-height:460px;font:12.5px/1.55 var(--mono);white-space:pre}.doc-code pre code{background:none;padding:0}
+.row-inline{display:inline-flex;align-items:center;gap:8px;font-size:13px}
+.rel-notes pre{margin:8px 0;padding:10px;overflow:auto;background:var(--surface-2,#0001);font:12.5px/1.5 monospace}

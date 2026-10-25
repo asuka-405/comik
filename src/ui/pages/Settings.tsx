@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
-import { BookOpenText, Books, CaretLeft, CaretRight, CloudArrowUp, Compass, DownloadSimple, Info, Palette, ShieldCheck, type Icon } from "@phosphor-icons/react";
+import { PlugsConnected, BookOpenText, Books, CaretLeft, CaretRight, CloudArrowUp, Compass, DownloadSimple, Info, Palette, ShieldCheck, type Icon } from "@phosphor-icons/react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/core/db";
 import { useSettings, type FitMode, type LibraryDensity, type LibrarySort } from "@/core/settings";
@@ -39,6 +39,7 @@ const CATEGORIES: Category[] = [
   { slug: "reader", title: "Reader", icon: BookOpenText, hue: 4, summary: (s) => `${s.readerMode === "auto" ? "Auto mode" : s.readerMode.replace("paged-", "").replace("rtl", "right to left").replace("ltr", "left to right")}, ${s.fit} fit` },
   { slug: "downloads", title: "Downloads and storage", icon: DownloadSimple, hue: 6, summary: (s) => `${s.downloadConcurrency} at a time, backup and restore` },
   { slug: "proxy", title: "Sources and proxy", icon: Compass, hue: 5, summary: (s) => `${s.disabledSourceIds.length ? `${s.disabledSourceIds.length} disabled` : "All enabled"}, custom sources, file import` },
+  { slug: "connectors", title: "Anime connectors", icon: PlugsConnected, hue: 5, summary: () => "Connect licensed sites with your own code" },
   { slug: "firebase", title: "Firebase and sync", icon: CloudArrowUp, hue: 3, summary: () => (getFirebaseMode() === "custom" ? "Your own Firebase" : "Comik Firebase") },
   { slug: "privacy", title: "Privacy and community", icon: ShieldCheck, hue: 1, summary: (s) => `Safe mode ${s.safeMode ? "on" : "off"}, analytics ${s.analyticsConsent ? "on" : "off"}` },
   { slug: "about", title: "About", icon: Info, hue: 0, summary: () => `Version ${APP_VERSION}` },
@@ -84,7 +85,7 @@ export function SettingsIndex() {
   return wide ? <Navigate to="/settings/appearance" replace /> : null;
 }
 
-function Detail({ title, intro, children }: { title: string; intro?: string; children: ReactNode }) {
+export function Detail({ title, intro, children }: { title: string; intro?: string; children: ReactNode }) {
   return (
     <div className="settings-page">
       <div className="settings-page-head">

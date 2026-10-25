@@ -12,7 +12,9 @@ export type Inline =
 export type Block =
   | { type: "heading"; level: 2 | 3 | 4; inline: Inline[] }
   | { type: "list"; items: Inline[][] }
-  | { type: "paragraph"; inline: Inline[] };
+  | { type: "paragraph"; inline: Inline[] }
+  /** A fenced block. `meta` is whatever follows the language on the opening line, such as "template". */
+  | { type: "code"; lang: string; meta: string; text: string };
 
 const INLINE = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 
@@ -40,7 +42,15 @@ export function parseMarkdown(source: string): Block[] {
     paragraph = [];
     list = null;
   };
+  let fence: { lang: string; meta: string; lines: string[] } | null = null;
   for (const raw of source.replace(/\r\n?/g, "\n").split("\n")) {
+    if (fence) {
+      if (raw.trim() === "```") { blocks.push({ type: "code", lang: fence.lang, meta: fence.meta, text: fence.lines.join("\n") }); fence = null; }
+      else fence.lines.push(raw);
+      continue;
+    }
+    const opening = /^```\s*([A-Za-z0-9+-]*)\s*(.*)$/.exec(raw.trim());
+    if (opening) { flush(); fence = { lang: opening[1] ?? "", meta: opening[2] ?? "", lines: [] }; continue; }
     const line = raw.trim();
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
     const bullet = /^[-*]\s+(.*)$/.exec(line);
@@ -57,6 +67,7 @@ export function parseMarkdown(source: string): Block[] {
       paragraph.push(line);
     }
   }
+  if (fence) blocks.push({ type: "code", lang: fence.lang, meta: fence.meta, text: fence.lines.join("\n") });
   flush();
   return blocks;
 }

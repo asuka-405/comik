@@ -16,7 +16,8 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const version = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version;
 const tag = `v${version}`;
-const prerelease = /-(alpha|beta|rc)\b/i.test(version);
+// Alpha builds are pre-releases. A beta is a main release, so it becomes the "latest" that download links point to.
+const prerelease = /-alpha\b/i.test(version);
 // "0.1.0-alpha" reads better as "0.1 alpha" in a title.
 const title = `Comik ${version.replace(/\.0(?=-)/, "").replace("-", " ")}`;
 const stage = path.join(root, "release", "upload", version);

@@ -16,6 +16,7 @@ import { createGutenbergSource } from "./gutenberg";
 import { createRoyalRoadSource } from "./royalRoad";
 import { createAniListAnimeSource } from "./anilist";
 import { createNovelSites } from "./novelSites";
+import { connectorSources, onConnectorsChange } from "../connectors/registry";
 import catalog from "./catalog.json";
 import type { CatalogEntry } from "./catalogTypes";
 import type { Source } from "../types";
@@ -80,7 +81,9 @@ export const onSourcesChange = (fn: () => void) => {
   return () => { subs.delete(fn); };
 };
 
-export const allSources = (): Source[] => [...builtin, ...custom.values()].sort((a, b) => a.name.localeCompare(b.name));
+onConnectorsChange(() => subs.forEach((f) => f()));
+
+export const allSources = (): Source[] => [...builtin, ...custom.values(), ...connectorSources()].sort((a, b) => a.name.localeCompare(b.name));
 export const isCatalogSource = (id: string) => id.startsWith("mihon-");
 export const getSource = (id: string): Source | undefined => allSources().find((s) => s.id === id);
 export const isCustom = (id: string) => custom.has(id);

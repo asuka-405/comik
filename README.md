@@ -20,6 +20,10 @@ Browsers cannot read most comic sites (no CORS, referer-locked images), so somet
 - Offline: downloads are stored as blobs in IndexedDB.
 - `src/core/tachiyomi.ts` decodes Tachiyomi and Mihon backups (gzip-wrapped protobuf, hand-written reader) and `tachiyomiApply.ts` writes the library, categories and read progress into IndexedDB. Series are matched by Tachiyomi source id (catalogue sources are stored as `mihon-<id>`), then by source name.
 
+## Anime connectors
+
+Anime sources are plugins you install yourself, for sites you have permission to use. Comik ships none for third-party sites. See [docs/CONNECTORS.md](docs/CONNECTORS.md) for the interface, a template and examples.
+
 ## Firebase
 
 Comik's own Firebase project (`comik-7157c`) handles sign-in, library sync and the public Community for everyone. Users can bring their own project instead, which also enables the comic proxy on the web and keeps all their data in their own project, with nothing stored by Comik. The full split, the reasoning and step-by-step instructions are in [docs/FIREBASE.md](docs/FIREBASE.md).

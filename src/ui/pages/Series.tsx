@@ -251,6 +251,7 @@ export function Series() {
             {unread > 0 && <span className="tag warm">{unread} unread</span>}
             {manga.genres.slice(0, 6).map((g) => <span className="tag dim" key={g}>{g}</span>)}
           </div>
+          {isAnime && (manga.year || manga.studios?.length || manga.rating) ? <div className="muted" style={{ fontSize: 13 }}>{[manga.year, manga.studios?.join(", "), manga.rating ? `★ ${manga.rating}` : "", manga.contentRating].filter(Boolean).join(" · ")}</div> : null}
           {manga.description && <p className={`desc${open ? " open" : ""}`} onClick={() => setOpen(!open)} style={{ cursor: "pointer" }}>{manga.description}</p>}
           <div className="actions">
             {target ? (
@@ -296,10 +297,12 @@ export function Series() {
               <div className={`chap${c.read ? " read" : ""}`}>
                 <button className={`sel${sel.has(c.id) ? " on" : ""}`} onClick={() => toggleSel(c.id)} aria-label="Select chapter">{sel.has(c.id) && <Check size={13} weight="bold" />}</button>
                 <Link to={`/read/${encodeURIComponent(c.id)}`} style={{ display: "contents" }}>
+                  {isAnime && c.thumbnail && <img className="episode-thumb" src={coverSrc(manga.sourceId, c.thumbnail)} alt="" loading="lazy" />}
                   <span className="num">{formatChapterNumber(c.number)}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span className="nm" style={{ display: "block" }}>{c.name}</span>
-                    <span className="meta">{[c.dateUpload ? timeAgo(c.dateUpload) : "", c.scanlator, !c.read && c.lastPage > 0 ? `page ${c.lastPage + 1}${c.pageCount ? ` of ${c.pageCount}` : ""}` : ""].filter(Boolean).join(", ")}</span>
+                    {isAnime && c.description && <span className="episode-desc">{c.description}</span>}
+                    <span className="meta">{[c.dateUpload ? timeAgo(c.dateUpload) : "", c.scanlator, isAnime && c.duration ? `${Math.round(c.duration / 60)} min` : "", isAnime && c.seasonTitle ? c.seasonTitle : "", !c.read && c.lastPage > 0 && isAnime ? `at ${Math.floor(c.lastPage / 60)}:${String(c.lastPage % 60).padStart(2, "0")}` : "", !isAnime && !c.read && c.lastPage > 0 ? `page ${c.lastPage + 1}${c.pageCount ? ` of ${c.pageCount}` : ""}` : ""].filter(Boolean).join(", ")}</span>
                   </span>
                 </Link>
                 {c.bookmark && <BookmarkSimple size={16} weight="fill" color="var(--gold)" />}

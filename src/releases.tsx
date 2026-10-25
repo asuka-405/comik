@@ -49,6 +49,7 @@ function Notes({ body }: { body: string }) {
     <div className="rel-notes">
       {blocks.map((block, i) => {
         if (block.type === "heading") return block.level === 2 ? <h3 key={i}>{renderInline(block.inline)}</h3> : <h4 key={i}>{renderInline(block.inline)}</h4>;
+        if (block.type === "code") return <pre key={i}><code>{block.text}</code></pre>;
         if (block.type === "list") return <ul key={i}>{block.items.map((item, j) => <li key={j}>{renderInline(item)}</li>)}</ul>;
         return <p key={i}>{renderInline(block.inline)}</p>;
       })}

@@ -2,6 +2,22 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.6.0-beta
+
+### Anime connectors
+- **Connect any anime site you have permission to use.** A connector is a small piece of JavaScript that tells Comik how to read one site: its titles, seasons, tags, descriptions, episodes with their own descriptions and thumbnails, and its video and subtitle addresses. Comik handles everything after that: Discover, the shelf, progress, the player, sync and community posts. None are included for third-party sites.
+- **Add one in Settings > Anime connectors**, by pasting the code or by giving the address of a raw file, which Comik downloads and stores on the device. Each connector shows the hosts it can contact before it is installed, and you confirm you have permission from the site's operator. A connector can be tested, switched off, edited, updated from its address, and given its own settings, such as an API key.
+- **Safe by design.** Connector code runs in a sandboxed frame with no network, no storage and no access to Comik's data. It reaches the internet only through Comik, over https, and only to the hosts in its manifest. Whatever it returns is validated, and addresses off its list are dropped.
+- **A real player.** HLS and MP4 playback with a quality menu, subtitles (VTT and SRT), skip intro and outro buttons, resume where you stopped, and automatic next episode. HLS that needs request headers can go through Comik's proxy.
+- **Seasons and episode detail.** Episodes show their thumbnail, description, duration and season, and season 2 no longer clashes with season 1 in numbering.
+- **Documentation in the app.** Settings > Anime connectors > Documentation explains the whole interface with a template, three worked examples and a demo you can install in one tap. The same text is in `docs/CONNECTORS.md`.
+
+### Vault
+- The Vault moved into the account menu, above App settings.
+
+### Releases
+- Only the latest three versions are kept on GitHub.
+
 ## 0.5.1-alpha
 
 ### Shelves

@@ -68,7 +68,8 @@ export function compareAppVersions(left: string, right: string): number {
   return a.suffix.localeCompare(b.suffix, undefined, { numeric: true, sensitivity: "base" });
 }
 
-const isPrerelease = (version: string) => /-(alpha|beta|rc)(\.|$)/i.test(version);
+/** Alpha builds follow every release; beta and stable builds follow main releases only. */
+const isPrerelease = (version: string) => /-alpha(\.|$)/i.test(version);
 
 /* ------------------------------------------------------------- platform */
 
@@ -137,7 +138,7 @@ export async function findAppUpdate(currentVersion: string): Promise<UpdateCandi
   const target = platform();
   if (!target) return null;
   const releases = JSON.parse(await fetchReleaseText(`https://api.github.com/repos/${REPO}/releases?per_page=30`)) as ApiRelease[];
-  // A pre-release build is offered newer pre-releases and stable releases. A stable build is offered stable releases only.
+  // An alpha build is offered newer alphas and main releases. Beta and stable builds are offered main releases only.
   const wantPre = isPrerelease(currentVersion);
   const newest = releases
     .filter((release) => !release.draft && (wantPre || !release.prerelease))

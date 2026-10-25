@@ -97,6 +97,10 @@ export function Browse() {
               </div>
             </Link>
           ))}
+          {mediaTab === "anime" && <button className="panel source-card compact" data-hue="6" onClick={() => nav("/settings/connectors")} style={{ borderStyle: "dashed" }}>
+            <div className="ico"><Plus size={20} /></div>
+            <div><div className="src-name">Add an anime connector</div><div className="muted src-sub">Connect a site you have permission to use</div></div>
+          </button>}
           {mediaTab === "comics" && <button className="panel source-card compact" data-hue="6" onClick={() => nav("/settings#sources")} style={{ borderStyle: "dashed" }}>
             <div className="ico"><Plus size={20} /></div>
             <div><div className="src-name">Add a source</div><div className="muted src-sub">Madara, MangaThemesia or your own selectors</div></div>

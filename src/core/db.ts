@@ -43,6 +43,29 @@ export interface LocalMangaFile {
   kind?: "text";
 }
 
+/** An anime connector the person installed: code that tells Comik how to read one licensed site. */
+export interface ConnectorRow {
+  /** The id from the connector's manifest. */
+  id: string;
+  name: string;
+  version: string;
+  code: string;
+  /** Where the code was downloaded from, so it can be updated. Empty for pasted code. */
+  sourceUrl: string;
+  /** The validated manifest, kept so the connector can be listed without running its code. */
+  manifest: Record<string, unknown>;
+  /** Hosts the connector may contact, from its manifest. */
+  domains: string[];
+  nsfw: boolean;
+  enabled: boolean;
+  /** Values the person typed for the connector's own settings (API keys, region ...). */
+  settings: Record<string, string>;
+  /** When the person confirmed they have permission from the site's operator. */
+  attestedAt: number;
+  installedAt: number;
+  updatedAt: number;
+}
+
 export interface AccountArchiveRow {
   id: string;
   createdAt: number;
@@ -65,6 +88,7 @@ class ComikDB extends Dexie {
   localFiles!: Table<LocalMangaFile, string>;
   pendingStates!: Table<PendingStates, string>;
   accountArchives!: Table<AccountArchiveRow, string>;
+  connectors!: Table<ConnectorRow, string>;
 
   constructor() {
     super("comik");
@@ -80,6 +104,7 @@ class ComikDB extends Dexie {
       pendingStates: "mangaId",
     });
     this.version(2).stores({ accountArchives: "id, createdAt" });
+    this.version(3).stores({ connectors: "id" });
   }
 }
 
