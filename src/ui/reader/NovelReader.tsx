@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, BookmarkSimple, CaretLeft, CaretRight, Minus, Plus } from "@phosphor-icons/react";
+import { ArrowLeft, BookmarkSimple, CaretLeft, CaretRight, Minus, Plus, TextAa } from "@phosphor-icons/react";
+import { useSettings } from "@/core/settings";
 import { db } from "@/core/db";
 import { getSource } from "@/core/sources/registry";
 import { saveProgress, setBookmark } from "@/core/repo";
@@ -15,7 +16,7 @@ export function NovelReader({ manga, chapter, siblings }: { manga: MangaRow; cha
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [fontSize, setFontSize] = useState(18);
+  const { novelFontSize: fontSize, novelLineHeight: lineHeight, novelFont, set } = useSettings();
   const [bookmarked, setBookmarked] = useState(chapter.bookmark);
   const order = useMemo(() => readingOrder(siblings), [siblings]);
   const index = order.findIndex((item) => item.id === chapter.id);
@@ -67,6 +68,16 @@ export function NovelReader({ manga, chapter, siblings }: { manga: MangaRow; cha
     return () => { window.clearTimeout(timer); node.removeEventListener("scroll", persist); };
   }, [chapter.id, text]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      if (e.key === "ArrowRight" && next) nav(`/read/${encodeURIComponent(next.id)}`);
+      else if (e.key === "ArrowLeft" && previous) nav(`/read/${encodeURIComponent(previous.id)}`);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [next, previous, nav]);
+
   const paragraphs = text.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
   const percent = chapter.pageCount ? Math.min(100, Math.round(chapter.lastPage / chapter.pageCount * 100)) : 0;
 
@@ -76,12 +87,14 @@ export function NovelReader({ manga, chapter, siblings }: { manga: MangaRow; cha
         <Link className="icon-btn" to={`/series/${encodeURIComponent(manga.id)}`} aria-label="Back to chapters" title="Back to chapters"><ArrowLeft size={19} /></Link>
         <div className="novel-reader-title"><strong>{manga.title}</strong><span>{chapter.name}</span></div>
         <button className={`icon-btn${bookmarked ? " on" : ""}`} aria-label="Bookmark chapter" aria-pressed={bookmarked} title="Bookmark" onClick={() => { const value = !bookmarked; setBookmarked(value); void setBookmark(chapter.id, value); }}><BookmarkSimple size={18} /></button>
-        <button className="icon-btn" aria-label="Smaller text" title="Smaller text" disabled={fontSize <= 14} onClick={() => setFontSize((size) => Math.max(14, size - 1))}><Minus size={17} /></button>
-        <button className="icon-btn" aria-label="Larger text" title="Larger text" disabled={fontSize >= 28} onClick={() => setFontSize((size) => Math.min(28, size + 1))}><Plus size={17} /></button>
+        <button className="icon-btn" aria-label="Smaller text" title="Smaller text" disabled={fontSize <= 14} onClick={() => set({ novelFontSize: Math.max(14, fontSize - 1) })}><Minus size={17} /></button>
+        <button className="icon-btn" aria-label="Larger text" title="Larger text" disabled={fontSize >= 28} onClick={() => set({ novelFontSize: Math.min(28, fontSize + 1) })}><Plus size={17} /></button>
+        <button className="icon-btn" aria-label={`Text style: ${novelFont}`} title={`Text style: ${novelFont === "serif" ? "serif" : "sans"}. Tap to switch`} onClick={() => set({ novelFont: novelFont === "serif" ? "sans" : "serif" })}><TextAa size={17} /></button>
+        <button className="icon-btn" aria-label="Line spacing" title="Line spacing" onClick={() => set({ novelLineHeight: lineHeight >= 2.2 ? 1.5 : Math.round((lineHeight + 0.2) * 100) / 100 })}><span className="mono" style={{ fontSize: 11 }}>{lineHeight.toFixed(1)}</span></button>
       </header>
       <div className="novel-reader-progress"><i style={{ width: `${percent}%` }} /></div>
       <main className="novel-reading-scroll" ref={scroller}>
-        {loading ? <div className="novel-reading-message">Loading chapter…</div> : loadError ? <div className="novel-reading-message" role="alert">{loadError}</div> : <article className="novel-prose" style={{ fontSize }}>
+        {loading ? <div className="novel-reading-message">Loading chapter…</div> : loadError ? <div className="novel-reading-message" role="alert">{loadError}</div> : <article className="novel-prose" style={{ fontSize, lineHeight, fontFamily: novelFont === "sans" ? "var(--font)" : undefined }}>
           <h1>{chapter.name}</h1>
           {paragraphs.map((paragraph, paragraphIndex) => <p key={paragraphIndex}>{paragraph.split("\n").map((line, index) => <span key={index}>{index > 0 && <br />}{line}</span>)}</p>)}
         </article>}

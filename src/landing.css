@@ -63,3 +63,5 @@ html:has(.landing),html:has(.web-setup){scroll-behavior:smooth;scroll-padding-to
 .guide-steps h3{color:var(--landing-ink);font-size:17px}.guide-steps p{margin-top:8px;color:var(--landing-copy);font-size:14px;line-height:1.7}.guide-steps a{color:var(--landing-coral);text-decoration:underline;text-underline-offset:3px}
 .guide-steps code,.guide-prose code{padding:1px 5px;background:var(--landing-panel);color:var(--landing-ink);font:500 12.5px var(--mono)}
 .guide-code{margin:12px 0;padding:14px 16px;overflow-x:auto;background:#0c110e;border:1px solid var(--landing-line);color:var(--landing-ink);font:500 12.5px/1.7 var(--mono)}
+
+.landing-privacy-copy .landing-text-link{display:flex;width:fit-content;margin-top:14px}

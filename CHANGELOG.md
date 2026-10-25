@@ -2,6 +2,26 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.7.1-alpha
+
+### Themes and customization
+- Eleven new built-in themes, including Arcade cabinet, Night carnival, Botanical after dark, Kinetic rave and Synthwave postcard. Dark themes now have rounded corners by default; you can still change the radius.
+- New documentation site at `/docs/`: a guide to themes and custom CSS, the public data and database schema page, and the anime connector reference. The landing page links to all three.
+- The novel reader remembers your text size, and adds a serif/sans switch, a line-spacing control and ←/→ keys for the previous and next chapter. These settings sync.
+
+### Library
+- Categories now belong to a library: comics, novels and anime each have their own. Existing categories stay with comics, and your novel and anime assignments are copied into their own libraries on upgrade, so nothing is lost. Backups and synced libraries from older versions open as comics categories.
+- The shelf reads the library through an index instead of scanning every title, so large libraries open faster.
+- Profile and personalization choices moved to the Account page.
+
+### Series page and reader
+- On small screens the series action buttons are full width. The two chapter-download buttons are now one Download menu.
+- The optional reader discussion shows a visible prompt when it is turned on.
+
+### Sources
+- AniList uses its canonical GraphQL address without the trailing slash.
+- Eight sources that failed the health check start disabled: Anisa Scans, Coffee Manga (Unoriginal), Gourmet Scans, Cutie Comics, KokoMangas, Manhuanext, TopManhua.fan and WuxiaWorld. Turn any of them back on in Settings, Sources and proxy; Comik will not disable it again.
+
 ## 0.7.0-alpha
 
 ### Search and discovery

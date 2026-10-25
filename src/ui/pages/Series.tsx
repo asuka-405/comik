@@ -13,7 +13,7 @@ import { resumeTarget, readingOrder, dedupeByNumber, chaptersAround, nextUnreadC
 import { migrationMatchRank, migrationQueries } from "@/core/migrationSearch";
 import { formatChapterNumber, missingBetween } from "@/core/chapterRecognition";
 import { deleteDownloads, enqueueDownloads } from "@/core/downloads";
-import type { ChapterRow, SManga, Source } from "@/core/types";
+import { mediaOf, type ChapterRow, type SManga, type Source } from "@/core/types";
 import { Empty, FloatBack, ReadingNotice, Sheet, coverSrc, hueOf, timeAgo, toast } from "../common";
 import { dominantColor } from "../color";
 import { ChallengeFix } from "../ChallengeFix";
@@ -34,7 +34,7 @@ export function Series() {
   const chapters = useLiveQuery(() => db.chapters.where("mangaId").equals(id).toArray(), [id], [] as ChapterRow[]);
   const chapterCount = useLiveQuery(() => db.chapters.where("mangaId").equals(id).count(), [id]);
   const downloads = useLiveQuery(() => db.downloads.where("mangaId").equals(id).toArray(), [id], []);
-  const cats = useLiveQuery(() => db.categories.orderBy("order").toArray().then((c) => c.filter((x) => !x.deleted)), [], []);
+  const cats = useLiveQuery(() => db.categories.where("kind").equals(manga ? mediaOf(manga) : "comic").sortBy("order").then((rows) => rows.filter((row) => !row.deleted)), [manga?.kind], []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
@@ -302,8 +302,12 @@ export function Series() {
         ))}
         {dupeCount > 0 && <button className={`chip${showDupes ? " on" : ""}`} onClick={() => { setShowDupes((v) => !v); setChapterPage(0); }} title="Other uploads of the same chapter number">{dupeCount} duplicate{dupeCount === 1 ? "" : "s"}</button>}
         <button className="icon-btn" onClick={() => { setChapterPage(0); void patchManga(manga.id, { chapterSortAsc: !asc }); }} aria-label="Reverse order" title={asc ? "Oldest first" : "Newest first"}><ArrowsDownUp size={18} /></button>
-        {!isNovel && !isAnime && <button className="btn sm" disabled={!next10.length} onClick={() => void download(next10)}>Download next 10</button>}
-        {!isNovel && !isAnime && <button className="btn sm" disabled={!next25.length} onClick={() => void download(next25)}>Download next 25</button>}
+        {!isNovel && !isAnime && <select className="input chapter-download-menu" aria-label="Download next chapters" defaultValue="" disabled={!next10.length && !next25.length} onChange={(event) => {
+          const count = Number(event.target.value);
+          event.target.value = "";
+          if (count === 10) void download(next10);
+          if (count === 25) void download(next25);
+        }}><option value="" disabled>Download next…</option><option value="10" disabled={!next10.length}>Next 10</option><option value="25" disabled={!next25.length}>Next 25</option></select>}
         <button className="btn sm" onClick={() => setSel(new Set(list.map((c) => c.id)))}>Select all</button>
       </div>
 

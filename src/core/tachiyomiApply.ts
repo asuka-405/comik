@@ -29,7 +29,7 @@ export async function applyImport(backup: ParsedBackup, plan: ImportPlan, onProg
   const t = Date.now();
 
   // Categories: reuse one with the same name, create the rest.
-  const existing = (await db.categories.toArray()).filter((c) => !c.deleted);
+  const existing = (await db.categories.toArray()).filter((c) => !c.deleted && (c.kind ?? "comic") === "comic");
   const categoryIds = new Map<string, string>();
   let createdCategories = 0;
   for (const category of [...backup.categories].sort((a, b) => a.order - b.order)) {
@@ -37,7 +37,7 @@ export async function applyImport(backup: ParsedBackup, plan: ImportPlan, onProg
     const same = existing.find((c) => c.name.trim().toLowerCase() === category.name.trim().toLowerCase());
     if (same) categoryIds.set(category.id, same.id);
     else {
-      const created = await createCategory(category.name);
+      const created = await createCategory(category.name, "comic");
       categoryIds.set(category.id, created.id);
       createdCategories++;
     }
@@ -97,7 +97,7 @@ export async function applyImport(backup: ParsedBackup, plan: ImportPlan, onProg
       };
     });
     await db.transaction("rw", db.manga, db.chapters, async () => {
-      await db.manga.put(library);
+      await db.manga.put({ ...library, libraryFlag: library.inLibrary ? 1 : 0 });
       await db.chapters.bulkPut(chapters);
     });
     chapterCount += chapters.length;

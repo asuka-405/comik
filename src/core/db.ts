@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import type { Backup } from "./backup";
 import type { CategoryRow, ChapterRow, MangaRow } from "./types";
+import { splitLegacyCategories } from "./categoryMigration";
 
 export interface PageCacheRow {
   chapterId: string;
@@ -115,6 +116,18 @@ class ComikDB extends Dexie {
     this.version(2).stores({ accountArchives: "id, createdAt" });
     this.version(3).stores({ connectors: "id" });
     this.version(4).stores({ apiCache: "key, at" });
+    this.version(5).stores({ categories: "id, order, kind" }).upgrade(async (tx) => {
+      const [categories, manga] = await Promise.all([
+        tx.table("categories").toArray() as Promise<CategoryRow[]>,
+        tx.table("manga").toArray() as Promise<MangaRow[]>,
+      ]);
+      const split = splitLegacyCategories(categories, manga, Date.now());
+      await Promise.all([tx.table("categories").bulkPut(split.categories), tx.table("manga").bulkPut(split.manga)]);
+    });
+    this.version(6).stores({ manga: "id, sourceId, lastUpdateAt, modifiedAt, title, libraryFlag" }).upgrade(async (tx) => {
+      const manga = await tx.table("manga").toArray() as MangaRow[];
+      await tx.table("manga").bulkPut(manga.map((item) => ({ ...item, libraryFlag: item.inLibrary ? 1 : 0 })));
+    });
   }
 }
 

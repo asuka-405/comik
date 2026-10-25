@@ -2,7 +2,7 @@ import { fetchJson } from "../http";
 import type { Filter, MangasPage, SChapter, SManga, SPage, Source } from "../types";
 import { mapAniListMedia, type AniListMedia } from "./anilistMedia";
 
-const API = "https://graphql.anilist.co/";
+const API = "https://graphql.anilist.co";
 const MEDIA_FIELDS = `id
       title { romaji english native }
       description(asHtml: false)

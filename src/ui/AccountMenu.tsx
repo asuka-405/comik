@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { GearSix, LockKey, UserCircle } from "@phosphor-icons/react";
 import { useSync } from "@/core/sync/firebase";
+import { useSettings } from "@/core/settings";
 
 /** Account button at the end of the top bar. Opens a small menu with the account page and app settings. */
 export function AccountMenu() {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const user = useSync((state) => state.user);
+  const profile = useSettings((state) => state.communityProfile);
   const { pathname } = useLocation();
-  const initial = user && !user.isAnonymous ? (user.name || user.email || "?").trim()[0]?.toUpperCase() : undefined;
+  const initial = user && !user.isAnonymous ? (profile.displayName || profile.username || user.name || user.email || "?").trim()[0]?.toUpperCase() : undefined;
 
   // Leaving the page closes the menu.
   useEffect(() => setOpen(false), [pathname]);
@@ -44,7 +46,7 @@ export function AccountMenu() {
       </button>
       {open && (
         <div className="account-menu-list" role="menu">
-          <Link role="menuitem" to="/account"><UserCircle size={19} /><span><strong>My account</strong><small>{user ? (user.isAnonymous ? "Guest session" : user.email ?? "Signed in") : "Sign in and sync"}</small></span></Link>
+          <Link role="menuitem" to="/account"><UserCircle size={19} /><span><strong>My account</strong><small>{user ? (user.isAnonymous ? "Guest session" : profile.username ? `@${profile.username}` : user.email ?? "Signed in") : "Sign in and sync"}</small></span></Link>
           <Link role="menuitem" to="/vault"><LockKey size={19} /><span><strong>Vault</strong><small>Titles kept apart from your shelf</small></span></Link>
           <Link role="menuitem" to="/settings"><GearSix size={19} /><span><strong>App settings</strong><small>Appearance, reader, Firebase</small></span></Link>
         </div>

@@ -54,6 +54,7 @@ function Notes({ body }: { body: string }) {
         if (block.type === "heading") return block.level === 2 ? <h3 key={i}>{renderInline(block.inline)}</h3> : <h4 key={i}>{renderInline(block.inline)}</h4>;
         if (block.type === "code") return <pre key={i}><code>{block.text}</code></pre>;
         if (block.type === "list") return <ul key={i}>{block.items.map((item, j) => <li key={j}>{renderInline(item)}</li>)}</ul>;
+        if (block.type === "table") return null;
         return <p key={i}>{renderInline(block.inline)}</p>;
       })}
     </div>

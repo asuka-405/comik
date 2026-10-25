@@ -16,6 +16,7 @@ function LandingPage() {
           <a href="#sources">Your sources</a>
           <a href="#privacy">Your data</a>
           <a href="#downloads">Downloads</a>
+          <a className="landing-nav-keep" href="/docs/">Docs</a>
           <a className="landing-nav-keep" href="/releases/">Releases</a>
           <a className="landing-nav-cta" href="/web/">Open reader <ArrowRight size={16} /></a>
         </nav>
@@ -115,6 +116,7 @@ function LandingPage() {
               <p>Syntax errors are marked as you type. A step-by-step run shows what each call returned, every request and what Comik kept, with the line, column and a suggested fix. There is a JSON formatter, connector icons and documentation built in.</p>
             </article>
           </div>
+          <p className="landing-release-note">Read the <a href="/docs/#connectors">connector reference</a>, or see how to <a href="/docs/#customize">restyle the whole app with themes and CSS</a>.</p>
         </section>
 
         <section className="landing-privacy" id="privacy">
@@ -125,6 +127,7 @@ function LandingPage() {
           <div className="landing-privacy-copy">
             <p>Your library, comics, novels and anime alike, stays on your device by default. Sign in to sync it through Comik’s Firebase with nothing to set up, or bring your own Firebase. The Android, Linux and Windows apps read comics straight from your device. On the web, reading uses a proxy in your own Firebase, so no shared address gets banned by the sources.</p>
             <a className="landing-text-link" href="/web/setup">How the web setup works <ArrowRight size={17} /></a>
+            <a className="landing-text-link" href="/docs/#data">See what is public and the database schema <ArrowRight size={17} /></a>
           </div>
         </section>
 
@@ -151,6 +154,7 @@ function LandingPage() {
       <footer className="landing-footer">
         <a className="landing-brand" href="/" aria-label="Comik home"><span className="landing-mark">C</span><span>comik</span></a>
         <span>Made for the next chapter.</span>
+        <a href="/docs/">Docs</a>
         <a href="https://github.com/asuka-405/comik">GitHub <ArrowRight size={15} /></a>
       </footer>
     </div>

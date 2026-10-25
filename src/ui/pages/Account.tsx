@@ -8,9 +8,12 @@ import { getFirebaseMode, readFirebaseConfig, reauthenticate, signOutSync, useSy
 import { purgeAccount, wipeAccountData, type WipeSummary } from "@/core/sync/accountData";
 import { stopSync, syncNow } from "@/core/sync/engine";
 import { toast } from "../common";
+import { ProfilePreferences } from "../components/ProfilePreferences";
+import { useSettings } from "@/core/settings";
 
 export function AccountPage() {
   const sync = useSync();
+  const profile = useSettings((state) => state.communityProfile);
   const [busy, setBusy] = useState(false);
   const config = readFirebaseConfig();
   const mode = getFirebaseMode();
@@ -51,7 +54,7 @@ export function AccountPage() {
         <div className="account-avatar"><UserCircle size={34} weight="duotone" /></div>
         <div className="account-identity-text">
           <span className="kicker">{sync.user ? (sync.user.isAnonymous ? "Guest session" : "Google account") : "Not signed in"}</span>
-          <h2>{sync.user?.name || sync.user?.email || (config ? "Connect your account" : "Firebase not configured")}</h2>
+          <h2>{profile.displayName || profile.username || sync.user?.name || sync.user?.email || (config ? "Connect your account" : "Firebase not configured")}</h2>
           {sync.user?.email && sync.user.name && <span className="muted">{sync.user.email}</span>}
           {sync.user && <span className="account-uid mono">UID {sync.user.uid}</span>}
         </div>
@@ -75,6 +78,8 @@ export function AccountPage() {
           {sync.status === "ready" && <div className="account-sync-note"><CloudCheck size={18} /> Changes sync to this Firebase account when online.</div>}
         </section>
       )}
+
+      <ProfilePreferences />
 
       <div className="account-data-grid">
         <section className="account-data-section">

@@ -46,9 +46,9 @@ export async function restoreBackupData(data: Backup): Promise<{ manga: number; 
   const localManga = new Map((await db.manga.toArray()).map((m) => [m.id, m]));
   const localCh = new Map((await db.chapters.toArray()).map((c) => [c.id, c]));
   await db.transaction("rw", db.manga, db.chapters, db.categories, db.customSources, db.localFiles, async () => {
-    await db.manga.bulkPut(data.manga.filter((m) => !localManga.has(m.id) || m.modifiedAt >= localManga.get(m.id)!.modifiedAt));
+    await db.manga.bulkPut(data.manga.filter((m) => !localManga.has(m.id) || m.modifiedAt >= localManga.get(m.id)!.modifiedAt).map((manga) => ({ ...manga, libraryFlag: manga.inLibrary ? 1 : 0 })));
     await db.chapters.bulkPut(data.chapters.filter((c) => !localCh.has(c.id) || c.modifiedAt >= localCh.get(c.id)!.modifiedAt));
-    await db.categories.bulkPut(data.categories ?? []);
+    await db.categories.bulkPut((data.categories ?? []).map((category) => ({ ...category, kind: category.kind ?? "comic" as const })));
     await db.customSources.bulkPut(data.customSources ?? []);
     await db.localFiles.bulkPut((data.novelTexts ?? []).map(({ chapterId, text }) => ({ chapterId, kind: "text" as const, blob: new Blob([text], { type: "text/plain;charset=utf-8" }) })));
   });

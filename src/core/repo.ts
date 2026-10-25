@@ -2,7 +2,7 @@ import { db, mangaId as mkMangaId, chapterId as mkChapterId } from "./db";
 import { hash53 } from "./hash";
 import { emitLocalChange } from "./bus";
 import { backfillNumbers, recognizeChapterNumber } from "./chapterRecognition";
-import type { CategoryRow, ChapterRow, MangaRow, SChapter, SManga } from "./types";
+import type { CategoryRow, ChapterRow, MangaRow, MediaKind, SChapter, SManga } from "./types";
 
 const now = () => Date.now();
 
@@ -34,6 +34,7 @@ export async function upsertManga(sourceId: string, s: SManga): Promise<MangaRow
     genres: s.genres?.length ? s.genres : (existing?.genres ?? []),
     status: s.status && s.status !== "unknown" ? s.status : (existing?.status ?? "unknown"),
     inLibrary: existing?.inLibrary ?? false,
+    libraryFlag: existing?.libraryFlag ?? (existing?.inLibrary ? 1 : 0),
     categoryIds: existing?.categoryIds ?? [],
     addedAt: existing?.addedAt ?? 0,
     lastUpdateAt: existing?.lastUpdateAt ?? 0,
@@ -53,7 +54,7 @@ export async function upsertManga(sourceId: string, s: SManga): Promise<MangaRow
 export async function patchManga(id: string, patch: Partial<MangaRow>) {
   const m = await db.manga.get(id);
   if (!m) return;
-  await db.manga.put({ ...m, ...patch, modifiedAt: now() });
+  await db.manga.put({ ...m, ...patch, libraryFlag: (patch.inLibrary ?? m.inLibrary) ? 1 : 0, modifiedAt: now() });
   emitLocalChange();
 }
 
@@ -63,6 +64,7 @@ export async function setInLibrary(id: string, value: boolean, categoryIds?: str
   await db.manga.put({
     ...m,
     inLibrary: value,
+    libraryFlag: value ? 1 : 0,
     addedAt: value ? m.addedAt || now() : m.addedAt,
     categoryIds: categoryIds ?? m.categoryIds,
     modifiedAt: now(),
@@ -109,6 +111,7 @@ export async function migrateManga(fromId: string, toId: string): Promise<number
   const migrated = {
     ...to,
     inLibrary: true,
+    libraryFlag: 1 as const,
     addedAt: from.addedAt || to.addedAt || timestamp,
     categoryIds: [...new Set([...to.categoryIds, ...from.categoryIds])],
     accent: from.accent ?? to.accent,
@@ -118,7 +121,7 @@ export async function migrateManga(fromId: string, toId: string): Promise<number
     chapterFilter: from.chapterFilter ?? to.chapterFilter,
     modifiedAt: timestamp,
   };
-  const archivedSource = { ...from, inLibrary: false, modifiedAt: timestamp };
+  const archivedSource = { ...from, inLibrary: false, libraryFlag: 0 as const, modifiedAt: timestamp };
 
   await db.transaction("rw", db.manga, db.chapters, async () => {
     await db.manga.bulkPut([migrated, archivedSource]);
@@ -309,9 +312,9 @@ export async function markPreviousRead(mangaId: string, number: number) {
 
 /* ------------------------------- categories ------------------------------- */
 
-export async function createCategory(name: string): Promise<CategoryRow> {
-  const all = await db.categories.toArray();
-  const row = { id: crypto.randomUUID(), name: name.trim(), order: all.length, modifiedAt: now() };
+export async function createCategory(name: string, kind: MediaKind = "comic"): Promise<CategoryRow> {
+  const all = (await db.categories.toArray()).filter((category) => (category.kind ?? "comic") === kind);
+  const row: CategoryRow = { id: crypto.randomUUID(), name: name.trim(), order: all.length, kind, modifiedAt: now() };
   await db.categories.put(row);
   emitLocalChange();
   return row;
@@ -338,7 +341,10 @@ export async function setMangaCategories(mangaId: string, categoryIds: string[])
 
 /** Swap a category with its neighbour. Orders are renumbered so gaps and duplicates cannot build up. */
 export async function moveCategory(id: string, delta: -1 | 1) {
-  const list = (await db.categories.orderBy("order").toArray()).filter((c) => !c.deleted);
+  const current = await db.categories.get(id);
+  if (!current) return;
+  const kind = current.kind ?? "comic";
+  const list = (await db.categories.orderBy("order").toArray()).filter((c) => !c.deleted && (c.kind ?? "comic") === kind);
   const from = list.findIndex((c) => c.id === id);
   const to = from + delta;
   if (from < 0 || to < 0 || to >= list.length) return;
@@ -383,7 +389,7 @@ export async function removeFromLibrary(mangaIds: string[]) {
   await db.transaction("rw", db.manga, async () => {
     for (const id of mangaIds) {
       const m = await db.manga.get(id);
-      if (m) await db.manga.put({ ...m, inLibrary: false, modifiedAt: t });
+      if (m) await db.manga.put({ ...m, inLibrary: false, libraryFlag: 0, modifiedAt: t });
     }
   });
   emitLocalChange();

@@ -153,6 +153,8 @@ export interface MangaRow {
   /** Kept apart from the shelf, history and community suggestions, in the Vault. */
   vault?: boolean;
   inLibrary: boolean;
+  /** Numeric index mirror for fast local shelf reads. */
+  libraryFlag?: 0 | 1;
   categoryIds: string[];
   addedAt: number;
   /** When the chapter list last changed upstream. */
@@ -199,6 +201,7 @@ export interface CategoryRow {
   id: string;
   name: string;
   order: number;
+  kind?: MediaKind;
   deleted?: boolean;
   modifiedAt: number;
 }

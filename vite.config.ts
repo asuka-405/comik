@@ -5,10 +5,11 @@ import { readFileSync } from "node:fs";
 
 const { version } = JSON.parse(readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf8")) as { version: string };
 
-/** Mirrors Netlify's rewrites: deep links under /web open the app, /releases opens the releases page. */
+/** Mirrors Netlify's rewrites: deep links under /web open the app, /releases and /docs open their pages. */
 function routeFallback(request: { url?: string }, _response: unknown, next: () => void) {
   const [pathname, query] = (request.url ?? "").split("?", 2);
   if (pathname === "/releases") request.url = `/releases/index.html${query ? `?${query}` : ""}`;
+  if (pathname === "/docs") request.url = `/docs/index.html${query ? `?${query}` : ""}`;
   if ((pathname === "/web" || pathname.startsWith("/web/")) && !/\.[^/]+$/.test(pathname)) {
     request.url = `/web/index.html${query ? `?${query}` : ""}`;
   }
@@ -48,6 +49,7 @@ export default defineConfig({
         landing: path.resolve(import.meta.dirname, "index.html"),
         web: path.resolve(import.meta.dirname, "web/index.html"),
         releases: path.resolve(import.meta.dirname, "releases/index.html"),
+        docs: path.resolve(import.meta.dirname, "docs/index.html"),
       },
     },
   },

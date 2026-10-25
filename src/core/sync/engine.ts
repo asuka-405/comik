@@ -22,7 +22,7 @@ const LS_PUSHED = "comik.sync.pushedAt";
 const SYNCED_SETTINGS: (keyof ReturnType<typeof useSettings.getState>)[] = [
   "theme", "userThemes", "customCss", "customCssOn", "librarySort", "librarySortAsc", "libraryDensity", "libraryGridColumns", "globalSearchGridColumns", "libraryUnreadBadge", "readerMode", "fit", "webtoonGap", "webtoonSidePadding",
   "doublePages", "smartSpreads", "cropBorders", "splitTall", "preload", "tapZones", "invertTaps", "showPageNumber", "brightness", "grayscale", "communityProfile", "tastePreferences",
-  "invert", "sepia", "autoNextChapter", "skipReadChapters", "updateSkipCompleted", "autoUpdateHours",
+  "invert", "sepia", "novelFontSize", "novelLineHeight", "novelFont", "autoNextChapter", "skipReadChapters", "updateSkipCompleted", "autoUpdateHours",
 ];
 
 type SeriesDoc = Omit<MangaRow, "id"> & { id: string; chapters: Record<string, ChapterState> };
@@ -45,7 +45,7 @@ async function applySeries(d: SeriesDoc) {
   const { chapters, ...manga } = d;
   const local = await db.manga.get(manga.id);
   if (!local || manga.modifiedAt > local.modifiedAt) {
-    await db.manga.put({ ...manga, genres: manga.genres ?? [], categoryIds: manga.categoryIds ?? [] } as MangaRow);
+    await db.manga.put({ ...manga, libraryFlag: manga.inLibrary ? 1 : 0, genres: manga.genres ?? [], categoryIds: manga.categoryIds ?? [] } as MangaRow);
   }
   const rows = await db.chapters.where("mangaId").equals(manga.id).toArray();
   if (!rows.length) {
@@ -65,7 +65,8 @@ async function applySeries(d: SeriesDoc) {
 
 async function applyCategories(items: CategoryRow[]) {
   const local = new Map((await db.categories.toArray()).map((c) => [c.id, c]));
-  const puts = items.filter((c) => !local.has(c.id) || c.modifiedAt > local.get(c.id)!.modifiedAt);
+  const normalized = items.map((category) => ({ ...category, kind: category.kind ?? "comic" as const }));
+  const puts = normalized.filter((c) => !local.has(c.id) || c.modifiedAt > local.get(c.id)!.modifiedAt);
   if (puts.length) await db.categories.bulkPut(puts);
 }
 
@@ -110,7 +111,7 @@ async function prepareAccountSync(uid: string, choice: AccountSyncChoice, previo
     const localChapters = (await db.chapters.toArray()).filter((chapter) => ids.has(chapter.mangaId));
     const localCategories = await db.categories.toArray();
     await db.transaction("rw", db.manga, db.chapters, db.categories, async () => {
-      await db.manga.bulkPut(localManga.map((manga) => ({ ...manga, modifiedAt: timestamp })));
+      await db.manga.bulkPut(localManga.map((manga) => ({ ...manga, libraryFlag: manga.inLibrary ? 1 : 0, modifiedAt: timestamp })));
       await db.chapters.bulkPut(localChapters.map((chapter) => ({ ...chapter, modifiedAt: timestamp })));
       await db.categories.bulkPut(localCategories.map((category) => ({ ...category, modifiedAt: timestamp })));
     });

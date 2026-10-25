@@ -1,39 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { loadPublicCommunityFirebase } from "@/core/sync/firebase";
+import { SCHEMAS } from "@/core/dataSchemas";
 import { timeAgo } from "../common";
 
 interface PublicPost { id: string; kind: string; title: string; body: string; authorName: string; createdAt: number }
 interface PublicCommunity { id: string; name: string; description: string; memberCount: number }
 
-const SCHEMAS = [
-  { path: "communityPosts/{postId}", visibility: "Public read", fields: "kind, title, body, authorId, authorName, createdAt, comic?, pollOptions?, imageUrl?, pinned?", children: "comments/{commentId}, votes/{uid}, likes/{uid}" },
-  { path: "communityPosts/{postId}/comments/{commentId}", visibility: "Public read", fields: "authorId, authorName, body, createdAt" },
-  { path: "communityPosts/{postId}/votes/{uid}", visibility: "Public read", fields: "uid, optionIndex, updatedAt" },
-  { path: "communityPosts/{postId}/likes/{uid}", visibility: "Public read", fields: "uid, direction?, reaction?, createdAt?/updatedAt?" },
-  { path: "communityRatings/{ratingId}", visibility: "Public aggregate data", fields: "comicKey, comicTitle, sourceId, uid, score, updatedAt" },
-  { path: "communities/{communityId}", visibility: "Public metadata", fields: "id, name, description, rules, visibility, accent, ownerId, ownerName, createdAt, memberCount" },
-  { path: "communities/{communityId}/posts/{postId}", visibility: "Public community only", fields: "Same as communityPosts; private posts require membership" },
-  { path: "communities/{communityId}/posts/{postId}/comments/{commentId}", visibility: "Public community only", fields: "authorId, authorName, body, createdAt" },
-  { path: "communities/{communityId}/posts/{postId}/votes/{uid}", visibility: "Public community only", fields: "uid, optionIndex, updatedAt" },
-  { path: "communities/{communityId}/posts/{postId}/likes/{uid}", visibility: "Public community only", fields: "uid, direction?, reaction?, createdAt?/updatedAt?" },
-  { path: "communities/{communityId}/channels/{channelId}/messages/{messageId}", visibility: "Public community only", fields: "authorId, authorName, body, createdAt" },
-  { path: "communities/{communityId}/members/{uid}", visibility: "Public community only", fields: "uid, name, role, joinedAt; private community membership is hidden" },
-  { path: "communities/{communityId}/channels/{channelId}", visibility: "Public community only", fields: "id, name, description, kind, createdAt, createdBy" },
-  { path: "communities/{communityId}/ratings/{ratingId}", visibility: "Public community only", fields: "comicKey, comicTitle, sourceId, uid, score, updatedAt" },
-  { path: "communities/{communityId}/bans/{uid}", visibility: "Staff only", fields: "uid, name, by, createdAt" },
-  { path: "communities/{communityId}/private/invite", visibility: "Staff only", fields: "code" },
-  { path: "communityContent/{contentKey}/comments/{commentId}", visibility: "Public read", fields: "authorId, authorName, body, createdAt, page (-1 means episode-wide)" },
-  { path: "system/capacity", visibility: "Public read, admin write only", fields: "state, firestorePercent, authUsersPercent, updatedAt" },
-  { path: "communityRateLimits/{uid}", visibility: "Owner read, rules-only writes", fields: "lastAt, lastId" },
-  { path: "users/{uid}/...", visibility: "Private to that user", fields: "Personal library, progress, settings, profile and memberships; excluded from public views" },
-  { path: "IndexedDB manga", visibility: "Device-local", fields: "id, sourceId, url, title, metadata, library state, categories and reader preferences" },
-  { path: "IndexedDB chapters", visibility: "Device-local", fields: "id, mangaId, url, chapter metadata, read state, bookmarks and progress" },
-  { path: "IndexedDB categories", visibility: "Device-local", fields: "id, name, order, deleted, modifiedAt" },
-  { path: "IndexedDB pageCache / pageBlobs / downloads", visibility: "Device-local", fields: "Chapter page URLs, offline page blobs and download queue state" },
-  { path: "IndexedDB customSources / connectors", visibility: "Device-local", fields: "User-installed source configuration and permitted connector code" },
-  { path: "IndexedDB localFiles / pendingStates / accountArchives / apiCache", visibility: "Device-local", fields: "Imported books, pending sync progress, local backups and cached source responses" },
-];
 
 export function DataCatalog() {
   const [posts, setPosts] = useState<PublicPost[]>([]);

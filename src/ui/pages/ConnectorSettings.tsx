@@ -286,6 +286,7 @@ function Docs({ onUseTemplate }: { onUseTemplate: (code: string) => void }) {
             </div>
           );
         }
+        if (block.type === "table") return null;
         return <p key={i}>{inline(block.inline)}</p>;
       })}
     </article>

@@ -11,3 +11,23 @@ describe("fenced code", () => {
     expect(parseMarkdown("```\nx")).toEqual([{ type: "code", lang: "", meta: "", text: "x" }]);
   });
 });
+
+describe("tables", () => {
+  const source = "Intro\n\n| Name | Value |\n|---|---|\n| `a` | **b** |\n| c | d |\n\nAfter";
+
+  it("parses a table when asked", () => {
+    const blocks = parseMarkdown(source, { tables: true });
+    const table = blocks.find((b) => b.type === "table");
+    expect(table).toMatchObject({ type: "table" });
+    if (table?.type === "table") {
+      expect(table.head).toHaveLength(2);
+      expect(table.rows).toHaveLength(2);
+      expect(table.rows[0]![0]).toEqual([{ type: "code", text: "a" }]);
+    }
+    expect(blocks.at(-1)).toMatchObject({ type: "paragraph" });
+  });
+
+  it("leaves tables as plain text by default", () => {
+    expect(parseMarkdown(source).some((b) => b.type === "table")).toBe(false);
+  });
+});

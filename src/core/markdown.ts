@@ -14,7 +14,9 @@ export type Block =
   | { type: "list"; items: Inline[][] }
   | { type: "paragraph"; inline: Inline[] }
   /** A fenced block. `meta` is whatever follows the language on the opening line, such as "template". */
-  | { type: "code"; lang: string; meta: string; text: string };
+  | { type: "code"; lang: string; meta: string; text: string }
+  /** Only produced when `parseMarkdown` is called with `{ tables: true }`, so renderers that never ask for it can ignore it. */
+  | { type: "table"; head: Inline[][]; rows: Inline[][][] };
 
 const INLINE = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 
@@ -32,18 +34,26 @@ export function parseInline(text: string): Inline[] {
   return out;
 }
 
-export function parseMarkdown(source: string): Block[] {
+const cells = (line: string) => line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+const isDivider = (line: string) => /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$/.test(line);
+
+export function parseMarkdown(source: string, options: { tables?: boolean } = {}): Block[] {
   const blocks: Block[] = [];
   let paragraph: string[] = [];
   let list: Inline[][] | null = null;
+  let table: { head: Inline[][]; rows: Inline[][][] } | null = null;
   const flush = () => {
     if (paragraph.length) blocks.push({ type: "paragraph", inline: parseInline(paragraph.join(" ")) });
     if (list) blocks.push({ type: "list", items: list });
+    if (table) blocks.push({ type: "table", ...table });
     paragraph = [];
     list = null;
+    table = null;
   };
+  const lines = source.replace(/\r\n?/g, "\n").split("\n");
   let fence: { lang: string; meta: string; lines: string[] } | null = null;
-  for (const raw of source.replace(/\r\n?/g, "\n").split("\n")) {
+  for (let n = 0; n < lines.length; n++) {
+    const raw = lines[n]!;
     if (fence) {
       if (raw.trim() === "```") { blocks.push({ type: "code", lang: fence.lang, meta: fence.meta, text: fence.lines.join("\n") }); fence = null; }
       else fence.lines.push(raw);
@@ -52,6 +62,15 @@ export function parseMarkdown(source: string): Block[] {
     const opening = /^```\s*([A-Za-z0-9+-]*)\s*(.*)$/.exec(raw.trim());
     if (opening) { flush(); fence = { lang: opening[1] ?? "", meta: opening[2] ?? "", lines: [] }; continue; }
     const line = raw.trim();
+    if (options.tables && line.startsWith("|")) {
+      if (!table) {
+        // A table starts at a header row followed by a divider row; anything else stays a paragraph.
+        if (isDivider((lines[n + 1] ?? "").trim())) { flush(); table = { head: cells(line).map(parseInline), rows: [] }; n++; continue; }
+      } else {
+        table.rows.push(cells(line).map(parseInline));
+        continue;
+      }
+    }
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
     const bullet = /^[-*]\s+(.*)$/.exec(line);
     if (!line) flush();

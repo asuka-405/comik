@@ -7,6 +7,24 @@ import { DEFAULT_COMMUNITY_PROFILE, DEFAULT_TASTE_PREFERENCES, type CommunityPro
 /** "system", a built-in preset id, or the id of one of the user's own themes. */
 export type Theme = string;
 export type FitMode = "width" | "height" | "screen" | "original";
+/**
+ * Sources that failed the health check (scripts/check-sources.ts) when they were last tested: dead hosts, empty
+ * searches, chapters with no pages. They start disabled; turning one back on in Settings is respected.
+ * Sources that only fail behind Cloudflare in the Node proxy are not listed, since the apps pass that check.
+ */
+export const DEFAULT_DISABLED_SOURCE_IDS = [
+  "mihon-8904806262353429205", // Anisa Scans: HTTP 502
+  "mihon-2571489285618757730", // Coffee Manga (Unoriginal): chapters have no pages
+  "mihon-3694940277826033657", // Gourmet Scans: chapters have no pages
+  "cutiecomics-en", // Cutie Comics: search finds nothing
+  "mihon-58992897252080929", // KokoMangas: search finds nothing
+  "mihon-3544957587727489204", // Manhuanext: search finds nothing
+  "mihon-6293890187960663957", // TopManhua.fan: search finds nothing
+  "mihon-6540843430852844328", // WuxiaWorld: search finds nothing
+];
+/** Bump when the list above changes so existing installs get the new entries once. */
+const SOURCE_DEFAULTS_VERSION = 1;
+
 export type LibrarySort = "title" | "unread" | "lastRead" | "added" | "lastUpdate";
 export type LibraryDensity = "cozy" | "compact" | "list";
 export type LibraryGridColumns = "auto" | 2 | 3 | 4 | 5 | 6;
@@ -31,6 +49,8 @@ export interface Settings {
   proxyUrl: string;
   /** Source IDs disabled on this device. */
   disabledSourceIds: string[];
+  /** Which version of DEFAULT_DISABLED_SOURCE_IDS has been applied to this device. */
+  sourceDefaultsVersion: number;
   /** Firebase Analytics is explicitly opt-in. */
   analyticsConsent: boolean;
 
@@ -67,6 +87,10 @@ export interface Settings {
   brightness: number; // 0.3..1.2
   grayscale: boolean;
   invert: boolean;
+  /** Web novel reader: text size in px, line spacing multiplier, and serif or sans body text. */
+  novelFontSize: number;
+  novelLineHeight: number;
+  novelFont: "serif" | "sans";
   sepia: number; // 0..1
   autoNextChapter: boolean;
   skipReadChapters: boolean;
@@ -93,7 +117,8 @@ export const useSettings = create<Settings>()(
       communityProfile: DEFAULT_COMMUNITY_PROFILE,
       tastePreferences: DEFAULT_TASTE_PREFERENCES,
       proxyUrl: "",
-      disabledSourceIds: [],
+      disabledSourceIds: [...DEFAULT_DISABLED_SOURCE_IDS],
+      sourceDefaultsVersion: SOURCE_DEFAULTS_VERSION,
       analyticsConsent: false,
 
       librarySort: "lastRead",
@@ -125,6 +150,9 @@ export const useSettings = create<Settings>()(
       brightness: 1,
       grayscale: false,
       invert: false,
+      novelFontSize: 18,
+      novelLineHeight: 1.85,
+      novelFont: "serif",
       sepia: 0,
       autoNextChapter: true,
       skipReadChapters: false,
@@ -137,6 +165,15 @@ export const useSettings = create<Settings>()(
     }),
     {
       name: "comik.settings.v1",
+      // Saved settings from before the defaults existed get them added once, never again, so a source the user re-enables stays on.
+      merge: (saved, current) => {
+        const merged = { ...current, ...(saved as Partial<Settings>) };
+        if ((merged.sourceDefaultsVersion ?? 0) < SOURCE_DEFAULTS_VERSION) {
+          merged.disabledSourceIds = [...new Set([...(merged.disabledSourceIds ?? []), ...DEFAULT_DISABLED_SOURCE_IDS])];
+          merged.sourceDefaultsVersion = SOURCE_DEFAULTS_VERSION;
+        }
+        return merged;
+      },
       partialize: (s) => {
         const { set: _set, ...rest } = s;
         return rest;

@@ -16,6 +16,7 @@ import { ConfirmDialog, Cover, Empty, Sheet, TextDialog, coverSrc, hueOf, timeAg
 import { formatChapterNumber } from "@/core/chapterRecognition";
 
 interface Entry { m: MangaRow; s: LibraryStats; chapters: ChapterRow[] }
+const shelfSnapshots = new Map<MediaKind, { entries: Entry[]; cats: CategoryRow[] }>();
 
 const SORTS: [LibrarySort, string][] = [["lastRead", "Last read"], ["lastUpdate", "Latest update"], ["unread", "Unread"], ["title", "Title"], ["added", "Date added"]];
 
@@ -34,14 +35,16 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
   useEffect(() => { setCat("all"); setFilter(""); setSelecting(false); setPicked(new Set()); }, [kind]);
 
   const data = useLiveQuery(async () => {
-    const manga = await db.manga.filter((m) => m.inLibrary).toArray();
+    const manga = (await db.manga.where("libraryFlag").equals(1).toArray()).filter((item) => mediaOf(item) === kind);
     const ids = new Set(manga.map((m) => m.id));
     const chapters = ids.size ? await db.chapters.where("mangaId").anyOf([...ids]).toArray() : [];
     const by = new Map<string, ChapterRow[]>();
     for (const c of chapters) (by.get(c.mangaId) ?? by.set(c.mangaId, []).get(c.mangaId)!).push(c);
-    const cats = (await db.categories.orderBy("order").toArray()).filter((c) => !c.deleted);
-    return { entries: manga.map<Entry>((m) => ({ m, chapters: by.get(m.id) ?? [], s: statsOf(by.get(m.id) ?? []) })), cats };
-  }, []);
+    const cats = (await db.categories.where("kind").equals(kind).sortBy("order")).filter((c) => !c.deleted);
+    const result = { entries: manga.map<Entry>((m) => ({ m, chapters: by.get(m.id) ?? [], s: statsOf(by.get(m.id) ?? []) })), cats };
+    shelfSnapshots.set(kind, result);
+    return result;
+  }, [kind], shelfSnapshots.get(kind));
 
   const safeEntries = useMemo(() => (data?.entries ?? []).filter((entry) => mediaOf(entry.m) === kind && !entry.m.vault && (!st.safeMode || !getSource(entry.m.sourceId)?.isNsfw)), [data, st.safeMode, kind]);
 
@@ -233,7 +236,7 @@ export function Shelf({ onSearch, kind = "comic" }: { onSearch: () => void; kind
 
       {dialog === "new" && (
         <TextDialog title="New shelf tab" label="Tab name" action="Create" onClose={() => setDialog(null)} onSubmit={async (name) => {
-          const row = await createCategory(name);
+          const row = await createCategory(name, kind);
           setCat(row.id);
           setDialog(null);
         }} />

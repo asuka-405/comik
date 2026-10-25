@@ -6,7 +6,7 @@ import { db } from "@/core/db";
 import { allSources, onSourcesChange } from "@/core/sources/registry";
 import { createCategory, editCategoriesOf, upsertManga } from "@/core/repo";
 import { setInLibrary } from "@/core/repo";
-import type { Source } from "@/core/types";
+import type { MediaKind, Source } from "@/core/types";
 import { groupDiscoveredWorks, type DiscoveredSourceEntry } from "@/core/discover";
 import { filterSources } from "@/core/sources/filter";
 import { matchesSearch, type SearchFields } from "@/core/searchMatch";
@@ -92,7 +92,7 @@ export function Browse() {
       }
 
       {q ? (
-        searchable.length ? <GlobalSearch sources={searchable} q={q} fields={searchFields} tolerance={tolerance} /> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
+        searchable.length ? <GlobalSearch sources={searchable} q={q} fields={searchFields} tolerance={tolerance} kind={mediaTab === "comics" ? "comic" : mediaTab === "novels" ? "novel" : "anime"} /> : <div className="empty"><h2>No enabled sources</h2><p>Enable a source to search the catalog.</p><button className="btn primary" onClick={() => nav("/settings/sources")}>Manage sources</button></div>
       ) : (
         <>
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "10px 0 12px" }}>
@@ -140,7 +140,7 @@ const chapterCountCache = new Map<string, number>();
  * Sites behind a Cloudflare check are never checked automatically, anywhere in the app. They are listed
  * apart here, each with its own button that runs that one check and then searches it.
  */
-function GlobalSearch({ sources, q, fields, tolerance }: { sources: Source[]; q: string; fields: SearchFields; tolerance: number }) {
+function GlobalSearch({ sources, q, fields, tolerance, kind }: { sources: Source[]; q: string; fields: SearchFields; tolerance: number; kind: MediaKind }) {
   const taste = useSettings((s) => s.tastePreferences);
   const ids = sources.map((s) => s.id).join("|");
   const cacheKey = `${ids}\u0000${q}\u0000${fields.tags ? 1 : 0}${fields.description ? 1 : 0}\u0000${tolerance}`;
@@ -155,7 +155,7 @@ function GlobalSearch({ sources, q, fields, tolerance }: { sources: Source[]; q:
   const [chapterCounts, setChapterCounts] = useState<Record<string, number | "loading" | "unavailable">>({});
   const [sourcePicked, setSourcePicked] = useState<Set<string>>(new Set());
   const [addingSources, setAddingSources] = useState(false);
-  const categories = useLiveQuery(() => db.categories.orderBy("order").toArray().then((rows) => rows.filter((row) => !row.deleted)), [], []);
+  const categories = useLiveQuery(() => db.categories.where("kind").equals(kind).sortBy("order").then((rows) => rows.filter((row) => !row.deleted)), [kind], []);
   const lib = useLiveQuery(() => db.manga.filter((m) => m.inLibrary).primaryKeys(), [], [] as string[]);
   const inferredGenres = useLiveQuery(async () => {
     const shelf = await db.manga.filter((manga) => manga.inLibrary).toArray();
@@ -352,7 +352,7 @@ function GlobalSearch({ sources, q, fields, tolerance }: { sources: Source[]; q:
         <div className="dialog-actions"><button className="btn" onClick={() => { setCategoriesOpen(false); setNewCategoryOpen(true); }}><Plus size={15} /> New category</button></div>
       </Sheet>}
       {newCategoryOpen && <TextDialog title="New category" label="Category name" action="Create and add" onClose={() => setNewCategoryOpen(false)} onSubmit={async (name) => {
-        const category = await createCategory(name);
+        const category = await createCategory(name, kind);
         await editCategoriesOf([...picked], { add: [category.id] });
         toast(`Added to ${category.name}`);
         setNewCategoryOpen(false);
