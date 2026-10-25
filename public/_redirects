@@ -1,2 +1,0 @@
-# Single-page app: every /web/... address is answered by the app shell.
-/web/*  /web/index.html  200

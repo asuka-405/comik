@@ -1,0 +1,13 @@
+{
+  // Cloudflare Workers deployment of the web build. `npm run build` writes dist/, this serves it.
+  "name": "comik",
+  "main": "worker/web-fallback.js",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // Only /web/* goes through the Worker (deep links of the single-page app). The rest is static.
+    "run_worker_first": ["/web/*"],
+    "not_found_handling": "404-page"
+  }
+}
