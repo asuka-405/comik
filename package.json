@@ -1,7 +1,7 @@
 {
   "name": "comik",
   "private": true,
-  "version": "0.6.0-beta",
+  "version": "0.6.5-beta",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,proxy -c auto \"vite\" \"tsx watch server/index.ts\"",
@@ -28,6 +28,7 @@
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "@hono/node-server": "^2.1.5",
     "@phosphor-icons/react": "^2.1.10",
+    "acorn": "^8.14.0",
     "dexie": "^4.4.7",
     "dexie-react-hooks": "^4.4.0",
     "fflate": "^0.8.3",

@@ -2,6 +2,25 @@
 
 Each section becomes the release notes for that version on GitHub and on the releases page.
 
+## 0.6.5-beta
+
+### Connector debugger
+- **Errors that say where and why.** Adding a connector now marks problems as you type: the code editor has line numbers, and a syntax error turns its line red. The Problems panel gives each one a plain title, the line and column, the code around it with the spot marked, and how to fix it, with an example you can copy. A line button selects that spot in the editor. It recognises the usual mistakes, such as an unclosed bracket (named by the line it was opened on), `?` where `?.` was meant, list methods called on `querySelectorAll`, `ctx.http` calls without `await`, `fetch` or `require` inside the sandbox, `http://` addresses and missing methods.
+- **A step-by-step debugger.** It runs a draft the way Comik does: read the code, start it, then popular, latest, search, details, episodes and streams, using the result of each for the next. Every step shows what the connector returned, what Comik keeps after checking it, every request it made (status, time, size and the response, including error bodies) and the log. Values Comik silently drops, such as a cover on a host that is not allowed, an episode without a number, or a stream that is not https, are listed with the reason.
+- **Runtime errors point into your code.** A failure inside a connector reports the method, line and column in the connector's own file, with the code around it. Failed requests point at the line that made them, with advice for each HTTP status, blocked hosts, timeouts and unreachable sites. Installed connectors have a **Debug** button, and **Test** shows the same report.
+- **JSON formatter.** Paste any JSON to format, minify or sort it. Broken JSON shows the line and column and the likely fix. Debugger results and responses open as a collapsible tree and can be sent to the formatter. The **Format** button on the editor tidies pasted code or JSON.
+- **Copy report.** One button copies the whole run as plain text for a bug report. Settings values such as API keys are masked.
+
+### Connector icon
+- A manifest can now set `icon`: an https address on one of its allowed hosts, or a small inline image. It shows on the connector's card, in the install review and in Discover. If the icon cannot be used, the debugger says why.
+
+### Friendlier data
+- Numeric ids and numbers sent as text (`"12"`, `"8.5"`) are now accepted instead of silently skipping the title or episode.
+- `console.log`, `console.warn` and `console.error` inside a connector now appear in the log.
+
+### Documentation
+- The connector documentation has a new Testing and debugging section, the `icon` field, a table of common errors and fixes, and the demo connector has an icon.
+
 ## 0.6.0-beta
 
 ### Anime connectors

@@ -27,6 +27,8 @@ export interface ConnectorManifest {
   description?: string;
   author?: string;
   homepage?: string;
+  /** A square logo for the connector: an https address on an allowed host, or a small inline png, jpeg, webp or svg image. */
+  icon?: string;
   /** Every host the connector may contact, for data and for video. "*.example.com" covers subdomains. */
   domains: string[];
   languages?: string[];
@@ -43,7 +45,14 @@ const VERSION = /^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
 
 const text = (value: unknown, max: number): string | undefined => (typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined);
 const list = (value: unknown, max: number, each = 120): string[] => (Array.isArray(value) ? value.map((item) => text(item, each)).filter((item): item is string => !!item).slice(0, max) : []);
-const finite = (value: unknown): number | undefined => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
+/** A number, or a string that is plainly one ("12", "8.5"), which many sites send. */
+const finite = (value: unknown): number | undefined => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string" && /^\s*-?\d+(\.\d+)?\s*$/.test(value)) return Number(value);
+  return undefined;
+};
+/** An id: text, or a number turned into text, which is what most JSON APIs use. */
+const idText = (value: unknown): string | undefined => (typeof value === "number" && Number.isFinite(value) ? String(value) : text(value, 300));
 
 /** Check what a connector says about itself. Throws a message the person can act on. */
 export function parseManifest(raw: unknown): ConnectorManifest {
@@ -71,6 +80,7 @@ export function parseManifest(raw: unknown): ConnectorManifest {
     description: text(m.description, 400),
     author: text(m.author, 80),
     homepage: homepage && /^https:\/\//i.test(homepage) ? homepage : undefined,
+    icon: image(m.icon, domains),
     domains: [...new Set(domains)],
     languages: list(m.languages, 6, 12),
     nsfw: m.nsfw === true,
@@ -139,11 +149,20 @@ function image(value: unknown, domains: string[]): string | undefined {
   try { return checkUrl(value, domains).toString(); } catch { return undefined; }
 }
 
+/** Why a picture would be dropped, in words the author can act on. Null when it is fine or absent. */
+export function imageProblem(value: unknown, domains: string[]): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return "it must be a string, an https address or a data: image";
+  if (IMAGE_DATA.test(value)) return value.length <= 40_000 ? null : `the inline image is ${Math.round(value.length / 1000)} KB and the limit is 40 KB`;
+  if (/^data:/i.test(value)) return "inline images must be png, jpeg, webp or svg";
+  try { checkUrl(value, domains); return null; } catch (error) { return (error as Error).message; }
+}
+
 const STATUS: Record<string, MangaStatus> = { ongoing: "ongoing", airing: "ongoing", releasing: "ongoing", completed: "completed", finished: "completed", ended: "completed", hiatus: "hiatus", cancelled: "cancelled", canceled: "cancelled" };
 
 export function toSManga(raw: unknown, manifest: ConnectorManifest): SManga {
   const t = (raw ?? {}) as Record<string, unknown>;
-  const id = text(t.id, 300);
+  const id = idText(t.id);
   const title = text(t.title, 200);
   if (!id || !title) throw new Error("A title needs an id and a title.");
   const rating = finite(t.rating);
@@ -185,7 +204,7 @@ export function toSChapters(raw: unknown, manifest: ConnectorManifest): SChapter
   if (!Array.isArray(raw)) throw new Error("episodes() must return a list.");
   const episodes = raw.slice(0, 5000).flatMap((entry) => {
     const e = (entry ?? {}) as Record<string, unknown>;
-    const id = text(e.id, 300);
+    const id = idText(e.id);
     const number = finite(e.number);
     return id && number !== undefined ? [{ e, id, number, season: finite(e.season) }] : [];
   });

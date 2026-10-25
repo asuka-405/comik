@@ -43,6 +43,7 @@ export function createConnectorSource(row: ConnectorRow, manifest: ConnectorMani
     baseUrl: manifest.homepage ?? `https://${manifest.domains[0]!.replace(/^\*\./, "")}`,
     blurb: manifest.description ?? `Connector by ${manifest.author ?? "unknown"}`,
     tint: "#2f79c7",
+    icon: manifest.icon,
     supportsLatest: true,
     mediaType: "anime",
     directImages: !!manifest.direct,

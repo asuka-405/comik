@@ -101,6 +101,8 @@ export interface Source {
   blurb?: string;
   /** Accent used for the source chip. Any CSS colour. */
   tint?: string;
+  /** A logo for the source chip: an https address or an inline image. Connectors supply it. */
+  icon?: string;
   supportsLatest: boolean;
   mediaType?: MediaKind;
   /** Referer to send when fetching this source's images. Defaults to baseUrl. */

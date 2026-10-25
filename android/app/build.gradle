@@ -13,8 +13,8 @@ android {
         applicationId "in.archdev.comik"
         minSdk 23
         targetSdk 35
-        versionCode 16
-        versionName "0.6.0-beta"
+        versionCode 17
+        versionName "0.6.5-beta"
     }
 
     compileOptions {

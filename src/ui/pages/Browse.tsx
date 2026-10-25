@@ -11,6 +11,7 @@ import { ChallengeError, silenceChallenges, verifySite } from "@/core/http";
 import { isNativeShell } from "@/core/platform";
 import { Cover, CoverSkeletons, ReadingNotice, Sheet, TextDialog, hueOf, toast, useDebounced } from "../common";
 import { PanelField } from "../PanelField";
+import { ConnectorIcon } from "../connectors/ConnectorIcon";
 import { useSettings, type LibraryGridColumns } from "@/core/settings";
 
 const LANG_NAMES: Record<string, string> = { all: "Local", en: "English", es: "Spanish", fr: "French", "pt-br": "Portuguese", id: "Indonesian", ru: "Russian", de: "German", it: "Italian", ja: "Japanese", tr: "Turkish", th: "Thai" };
@@ -90,7 +91,7 @@ export function Browse() {
         <div className="src-grid">
           {shown.map((s, i) => (
             <Link key={s.id} to={`/browse/${s.id}`} className="panel source-card compact" data-hue={i % 7} style={{ ["--h" as string]: s.tint }}>
-              <div className="ico">{s.name.slice(0, 2)}</div>
+              <div className="ico">{s.icon ? <ConnectorIcon icon={s.icon} name={s.name} size={36} /> : s.name.slice(0, 2)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="src-name">{s.name}</div>
                 <div className="muted src-sub">{s.blurb}</div>

@@ -39,6 +39,7 @@ Only `manifest`, `search`, `details`, `episodes` and `streams` are needed. If `p
 - `apiVersion`: must be `1`.
 - `domains`: **every host the connector contacts**, for data, images and video. Use exact hosts (`api.example.com`) or `*.example.com` for subdomains. At least one is required. IP addresses, `localhost` and bare `*` are rejected.
 - `description`, `author`, `homepage` (https): shown when someone installs it.
+- `icon`: a square logo for the connector, shown on its card, in the install review and in Discover. Either an https address on a host in `domains`, or a small inline `data:image/...` URL (png, jpeg, webp or svg, up to 40 KB). 128 by 128 pixels is plenty. Without one Comik shows the first letters of the name. If the icon cannot be used, the debugger tells you why.
 - `languages`: for example `["en", "ja"]`.
 - `nsfw`: `true` hides it when Safe mode is on.
 - `direct`: `true` makes requests with the browser's own network stack instead of Comik's proxy. The site must send CORS headers for this to work. Leave it off for sites that do not.
@@ -52,7 +53,7 @@ If an update adds a domain, Comik asks the person to confirm again before instal
 - `await ctx.http.getJson(url, { headers })`: the same request, with the body parsed as JSON.
 - `await ctx.http.post(url, body, { headers })`: `body` is a string, or an object that is sent as JSON.
 - `ctx.html(text)`: parses HTML into a normal DOM document, so `querySelector` works.
-- `ctx.log(...)`: writes a line to the log shown by the **Test** button.
+- `ctx.log(...)`: writes a line to the log shown by the **Test** button and under each step of the debugger. `console.log`, `console.warn` and `console.error` do the same.
 - `ctx.settings`: the values typed for `manifest.settings`.
 
 A response that is not 2xx throws an error that mentions the status, so a failing site shows a clear message instead of garbage data.
@@ -65,7 +66,7 @@ Limits: 60 requests per call, 10 MB per response, 45 seconds per call, request b
 
 Returned in lists (`items`) and from `details`. Only `id` and `title` are required. Everything else is optional, and `details` should fill in as much as the site knows.
 
-- `id`: a stable string, up to 300 characters. Comik passes it back to `details`, `episodes` and `streams`.
+- `id`: a stable string, up to 300 characters. A number is turned into a string. Comik passes it back to `details`, `episodes` and `streams`.
 - `title`, `altTitles` (list of other names, used to find the same show in other sources)
 - `cover`, `banner`: https image addresses on an allowed host, or a small `data:image/...` URL.
 - `description`
@@ -78,7 +79,7 @@ Returned in lists (`items`) and from `details`. Only `id` and `title` are requir
 
 Returned from `episodes`. Required: `id` and `number`.
 
-- `id`, `number` (can be fractional, like `12.5`)
+- `id`, `number` (can be fractional, like `12.5`; a numeric string such as `"12"` is accepted)
 - `season` (a number), `seasonTitle`
 - `title`, `description`, `thumbnail`
 - `airDate`: an ISO date string or epoch milliseconds
@@ -111,14 +112,67 @@ return {
 
 ## Testing and debugging
 
-1. Add the connector, then press **Test** on its card. Comik calls `popular(1)` and shows how many titles came back, plus whatever you wrote with `ctx.log`.
-2. Open it from **Discover > Anime**, add a title to your library and open an episode. Errors from `streams` appear in the player with a **Try again** button.
-3. Common messages:
-   - "is not in this connector's domains": add the host to `manifest.domains`.
-   - "Connectors may only use https addresses": the site gave an `http://` link.
-   - "This episode has no playable stream on the connector's allowed domains": every stream was dropped. Check the hosts.
-   - "A single call may make at most 60 requests": fetch fewer pages per call.
-   - "does not implement x()": the method is missing.
+Open **Settings > Anime connectors > Add a connector**. Everything below works on code you have pasted or downloaded, before anything is installed. For a connector that is already installed, press **Debug** on its card.
+
+### While you type
+
+The code editor numbers its lines and checks the code as you type. A syntax error turns its line number red, and the **Problems** panel under the editor says what is wrong, where (line and column, with the code around it) and how to fix it. Press a **Line 12, column 8** button to select that spot in the editor. **Format** tidies indentation and spacing, and turns pasted JSON into readable JSON.
+
+The checks that run before anything is started also catch the mistakes that most often break a connector:
+
+- unbalanced brackets, with the bracket that was never closed named by line
+- `?` written where `?.` was meant
+- `querySelectorAll(...).map(...)` and other list methods called on a NodeList (wrap it in `Array.from`)
+- `ctx.http.get(...)` used without `await`
+- `fetch`, `XMLHttpRequest`, `require`, `axios`, `cheerio` and other things that do not exist in the sandbox, with what to use instead
+- `http://` addresses, a missing `module.exports`, and missing `search`, `details`, `episodes` or `streams`
+
+### Review
+
+**Review** starts the connector in the sandbox, reads its manifest and shows the hosts it will be allowed to contact. A manifest problem (a bad `id`, a missing `domains`, an `icon` that would be dropped) is shown as a problem with an example of the fix. Installing is only possible once the review has no errors.
+
+### The debugger
+
+The **Debugger** panel runs the connector the way Comik does and stops for nothing: a failing step is reported and the rest carry on where they can.
+
+- **Read the code**: the syntax and pattern checks above.
+- **Start it and read the manifest**: runs the file and validates the manifest.
+- **Popular** and **Latest**: skipped if the connector has no such method.
+- **Search**: with the query you choose (it starts as `a`).
+- **Title details**: for the first title found, or the id you type under *Test with a different search or ids*.
+- **Episodes**: for the same title.
+- **Streams**: for the first episode, or the id you type.
+
+Each step can be opened. Its tabs are:
+
+- **Problems**: every problem found, with its place, the code around it and how to fix it. Besides errors, it lists values Comik silently drops, such as a cover on a host that is not in `domains`, a relative address, a missing `id`, an episode number that is not a number, a stream that is not https, or a skip range whose end is before its start.
+- **Returned**: exactly what the connector returned, as a tree or as text.
+- **What Comik keeps**: what is left after checking. If a title or episode is missing here, it was dropped.
+- **Requests**: every request the connector made, with the status, time and size, and the start of the response, including the body of error responses. JSON is shown as a tree. Open it in the formatter to look closer.
+- **Log**: what the connector wrote with `ctx.log` or `console.log`.
+
+If the connector needs settings (an API key, say), they appear above the Run button. They are used for that run only and are not saved. **Copy report** puts the whole run on the clipboard as plain text for a bug report; values typed into settings are replaced by `•••`.
+
+### The JSON formatter
+
+Below the debugger. Paste any JSON, such as an API response or your manifest, and **Format**, **Minify** or sort its keys. If the JSON is broken it shows the line and column, the code around it and the likely fix: a trailing comma, single quotes, an unquoted key, a comment, or an HTML page where JSON was expected.
+
+### Reading an error
+
+An error from the connector's own code shows the method it happened in, the line and column in your file, and the lines around it. The most common ones:
+
+- `X is not in manifest.domains`: The connector contacted a host it did not declare. Add the host to `domains`, if the operator permits it.
+- `Cannot read properties of null`: A selector matched nothing, or a field is missing. Open the Requests tab, look at the real response, then fix the selector or use `?.`.
+- `... is not a function` on `.map` or `.filter`: It is a NodeList or an object, not a list. Use `Array.from(...)`, or read the right field.
+- `ctx is not defined`: A helper function uses `ctx` without receiving it. Pass `ctx` to the helper as an argument.
+- `The site answered HTTP 403`: The site refused the request. Check the key in settings, or ask the operator to allow it.
+- `... is not valid JSON`: The site returned HTML, often an error page. Read the body in the Requests tab. Use `ctx.http.get` and `ctx.html` for pages.
+- `A single call may make at most 60 requests`: Too many requests in one call. Return one page and let `hasNext` drive "load more".
+- `This episode has no playable stream`: Every stream was dropped. Check the video hosts are in `domains` and the addresses are https.
+
+### After installing
+
+Press **Test** on the card. It calls `popular(1)` and shows how many titles came back, or the same kind of problem report if it failed. Open the connector from **Discover > Anime**, add a title to your library and open an episode: errors from `streams` appear in the player with a **Try again** button.
 
 ## Hosting and updating
 
@@ -142,6 +196,8 @@ module.exports = {
     apiVersion: 1,
     description: "Anime from My Service.",
     author: "Your name",
+    // A square logo: an https address on one of the domains below, or a small data: image.
+    icon: "https://cdn.example.com/logo-128.png",
     domains: ["api.example.com", "*.cdn.example.com"],
     languages: ["en"],
     // settings: [{ key: "apiKey", label: "API key", secret: true, required: true }],
@@ -320,6 +376,9 @@ This one needs no account and no site of its own. It lists the Blender Foundatio
 const cover = (a, b, label) => "data:image/svg+xml;utf8," + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="200" height="300" fill="url(#g)"/><text x="100" y="160" font-family="sans-serif" font-size="26" font-weight="700" fill="#fff" text-anchor="middle">${label}</text></svg>`);
 
+const ICON = "data:image/svg+xml;utf8," + encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#8a2be2"/><circle cx="32" cy="32" r="14" fill="#ff795e"/><text x="32" y="38" font-family="sans-serif" font-size="18" font-weight="700" fill="#fff" text-anchor="middle">C</text></svg>`);
+
 const SHOWS = {
   "blender-open-movies": {
     title: "Blender Open Movies",
@@ -345,10 +404,11 @@ module.exports = {
   manifest: {
     id: "comik-demo",
     name: "Comik demo",
-    version: "1.0.0",
+    version: "1.1.0",
     apiVersion: 1,
     description: "Creative Commons open movies, to try the player. No account needed.",
     author: "Comik",
+    icon: ICON,
     domains: ["test-streams.mux.dev", "download.blender.org", "demo.unified-streaming.com"],
     languages: ["en"],
   },
@@ -384,6 +444,8 @@ module.exports = {
 ## Troubleshooting
 
 - **The connector does not appear in Discover.** Open Settings > Anime connectors and check it is turned on. A connector that fails to load shows its error on its card.
-- **Covers are missing.** Image hosts must be in `manifest.domains`, and covers must be https.
+- **Covers or the icon are missing.** Image hosts must be in `manifest.domains`, and addresses must be absolute https. The debugger lists each dropped picture with the reason.
+- **A title or episode is missing.** Open the debugger and compare the **Returned** and **What Comik keeps** tabs. Items without an `id` and a `title` (or an `id` and a numeric `number` for episodes) are skipped, and the Problems tab names them.
+- **I get an error but do not know where.** Run the debugger. It shows the method, the line and column in your file and the code around it, and **Copy report** gives you everything as text.
 - **Video does not play.** Check the stream host is in `domains`. For HLS that needs headers, set `proxy: true`. For a site that allows it, `direct: true` in the manifest can help with CORS.
 - **Everything works on desktop but not on the web version.** Comik's hosted website has no proxy, so connectors there need `direct: true` and a site that allows cross-origin requests. The Android, Linux and Windows apps use their own proxy.
